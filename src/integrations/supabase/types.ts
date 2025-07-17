@@ -14,13 +14,64 @@ export type Database = {
   }
   public: {
     Tables: {
+      client_service_rates: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          rate: number
+          service_type_id: string
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          rate: number
+          service_type_id: string
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          rate?: number
+          service_type_id?: string
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_service_rates_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_service_rates_service_type_id_fkey"
+            columns: ["service_type_id"]
+            isOneToOne: false
+            referencedRelation: "service_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_service_rates_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           created_at: string
-          current_session_count: number | null
+          default_session_rate: number
           email: string
           id: string
-          initial_session_count: number | null
           name: string
           phone_number: string
           physical_activity_readiness: string | null
@@ -31,10 +82,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          current_session_count?: number | null
+          default_session_rate?: number
           email: string
           id?: string
-          initial_session_count?: number | null
           name: string
           phone_number: string
           physical_activity_readiness?: string | null
@@ -45,10 +95,9 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          current_session_count?: number | null
+          default_session_rate?: number
           email?: string
           id?: string
-          initial_session_count?: number | null
           name?: string
           phone_number?: string
           physical_activity_readiness?: string | null
@@ -75,7 +124,7 @@ export type Database = {
           date_paid: string | null
           due_date: string
           id: string
-          service_period: string | null
+          service_type_id: string
           status: string
           trainer_id: string
           updated_at: string
@@ -87,7 +136,7 @@ export type Database = {
           date_paid?: string | null
           due_date: string
           id?: string
-          service_period?: string | null
+          service_type_id: string
           status: string
           trainer_id: string
           updated_at?: string
@@ -99,7 +148,7 @@ export type Database = {
           date_paid?: string | null
           due_date?: string
           id?: string
-          service_period?: string | null
+          service_type_id?: string
           status?: string
           trainer_id?: string
           updated_at?: string
@@ -113,7 +162,49 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "payments_service_type_id_fkey"
+            columns: ["service_type_id"]
+            isOneToOne: false
+            referencedRelation: "service_types"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "payments_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_types: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_types_trainer_id_fkey"
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainers"
