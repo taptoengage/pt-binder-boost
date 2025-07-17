@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Navigation } from '@/components/Navigation';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   Users, 
   Calendar, 
@@ -15,6 +16,8 @@ import {
 } from 'lucide-react';
 
 export default function Landing() {
+  const { signInWithGoogle } = useAuth();
+
   return (
     <div className="min-h-screen bg-gradient-subtle">
       <Navigation />
@@ -31,7 +34,7 @@ export default function Landing() {
               in one professional platform. Reduce admin time and focus on what you do best.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up">
-              <Button size="xl" variant="gradient" className="group">
+              <Button size="xl" variant="gradient" className="group" onClick={signInWithGoogle}>
                 Start Your Free Trial
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
@@ -221,7 +224,7 @@ export default function Landing() {
               Join hundreds of personal trainers who have streamlined their business with PT Binder.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button size="xl" variant="gradient" className="group">
+              <Button size="xl" variant="gradient" className="group" onClick={signInWithGoogle}>
                 Start Free Trial
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
