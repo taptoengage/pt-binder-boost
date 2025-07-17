@@ -1,0 +1,144 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Menu, X, Users, Calendar, CreditCard, BarChart3 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+export function Navigation() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  return (
+    <header className="fixed top-0 w-full bg-background/80 backdrop-blur-lg border-b border-border z-50">
+      <div className="container mx-auto px-4">
+        <div className="flex items-center justify-between h-16">
+          {/* Logo */}
+          <Link to="/" className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-heading-4 font-bold">PT Binder</span>
+          </Link>
+
+          {/* Desktop Navigation */}
+          <nav className="hidden md:flex items-center space-x-8">
+            <Link to="#features" className="text-body hover:text-primary transition-colors">
+              Features
+            </Link>
+            <Link to="#pricing" className="text-body hover:text-primary transition-colors">
+              Pricing
+            </Link>
+            <Link to="#about" className="text-body hover:text-primary transition-colors">
+              About
+            </Link>
+          </nav>
+
+          {/* Desktop Auth Buttons */}
+          <div className="hidden md:flex items-center space-x-4">
+            <Button variant="ghost" asChild>
+              <Link to="/auth/pt">Sign In</Link>
+            </Button>
+            <Button variant="gradient" asChild>
+              <Link to="/auth/pt">Get Started</Link>
+            </Button>
+          </div>
+
+          {/* Mobile Menu Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </Button>
+        </div>
+
+        {/* Mobile Navigation */}
+        <div className={cn(
+          "md:hidden transition-all duration-200 overflow-hidden",
+          isMenuOpen ? "max-h-64 pb-4" : "max-h-0"
+        )}>
+          <nav className="flex flex-col space-y-4 pt-4 border-t border-border">
+            <Link to="#features" className="text-body hover:text-primary transition-colors">
+              Features
+            </Link>
+            <Link to="#pricing" className="text-body hover:text-primary transition-colors">
+              Pricing
+            </Link>
+            <Link to="#about" className="text-body hover:text-primary transition-colors">
+              About
+            </Link>
+            <div className="flex flex-col space-y-2 pt-2">
+              <Button variant="ghost" asChild>
+                <Link to="/auth/pt">Sign In</Link>
+              </Button>
+              <Button variant="gradient" asChild>
+                <Link to="/auth/pt">Get Started</Link>
+              </Button>
+            </div>
+          </nav>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+export function DashboardNavigation() {
+  return (
+    <header className="bg-background border-b border-border">
+      <div className="container mx-auto px-4">
+        <div className="flex items-center justify-between h-16">
+          {/* Logo */}
+          <Link to="/dashboard" className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-heading-4 font-bold">PT Binder</span>
+          </Link>
+
+          {/* Dashboard Navigation */}
+          <nav className="hidden md:flex items-center space-x-6">
+            <Link 
+              to="/dashboard" 
+              className="flex items-center space-x-2 text-body hover:text-primary transition-colors"
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>Dashboard</span>
+            </Link>
+            <Link 
+              to="/clients" 
+              className="flex items-center space-x-2 text-body hover:text-primary transition-colors"
+            >
+              <Users className="w-4 h-4" />
+              <span>Clients</span>
+            </Link>
+            <Link 
+              to="/schedule" 
+              className="flex items-center space-x-2 text-body hover:text-primary transition-colors"
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Schedule</span>
+            </Link>
+            <Link 
+              to="/finance" 
+              className="flex items-center space-x-2 text-body hover:text-primary transition-colors"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Finance</span>
+            </Link>
+          </nav>
+
+          {/* User Menu */}
+          <div className="flex items-center space-x-4">
+            <Button variant="ghost" size="sm">
+              Profile
+            </Button>
+            <Button variant="outline" size="sm">
+              Sign Out
+            </Button>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
