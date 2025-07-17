@@ -18,9 +18,9 @@ export default {
 			}
 		},
 		extend: {
-			fontFamily: {
-				'sukhumvit': ['"Sukhumvit Set"', 'system-ui', 'sans-serif'],
-			},
+		fontFamily: {
+			sans: ['Urbanist', 'system-ui', 'sans-serif'],
+		},
 			colors: {
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
