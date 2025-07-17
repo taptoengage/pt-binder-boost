@@ -14,6 +14,161 @@ export type Database = {
   }
   public: {
     Tables: {
+      clients: {
+        Row: {
+          created_at: string
+          current_session_count: number | null
+          email: string
+          id: string
+          initial_session_count: number | null
+          name: string
+          phone_number: string
+          physical_activity_readiness: string | null
+          rough_goals: string | null
+          trainer_id: string
+          training_age: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_session_count?: number | null
+          email: string
+          id?: string
+          initial_session_count?: number | null
+          name: string
+          phone_number: string
+          physical_activity_readiness?: string | null
+          rough_goals?: string | null
+          trainer_id: string
+          training_age?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_session_count?: number | null
+          email?: string
+          id?: string
+          initial_session_count?: number | null
+          name?: string
+          phone_number?: string
+          physical_activity_readiness?: string | null
+          rough_goals?: string | null
+          trainer_id?: string
+          training_age?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clients_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount: number
+          client_id: string
+          created_at: string
+          date_paid: string | null
+          due_date: string
+          id: string
+          service_period: string | null
+          status: string
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          client_id: string
+          created_at?: string
+          date_paid?: string | null
+          due_date: string
+          id?: string
+          service_period?: string | null
+          status: string
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          client_id?: string
+          created_at?: string
+          date_paid?: string | null
+          due_date?: string
+          id?: string
+          service_period?: string | null
+          status?: string
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sessions: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          session_date: string
+          status: string
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          session_date: string
+          status: string
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          session_date?: string
+          status?: string
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sessions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trainers: {
         Row: {
           business_name: string

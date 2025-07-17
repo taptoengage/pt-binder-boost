@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -7,12 +7,22 @@ import { Label } from '@/components/ui/label'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { Building2 } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
 
 export default function Onboarding() {
   const [businessName, setBusinessName] = useState('')
   const [loading, setLoading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   const { trainer } = useAuth()
   const navigate = useNavigate()
+  const { toast } = useToast()
+
+  useEffect(() => {
+    if (trainer) {
+      setBusinessName(trainer.business_name || '')
+      setInitialLoading(false)
+    }
+  }, [trainer])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,12 +39,27 @@ export default function Onboarding() {
 
       if (error) {
         console.error('Error updating business name:', error)
+        toast({
+          title: "Error",
+          description: "Failed to update business name. Please try again.",
+          variant: "destructive",
+        })
         return
       }
+
+      toast({
+        title: "Success",
+        description: "Business profile updated successfully!",
+      })
 
       navigate('/dashboard')
     } catch (error) {
       console.error('Error in handleSubmit:', error)
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
