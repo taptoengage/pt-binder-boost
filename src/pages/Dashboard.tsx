@@ -41,6 +41,10 @@ export default function Dashboard() {
     navigate('/clients/new');
   };
 
+  const handleViewAllClients = () => {
+    navigate('/clients');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-subtle">
       <DashboardNavigation />
@@ -202,7 +206,7 @@ export default function Dashboard() {
                 <Calendar className="w-6 h-6 mb-2" />
                 <span>Schedule Session</span>
               </Button>
-              <Button variant="professional" className="h-auto flex-col py-4">
+              <Button variant="professional" className="h-auto flex-col py-4" onClick={handleViewAllClients}>
                 <Eye className="w-6 h-6 mb-2" />
                 <span>View All Clients</span>
               </Button>
