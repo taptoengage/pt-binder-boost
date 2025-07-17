@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -71,6 +70,10 @@ export default function Clients() {
     navigate('/clients/new');
   };
 
+  const handleClientClick = (clientId: string) => {
+    navigate(`/clients/${clientId}`);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <DashboardNavigation />
@@ -131,7 +134,11 @@ export default function Clients() {
                 </TableHeader>
                 <TableBody>
                   {clients.map((client) => (
-                    <TableRow key={client.id}>
+                    <TableRow 
+                      key={client.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleClientClick(client.id)}
+                    >
                       <TableCell className="font-medium">{client.name}</TableCell>
                       <TableCell>{client.phone_number}</TableCell>
                       <TableCell>{client.email}</TableCell>
