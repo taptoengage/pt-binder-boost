@@ -6,10 +6,15 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 
 export default function AddClient() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { toast } = useToast();
   
   const [formData, setFormData] = useState({
     name: '',
@@ -20,6 +25,8 @@ export default function AddClient() {
     rough_goals: '',
     physical_activity_readiness: ''
   });
+  
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -29,10 +36,72 @@ export default function AddClient() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form data:', formData);
-    // TODO: Integrate Supabase insertion in subsequent prompt
+    
+    // Check if user is authenticated
+    if (!user) {
+      toast({
+        title: "Authentication Error",
+        description: "You must be logged in to add a client.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Basic client-side validation
+    if (!formData.name.trim() || !formData.phone_number.trim() || !formData.email.trim() || !formData.default_session_rate) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Prepare data for insertion
+      const clientData = {
+        name: formData.name.trim(),
+        phone_number: formData.phone_number.trim(),
+        email: formData.email.trim(),
+        default_session_rate: parseFloat(formData.default_session_rate),
+        training_age: formData.training_age ? parseInt(formData.training_age) : null,
+        rough_goals: formData.rough_goals.trim() || null,
+        physical_activity_readiness: formData.physical_activity_readiness.trim() || null,
+        trainer_id: user.id,
+      };
+
+      // Insert client into Supabase
+      const { data, error } = await supabase
+        .from('clients')
+        .insert([clientData])
+        .select();
+
+      if (error) {
+        throw error;
+      }
+
+      // Show success toast
+      toast({
+        title: "Success!",
+        description: "Client added successfully.",
+      });
+
+      // Redirect to clients list
+      navigate('/clients');
+    } catch (error) {
+      console.error('Error adding client:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add client. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCancel = () => {
@@ -154,11 +223,20 @@ export default function AddClient() {
                 </div>
 
                 <div className="flex gap-4 pt-6">
-                  <Button type="submit" variant="gradient" className="flex items-center gap-2">
-                    <Save className="w-4 h-4" />
-                    Save Client
+                  <Button 
+                    type="submit" 
+                    variant="gradient" 
+                    className="flex items-center gap-2"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    {isLoading ? 'Saving...' : 'Save Client'}
                   </Button>
-                  <Button type="button" variant="outline" onClick={handleCancel}>
+                  <Button type="button" variant="outline" onClick={handleCancel} disabled={isLoading}>
                     Cancel
                   </Button>
                 </div>
