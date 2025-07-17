@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { Building2 } from 'lucide-react'
 
