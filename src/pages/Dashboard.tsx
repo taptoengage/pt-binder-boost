@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { DashboardNavigation } from '@/components/Navigation';
 import { DashboardCard, MetricCard } from '@/components/DashboardCard';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,12 @@ const mockData = {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+
+  const handleAddNewClient = () => {
+    navigate('/clients/new');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-subtle">
       <DashboardNavigation />
@@ -187,7 +194,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Button variant="professional" className="h-auto flex-col py-4">
+              <Button variant="professional" className="h-auto flex-col py-4" onClick={handleAddNewClient}>
                 <Plus className="w-6 h-6 mb-2" />
                 <span>Add New Client</span>
               </Button>
