@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { Menu, X, Users, Calendar, CreditCard, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 export function Navigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -86,6 +87,13 @@ export function Navigation() {
 }
 
 export function DashboardNavigation() {
+  const navigate = useNavigate();
+  
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate('/');
+  };
+
   return (
     <header className="bg-background border-b border-border">
       <div className="container mx-auto px-4">
@@ -135,7 +143,7 @@ export function DashboardNavigation() {
             <Button variant="ghost" size="sm">
               Profile
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleSignOut}>
               Sign Out
             </Button>
           </div>
