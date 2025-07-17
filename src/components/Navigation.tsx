@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
 import { Menu, X, Users, Calendar, CreditCard, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function Navigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { signInWithGoogle } = useAuth();
 
   return (
     <header className="fixed top-0 w-full bg-background/80 backdrop-blur-lg border-b border-border z-50">
@@ -34,11 +36,11 @@ export function Navigation() {
 
           {/* Desktop Auth Buttons */}
           <div className="hidden md:flex items-center space-x-4">
-            <Button variant="ghost" asChild>
-              <Link to="/auth/pt">Sign In</Link>
+            <Button variant="ghost" onClick={signInWithGoogle}>
+              Sign In
             </Button>
-            <Button variant="gradient" asChild>
-              <Link to="/auth/pt">Get Started</Link>
+            <Button variant="gradient" onClick={signInWithGoogle}>
+              Get Started
             </Button>
           </div>
 
@@ -69,11 +71,11 @@ export function Navigation() {
               About
             </Link>
             <div className="flex flex-col space-y-2 pt-2">
-              <Button variant="ghost" asChild>
-                <Link to="/auth/pt">Sign In</Link>
+              <Button variant="ghost" onClick={signInWithGoogle}>
+                Sign In
               </Button>
-              <Button variant="gradient" asChild>
-                <Link to="/auth/pt">Get Started</Link>
+              <Button variant="gradient" onClick={signInWithGoogle}>
+                Get Started
               </Button>
             </div>
           </nav>
