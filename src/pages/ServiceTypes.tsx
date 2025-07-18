@@ -85,12 +85,9 @@ export default function ServiceTypes() {
   };
 
   const onSubmit = async (data: ServiceTypeFormData) => {
-    console.log("DEBUG: onSubmit function triggered with data:", data);
     if (!user?.id) {
-      console.log("DEBUG: User not authenticated, returning.");
       return;
     }
-    console.log("DEBUG: User is authenticated. Submitting service type.");
 
     try {
       setIsSubmitting(true);
@@ -114,7 +111,7 @@ export default function ServiceTypes() {
       setIsModalOpen(false);
       fetchServiceTypes(); // Refresh the list
     } catch (error) {
-      console.error('DEBUG: Error during submission:', error);
+      console.error('Error creating service type:', error);
       toast({
         title: 'Error',
         description: 'Failed to create service type. Please try again.',
