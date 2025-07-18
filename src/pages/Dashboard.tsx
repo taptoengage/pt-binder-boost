@@ -1,8 +1,12 @@
 import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { DashboardNavigation } from '@/components/Navigation';
 import { DashboardCard, MetricCard } from '@/components/DashboardCard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 import { 
   Users, 
   Calendar, 
@@ -12,30 +16,165 @@ import {
   AlertTriangle,
   Plus,
   Eye,
-  CheckCircle
+  CheckCircle,
+  Loader2
 } from 'lucide-react';
 
-// Mock data - would come from Supabase in real implementation
-const mockData = {
-  todaysSessions: [
-    { id: 1, client: 'Sarah Johnson', time: '9:00 AM', type: 'Strength Training', status: 'confirmed' },
-    { id: 2, client: 'Mike Chen', time: '11:00 AM', type: 'HIIT Session', status: 'pending' },
-    { id: 3, client: 'Emma Davis', time: '2:00 PM', type: 'Functional Movement', status: 'confirmed' },
-    { id: 4, client: 'James Wilson', time: '4:00 PM', type: 'Weight Loss Session', status: 'confirmed' }
-  ],
-  lowSessionClients: [
-    { id: 1, name: 'Sarah Johnson', remaining: 2, phone: '+61 412 345 678' },
-    { id: 2, name: 'David Kim', remaining: 1, phone: '+61 423 456 789' },
-    { id: 3, name: 'Lisa Chen', remaining: 3, phone: '+61 434 567 890' }
-  ],
-  overduePayments: [
-    { id: 1, client: 'Tom Rodriguez', amount: 280, daysOverdue: 5 },
-    { id: 2, client: 'Anna Smith', amount: 350, daysOverdue: 12 }
-  ]
-};
+// Mock data for low session clients (complex calculation deferred)
+const mockLowSessionClients = [
+  { id: 1, name: 'Sarah Johnson', remaining: 2, phone: '+61 412 345 678' },
+  { id: 2, name: 'David Kim', remaining: 1, phone: '+61 423 456 789' },
+  { id: 3, name: 'Lisa Chen', remaining: 3, phone: '+61 434 567 890' }
+];
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  // State for dashboard data
+  const [todaysSessions, setTodaysSessions] = useState<any[]>([]);
+  const [overduePayments, setOverduePayments] = useState<any[]>([]);
+  const [weeklyEarnings, setWeeklyEarnings] = useState<number | null>(null);
+  const [sessionsThisWeek, setSessionsThisWeek] = useState<number | null>(null);
+  const [activeClientsCount, setActiveClientsCount] = useState<number | null>(null);
+  const [outstandingPaymentsTotal, setOutstandingPaymentsTotal] = useState<number | null>(null);
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
+
+  // Data fetching effect
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    const fetchDashboardData = async () => {
+      try {
+        setIsLoadingDashboard(true);
+        
+        // Get date ranges
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+        
+        // Get start and end of current week (Monday to Sunday)
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay() + 1);
+        startOfWeek.setHours(0, 0, 0, 0);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        // Fetch today's sessions
+        const { data: sessions, error: sessionsError } = await supabase
+          .from('sessions')
+          .select('*, clients(name)')
+          .eq('trainer_id', user.id)
+          .eq('status', 'scheduled')
+          .gte('session_date', startOfToday.toISOString())
+          .lte('session_date', endOfToday.toISOString())
+          .order('session_date', { ascending: true });
+
+        if (sessionsError) throw sessionsError;
+        
+        const formattedSessions = sessions?.map(session => ({
+          id: session.id,
+          client: session.clients?.name || 'Unknown Client',
+          time: new Date(session.session_date).toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+          }),
+          type: 'Training Session',
+          status: session.status
+        })) || [];
+        
+        setTodaysSessions(formattedSessions);
+
+        // Fetch overdue payments
+        const { data: payments, error: paymentsError } = await supabase
+          .from('payments')
+          .select('*, clients(name)')
+          .eq('trainer_id', user.id)
+          .eq('status', 'overdue')
+          .order('due_date', { ascending: true });
+
+        if (paymentsError) throw paymentsError;
+        
+        const formattedPayments = payments?.map(payment => {
+          const daysOverdue = Math.floor(
+            (now.getTime() - new Date(payment.due_date).getTime()) / (1000 * 60 * 60 * 24)
+          );
+          return {
+            id: payment.id,
+            client: payment.clients?.name || 'Unknown Client',
+            amount: Number(payment.amount),
+            daysOverdue: Math.max(0, daysOverdue)
+          };
+        }) || [];
+        
+        setOverduePayments(formattedPayments);
+
+        // Calculate weekly earnings
+        const { data: weeklyPayments, error: weeklyEarningsError } = await supabase
+          .from('payments')
+          .select('amount')
+          .eq('trainer_id', user.id)
+          .eq('status', 'paid')
+          .gte('date_paid', startOfWeek.toISOString().split('T')[0])
+          .lte('date_paid', endOfWeek.toISOString().split('T')[0]);
+
+        if (weeklyEarningsError) throw weeklyEarningsError;
+        
+        const totalEarnings = weeklyPayments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
+        setWeeklyEarnings(totalEarnings);
+
+        // Calculate sessions this week
+        const { data: weeklySessions, error: weeklySessionsError } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('trainer_id', user.id)
+          .eq('status', 'completed')
+          .gte('session_date', startOfWeek.toISOString())
+          .lte('session_date', endOfWeek.toISOString());
+
+        if (weeklySessionsError) throw weeklySessionsError;
+        
+        setSessionsThisWeek(weeklySessions?.length || 0);
+
+        // Get active clients count
+        const { count: clientsCount, error: clientsError } = await supabase
+          .from('clients')
+          .select('id', { count: 'exact' })
+          .eq('trainer_id', user.id);
+
+        if (clientsError) throw clientsError;
+        
+        setActiveClientsCount(clientsCount || 0);
+
+        // Calculate outstanding payments total
+        const { data: outstandingPayments, error: outstandingError } = await supabase
+          .from('payments')
+          .select('amount')
+          .eq('trainer_id', user.id)
+          .eq('status', 'overdue');
+
+        if (outstandingError) throw outstandingError;
+        
+        const totalOutstanding = outstandingPayments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
+        setOutstandingPaymentsTotal(totalOutstanding);
+
+      } catch (error: any) {
+        console.error('Error fetching dashboard data:', error);
+        toast({
+          title: "Error loading dashboard",
+          description: error.message || "Failed to load dashboard data",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingDashboard(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [user?.id, toast]);
 
   const handleAddNewClient = () => {
     navigate('/clients/new');
@@ -44,6 +183,23 @@ export default function Dashboard() {
   const handleViewAllClients = () => {
     navigate('/clients');
   };
+
+  // Show loading spinner while data is being fetched
+  if (isLoadingDashboard) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle">
+        <DashboardNavigation />
+        <main className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="flex flex-col items-center space-y-4">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-body text-muted-foreground">Loading dashboard data...</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
@@ -62,28 +218,28 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <MetricCard
             title="Weekly Earnings"
-            value="$2,450"
+            value={`$${weeklyEarnings?.toFixed(2) || '0.00'}`}
             change={12}
             changeLabel="from last week"
             icon={<TrendingUp className="w-6 h-6 text-primary" />}
           />
           <MetricCard
             title="Sessions This Week"
-            value="28"
+            value={sessionsThisWeek?.toString() || '0'}
             change={8}
             changeLabel="from last week"
             icon={<Calendar className="w-6 h-6 text-primary" />}
           />
           <MetricCard
             title="Active Clients"
-            value="42"
+            value={activeClientsCount?.toString() || '0'}
             change={5}
             changeLabel="new this month"
             icon={<Users className="w-6 h-6 text-primary" />}
           />
           <MetricCard
             title="Outstanding Payments"
-            value="$630"
+            value={`$${outstandingPaymentsTotal?.toFixed(2) || '0.00'}`}
             change={-15}
             changeLabel="from last week"
             icon={<CreditCard className="w-6 h-6 text-primary" />}
@@ -105,23 +261,29 @@ export default function Dashboard() {
             }}
           >
             <div className="space-y-3">
-              {mockData.todaysSessions.map((session) => (
-                <div key={session.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-                  <div>
-                    <p className="font-medium text-body-small">{session.client}</p>
-                    <p className="text-body-small text-muted-foreground">
-                      {session.time} • {session.type}
-                    </p>
+              {todaysSessions.length > 0 ? (
+                todaysSessions.map((session) => (
+                  <div key={session.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                    <div>
+                      <p className="font-medium text-body-small">{session.client}</p>
+                      <p className="text-body-small text-muted-foreground">
+                        {session.time} • {session.type}
+                      </p>
+                    </div>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      session.status === 'scheduled' 
+                        ? 'status-success' 
+                        : 'status-warning'
+                    }`}>
+                      {session.status === 'scheduled' ? 'Scheduled' : session.status}
+                    </span>
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    session.status === 'confirmed' 
-                      ? 'status-success' 
-                      : 'status-warning'
-                  }`}>
-                    {session.status === 'confirmed' ? 'Confirmed' : 'Pending'}
-                  </span>
+                ))
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-body-small text-muted-foreground">No sessions scheduled for today</p>
                 </div>
-              ))}
+              )}
             </div>
           </DashboardCard>
 
@@ -137,7 +299,7 @@ export default function Dashboard() {
             }}
           >
             <div className="space-y-3">
-              {mockData.lowSessionClients.map((client) => (
+              {mockLowSessionClients.map((client) => (
                 <div key={client.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
                   <div>
                     <p className="font-medium text-body-small">{client.name}</p>
@@ -166,21 +328,27 @@ export default function Dashboard() {
             }}
           >
             <div className="space-y-3">
-              {mockData.overduePayments.map((payment) => (
-                <div key={payment.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-                  <div>
-                    <p className="font-medium text-body-small">{payment.client}</p>
-                    <p className="text-body-small text-muted-foreground">
-                      {payment.daysOverdue} days overdue
-                    </p>
+              {overduePayments.length > 0 ? (
+                overduePayments.map((payment) => (
+                  <div key={payment.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                    <div>
+                      <p className="font-medium text-body-small">{payment.client}</p>
+                      <p className="text-body-small text-muted-foreground">
+                        {payment.daysOverdue} days overdue
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-body-small font-medium text-destructive">
+                        ${payment.amount.toFixed(2)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-body-small font-medium text-destructive">
-                      ${payment.amount}
-                    </p>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-body-small text-muted-foreground">No overdue payments</p>
                 </div>
-              ))}
+              )}
             </div>
           </DashboardCard>
         </div>
