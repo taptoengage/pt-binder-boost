@@ -2,9 +2,16 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
-import { Menu, X, Users, Calendar, CreditCard, BarChart3, Settings } from 'lucide-react';
+import { Menu, X, Users, Calendar, CreditCard, BarChart3, Settings, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export function Navigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -136,23 +143,39 @@ export function DashboardNavigation() {
               <CreditCard className="w-4 h-4" />
               <span>Finance</span>
             </Link>
-            <Link 
-              to="/settings/service-types" 
-              className="flex items-center space-x-2 text-body hover:text-primary transition-colors"
-            >
-              <Settings className="w-4 h-4" />
-              <span>Service Types</span>
-            </Link>
           </nav>
 
           {/* User Menu */}
           <div className="flex items-center space-x-4">
-            <Button variant="ghost" size="sm">
-              Profile
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleSignOut}>
-              Sign Out
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="flex items-center space-x-2">
+                  <User className="w-4 h-4" />
+                  <span>Profile</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => navigate('/profile')}>
+                  My Profile
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/settings/business')}>
+                  Business Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/settings/service-types')}>
+                  My Services
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/settings/integrations')}>
+                  Integrations
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/help')}>
+                  Help & Support
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSignOut}>
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
