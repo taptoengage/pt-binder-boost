@@ -188,6 +188,10 @@ export default function Dashboard() {
     navigate('/schedule/new');
   };
 
+  const handleRecordPayment = () => {
+    navigate('/payments/new');
+  };
+
   // Show loading spinner while data is being fetched
   if (isLoadingDashboard) {
     return (
@@ -382,7 +386,7 @@ export default function Dashboard() {
                 <Eye className="w-6 h-6 mb-2" />
                 <span>View All Clients</span>
               </Button>
-              <Button variant="professional" className="h-auto flex-col py-4">
+              <Button variant="professional" className="h-auto flex-col py-4" onClick={handleRecordPayment}>
                 <CreditCard className="w-6 h-6 mb-2" />
                 <span>Record Payment</span>
               </Button>
