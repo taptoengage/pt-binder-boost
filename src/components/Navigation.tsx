@@ -162,13 +162,32 @@ export function DashboardNavigation() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Link 
-              to="/finance" 
-              className="flex items-center space-x-2 text-body hover:text-primary transition-colors"
-            >
-              <CreditCard className="w-4 h-4" />
-              <span>Finance</span>
-            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="flex items-center space-x-2">
+                  <CreditCard className="w-4 h-4" />
+                  <span>Finance</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onClick={() => navigate('/finance')}>
+                  Overview
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/payments/new')}>
+                  Record New Payment
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/finance/invoicing')}>
+                  Invoicing
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/finance/history')}>
+                  Payment History
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/finance/reports')}>
+                  Reports
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </nav>
 
           {/* User Menu */}
