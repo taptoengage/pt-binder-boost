@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
-import { Menu, X, Users, Calendar, CreditCard, BarChart3 } from 'lucide-react';
+import { Menu, X, Users, Calendar, CreditCard, BarChart3, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -135,6 +135,13 @@ export function DashboardNavigation() {
             >
               <CreditCard className="w-4 h-4" />
               <span>Finance</span>
+            </Link>
+            <Link 
+              to="/settings/service-types" 
+              className="flex items-center space-x-2 text-body hover:text-primary transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              <span>Service Types</span>
             </Link>
           </nav>
 
