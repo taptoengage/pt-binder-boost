@@ -361,38 +361,6 @@ export default function Dashboard() {
           </DashboardCard>
         </div>
 
-        {/* Quick Actions */}
-        <Card className="card-elevated mt-8">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <CheckCircle className="w-5 h-5 text-primary" />
-              <span>Quick Actions</span>
-            </CardTitle>
-            <CardDescription>
-              Common tasks to keep your business running smoothly
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Button variant="professional" className="h-auto flex-col py-4" onClick={handleAddNewClient}>
-                <Plus className="w-6 h-6 mb-2" />
-                <span>Add New Client</span>
-              </Button>
-              <Button variant="professional" className="h-auto flex-col py-4" onClick={handleScheduleSession}>
-                <Calendar className="w-6 h-6 mb-2" />
-                <span>Schedule Session</span>
-              </Button>
-              <Button variant="professional" className="h-auto flex-col py-4" onClick={handleViewAllClients}>
-                <Eye className="w-6 h-6 mb-2" />
-                <span>View All Clients</span>
-              </Button>
-              <Button variant="professional" className="h-auto flex-col py-4" onClick={handleRecordPayment}>
-                <CreditCard className="w-6 h-6 mb-2" />
-                <span>Record Payment</span>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Integration Placeholders */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">

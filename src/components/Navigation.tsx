@@ -122,20 +122,46 @@ export function DashboardNavigation() {
               <BarChart3 className="w-4 h-4" />
               <span>Dashboard</span>
             </Link>
-            <Link 
-              to="/clients" 
-              className="flex items-center space-x-2 text-body hover:text-primary transition-colors"
-            >
-              <Users className="w-4 h-4" />
-              <span>Clients</span>
-            </Link>
-            <Link 
-              to="/schedule" 
-              className="flex items-center space-x-2 text-body hover:text-primary transition-colors"
-            >
-              <Calendar className="w-4 h-4" />
-              <span>Schedule</span>
-            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="flex items-center space-x-2">
+                  <Users className="w-4 h-4" />
+                  <span>Clients</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onClick={() => navigate('/clients')}>
+                  View All Clients
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/clients/new')}>
+                  Add New Client
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/clients/manage')}>
+                  Manage Client Profiles
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="flex items-center space-x-2">
+                  <Calendar className="w-4 h-4" />
+                  <span>Schedule</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onClick={() => navigate('/schedule')}>
+                  View Schedule
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/schedule/new')}>
+                  Schedule New Session
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/schedule/availability')}>
+                  Manage Availability
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Link 
               to="/finance" 
               className="flex items-center space-x-2 text-body hover:text-primary transition-colors"
