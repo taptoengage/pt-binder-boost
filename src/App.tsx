@@ -11,6 +11,7 @@ import Onboarding from "./pages/Onboarding";
 import Clients from "./pages/Clients";
 import AddClient from "./pages/AddClient";
 import ClientDetail from "./pages/ClientDetail";
+import ScheduleSession from "./pages/ScheduleSession";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/clients" element={<Clients />} />
             <Route path="/clients/new" element={<AddClient />} />
             <Route path="/clients/:clientId" element={<ClientDetail />} />
+            <Route path="/schedule/new" element={<ScheduleSession />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

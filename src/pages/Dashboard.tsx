@@ -184,6 +184,10 @@ export default function Dashboard() {
     navigate('/clients');
   };
 
+  const handleScheduleSession = () => {
+    navigate('/schedule/new');
+  };
+
   // Show loading spinner while data is being fetched
   if (isLoadingDashboard) {
     return (
@@ -370,7 +374,7 @@ export default function Dashboard() {
                 <Plus className="w-6 h-6 mb-2" />
                 <span>Add New Client</span>
               </Button>
-              <Button variant="professional" className="h-auto flex-col py-4">
+              <Button variant="professional" className="h-auto flex-col py-4" onClick={handleScheduleSession}>
                 <Calendar className="w-6 h-6 mb-2" />
                 <span>Schedule Session</span>
               </Button>
