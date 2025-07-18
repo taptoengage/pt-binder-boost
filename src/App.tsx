@@ -13,6 +13,7 @@ import AddClient from "./pages/AddClient";
 import ClientDetail from "./pages/ClientDetail";
 import ScheduleSession from "./pages/ScheduleSession";
 import RecordPayment from "./pages/RecordPayment";
+import ServiceTypes from "./pages/ServiceTypes";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ const App = () => (
             <Route path="/clients/:clientId" element={<ClientDetail />} />
             <Route path="/schedule/new" element={<ScheduleSession />} />
             <Route path="/payments/new" element={<RecordPayment />} />
+            <Route path="/settings/service-types" element={<ServiceTypes />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
