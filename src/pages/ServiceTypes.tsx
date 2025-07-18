@@ -49,7 +49,10 @@ export default function ServiceTypes() {
   });
 
   const fetchServiceTypes = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
 
     try {
       setIsLoading(true);
