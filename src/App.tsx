@@ -12,6 +12,7 @@ import Clients from "./pages/Clients";
 import AddClient from "./pages/AddClient";
 import ClientDetail from "./pages/ClientDetail";
 import EditClient from "./pages/EditClient";
+import EditPayment from "./pages/EditPayment";
 import ScheduleSession from "./pages/ScheduleSession";
 import RecordPayment from "./pages/RecordPayment";
 import ServiceTypes from "./pages/ServiceTypes";
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/clients/new" element={<AddClient />} />
             <Route path="/clients/:clientId" element={<ClientDetail />} />
             <Route path="/clients/:clientId/edit" element={<EditClient />} />
+            <Route path="/clients/:clientId/payments/:paymentId/edit" element={<EditPayment />} />
             <Route path="/schedule" element={<ScheduleOverview />} />
             <Route path="/schedule/new" element={<ScheduleSession />} />
             <Route path="/payments/new" element={<RecordPayment />} />

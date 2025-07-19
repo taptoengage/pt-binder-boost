@@ -324,49 +324,60 @@ export default function ClientDetail() {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead>Date Paid</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Service Type</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {clientPayments.map((payment) => (
-                      <TableRow key={payment.id}>
-                        <TableCell className="font-medium">
-                          ${payment.amount.toFixed(2)}
-                        </TableCell>
-                        <TableCell>
-                          {new Date(payment.due_date).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          {payment.date_paid 
-                            ? new Date(payment.date_paid).toLocaleDateString() 
-                            : 'N/A'
-                          }
-                        </TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            payment.status === 'paid' 
-                              ? 'bg-green-100 text-green-800' 
-                              : payment.status === 'overdue'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {payment.status}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {payment.service_types.name}
-                        </TableCell>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Due Date</TableHead>
+                        <TableHead>Date Paid</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Service Type</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {clientPayments.map((payment) => (
+                        <TableRow key={payment.id}>
+                          <TableCell className="font-medium">
+                            ${payment.amount.toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            {new Date(payment.due_date).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            {payment.date_paid 
+                              ? new Date(payment.date_paid).toLocaleDateString() 
+                              : 'N/A'
+                            }
+                          </TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              payment.status === 'paid' 
+                                ? 'bg-green-100 text-green-800' 
+                                : payment.status === 'overdue'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {payment.status}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {payment.service_types.name}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => navigate(`/clients/${clientId}/payments/${payment.id}/edit`)}
+                              className="p-2"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
               </div>
             )}
           </CardContent>
