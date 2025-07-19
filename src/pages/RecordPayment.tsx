@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -47,6 +47,8 @@ export default function RecordPayment() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const initialClientId = searchParams.get('clientId');
   const [clients, setClients] = useState<Client[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
@@ -55,6 +57,7 @@ export default function RecordPayment() {
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
+      client_id: initialClientId || '',
       amount: 0,
       status: 'due',
     },
@@ -134,6 +137,13 @@ export default function RecordPayment() {
 
     fetchServiceTypes();
   }, [user?.id, toast]);
+
+  // Set form value when clients load and initialClientId exists
+  useEffect(() => {
+    if (initialClientId && clients.length > 0) {
+      form.setValue('client_id', initialClientId);
+    }
+  }, [initialClientId, clients, form]);
 
   const onSubmit = async (data: PaymentFormData) => {
     if (!user?.id) {
@@ -228,7 +238,7 @@ export default function RecordPayment() {
                         <FormLabel>Client</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
-                            <SelectTrigger>
+                            <SelectTrigger disabled={!!initialClientId}>
                               <SelectValue placeholder={loadingClients ? "Loading clients..." : "Select a client"} />
                             </SelectTrigger>
                           </FormControl>

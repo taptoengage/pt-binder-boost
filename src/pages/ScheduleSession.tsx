@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -46,6 +46,8 @@ export default function ScheduleSession() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const initialClientId = searchParams.get('clientId');
   const [clients, setClients] = useState<Client[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(true);
@@ -54,6 +56,7 @@ export default function ScheduleSession() {
   const form = useForm<SessionFormData>({
     resolver: zodResolver(sessionFormSchema),
     defaultValues: {
+      client_id: initialClientId || '',
       status: 'scheduled',
       notes: '',
     },
@@ -150,6 +153,13 @@ export default function ScheduleSession() {
     }
   };
 
+  // Set form value when clients load and initialClientId exists
+  useEffect(() => {
+    if (initialClientId && clients.length > 0) {
+      form.setValue('client_id', initialClientId);
+    }
+  }, [initialClientId, clients, form]);
+
   const handleBack = () => {
     navigate(-1);
   };
@@ -187,7 +197,7 @@ export default function ScheduleSession() {
                       <FormLabel>Client</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger disabled={!!initialClientId}>
                             <SelectValue placeholder={isLoadingClients ? "Loading clients..." : "Select a client"} />
                           </SelectTrigger>
                         </FormControl>
