@@ -20,12 +20,6 @@ import {
   Loader2
 } from 'lucide-react';
 
-// Mock data for low session clients (complex calculation deferred)
-const mockLowSessionClients = [
-  { id: 1, name: 'Sarah Johnson', remaining: 2, phone: '+61 412 345 678' },
-  { id: 2, name: 'David Kim', remaining: 1, phone: '+61 423 456 789' },
-  { id: 3, name: 'Lisa Chen', remaining: 3, phone: '+61 434 567 890' }
-];
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -42,6 +36,11 @@ export default function Dashboard() {
   const [weeklyEarningsChange, setWeeklyEarningsChange] = useState<number | null>(null);
   const [sessionsThisWeekChange, setSessionsThisWeekChange] = useState<number | null>(null);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
+
+  // State for sessions running low feature
+  const [allActiveClients, setAllActiveClients] = useState<any[]>([]);
+  const [upcomingScheduledSessions, setUpcomingScheduledSessions] = useState<any[]>([]);
+  const [isLoadingLowSessions, setIsLoadingLowSessions] = useState(true);
 
   // Data fetching effect
   useEffect(() => {
@@ -204,6 +203,31 @@ export default function Dashboard() {
           : ((sessionsCount - previousWeekSessions) / previousWeekSessions) * 100;
         setSessionsThisWeekChange(sessionsChange);
 
+        // Calculate date range for next 30 days
+        const thirtyDaysFromNow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30, 23, 59, 59, 999);
+
+        // Fetch active clients with session rates
+        const { data: activeClientsData, error: activeClientsError } = await supabase
+          .from('clients')
+          .select('id, name, phone_number, default_session_rate')
+          .eq('trainer_id', user.id)
+          .not('default_session_rate', 'is', null);
+
+        if (activeClientsError) throw activeClientsError;
+        setAllActiveClients(activeClientsData || []);
+
+        // Fetch upcoming scheduled sessions
+        const { data: scheduledSessionsData, error: scheduledSessionsError } = await supabase
+          .from('sessions')
+          .select('client_id')
+          .eq('trainer_id', user.id)
+          .eq('status', 'scheduled')
+          .gte('session_date', now.toISOString())
+          .lte('session_date', thirtyDaysFromNow.toISOString());
+
+        if (scheduledSessionsError) throw scheduledSessionsError;
+        setUpcomingScheduledSessions(scheduledSessionsData || []);
+
       } catch (error: any) {
         console.error('Error fetching dashboard data:', error);
         toast({
@@ -213,6 +237,7 @@ export default function Dashboard() {
         });
       } finally {
         setIsLoadingDashboard(false);
+        setIsLoadingLowSessions(false);
       }
     };
 
@@ -358,20 +383,9 @@ export default function Dashboard() {
             }}
           >
             <div className="space-y-3">
-              {mockLowSessionClients.map((client) => (
-                <div key={client.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-                  <div>
-                    <p className="font-medium text-body-small">{client.name}</p>
-                    <p className="text-body-small text-muted-foreground">{client.phone}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-body-small font-medium text-warning">
-                      {client.remaining} sessions
-                    </p>
-                    <p className="text-xs text-muted-foreground">remaining</p>
-                  </div>
-                </div>
-              ))}
+              <div className="text-center py-4">
+                <p className="text-body-small text-muted-foreground">Sessions running low calculation in progress...</p>
+              </div>
             </div>
           </DashboardCard>
 
