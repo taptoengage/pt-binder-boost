@@ -174,7 +174,7 @@ export default function Landing() {
                     <Check className="w-4 h-4 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-heading-4 mb-1">Save 10+ Hours Per Week</h3>
+                    <h3 className="text-heading-4 mb-1">Reduce Time On Admin</h3>
                     <p className="text-muted-foreground">
                       Automate scheduling, payment tracking, and client communications.
                     </p>
@@ -187,7 +187,7 @@ export default function Landing() {
                   <div>
                     <h3 className="text-heading-4 mb-1">Increase Revenue</h3>
                     <p className="text-muted-foreground">
-                      Never miss a payment and optimize your schedule for maximum earnings.
+                      Never miss a payment and optimise your schedule for maximum earnings.
                     </p>
                   </div>
                 </div>
