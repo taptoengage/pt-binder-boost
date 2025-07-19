@@ -421,6 +421,7 @@ export default function ClientDetail() {
                       <TableHead>Service Type</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Notes</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -451,6 +452,16 @@ export default function ClientDetail() {
                         </TableCell>
                         <TableCell>
                           {session.notes || 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(`/clients/${clientId}/sessions/${session.id}/edit`)}
+                            className="p-2"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
