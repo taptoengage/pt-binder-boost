@@ -62,6 +62,9 @@ export default function ClientDetail() {
   const [isPaymentConfirmModalOpen, setIsPaymentConfirmModalOpen] = useState(false);
   const [paymentToDeleteId, setPaymentToDeleteId] = useState<string | null>(null);
   const [isDeletingPayment, setIsDeletingPayment] = useState(false);
+  const [isSessionConfirmModalOpen, setIsSessionConfirmModalOpen] = useState(false);
+  const [sessionToDeleteId, setSessionToDeleteId] = useState<string | null>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
 
   useEffect(() => {
     const fetchClientData = async () => {
@@ -245,6 +248,54 @@ export default function ClientDetail() {
       setIsDeletingPayment(false);
       setIsPaymentConfirmModalOpen(false);
       setPaymentToDeleteId(null);
+    }
+  };
+
+  const handleDeleteSession = async () => {
+    if (!user || !clientId || !sessionToDeleteId) return;
+
+    try {
+      setIsDeletingSession(true);
+      
+      const { error } = await supabase
+        .from('sessions')
+        .delete()
+        .eq('id', sessionToDeleteId)
+        .eq('client_id', clientId)
+        .eq('trainer_id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Session deleted",
+        description: "The session record has been deleted successfully.",
+      });
+
+      // Refresh the sessions list
+      const { data: sessionsData, error: sessionsError } = await supabase
+        .from('sessions')
+        .select('*, service_types(name)')
+        .eq('client_id', clientId)
+        .eq('trainer_id', user.id)
+        .order('session_date', { ascending: false });
+
+      if (!sessionsError) {
+        setClientSessions(sessionsData || []);
+      }
+
+    } catch (error) {
+      console.error('Error deleting session:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete session. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeletingSession(false);
+      setIsSessionConfirmModalOpen(false);
+      setSessionToDeleteId(null);
     }
   };
 
@@ -566,14 +617,27 @@ export default function ClientDetail() {
                           {session.notes || 'N/A'}
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => navigate(`/clients/${clientId}/sessions/${session.id}/edit`)}
-                            className="p-2"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => navigate(`/clients/${clientId}/sessions/${session.id}/edit`)}
+                              className="p-2"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSessionToDeleteId(session.id);
+                                setIsSessionConfirmModalOpen(true);
+                              }}
+                              className="p-2 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -665,6 +729,48 @@ export default function ClientDetail() {
                 className="flex items-center gap-2"
               >
                 {isDeletingPayment ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Session Delete Confirmation Modal */}
+        <Dialog open={isSessionConfirmModalOpen} onOpenChange={setIsSessionConfirmModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Session Deletion</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this session record? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setIsSessionConfirmModalOpen(false);
+                  setSessionToDeleteId(null);
+                }}
+                disabled={isDeletingSession}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteSession}
+                disabled={isDeletingSession}
+                className="flex items-center gap-2"
+              >
+                {isDeletingSession ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Deleting...
