@@ -126,10 +126,10 @@ export default function FinanceTransactions() {
         if (clientSearch) {
           query = query.ilike('clients.name', `%${clientSearch}%`);
         }
-        if (selectedServiceType) {
+        if (selectedServiceType && selectedServiceType !== 'all') {
           query = query.eq('service_type_id', selectedServiceType);
         }
-        if (selectedStatus) {
+        if (selectedStatus && selectedStatus !== 'all') {
           query = query.eq('status', selectedStatus);
         }
 
@@ -149,10 +149,10 @@ export default function FinanceTransactions() {
         if (clientSearch) {
           countQuery.eq('clients.name', clientSearch);
         }
-        if (selectedServiceType) {
+        if (selectedServiceType && selectedServiceType !== 'all') {
           countQuery.eq('service_type_id', selectedServiceType);
         }
-        if (selectedStatus) {
+        if (selectedStatus && selectedStatus !== 'all') {
           countQuery.eq('status', selectedStatus);
         }
 
@@ -222,8 +222,8 @@ export default function FinanceTransactions() {
     setStartDate('');
     setEndDate('');
     setClientSearch('');
-    setSelectedServiceType('');
-    setSelectedStatus('');
+    setSelectedServiceType('all');
+    setSelectedStatus('all');
     setCurrentPage(1);
   };
 
@@ -296,7 +296,7 @@ export default function FinanceTransactions() {
                     <SelectValue placeholder="All service types" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All service types</SelectItem>
+                    <SelectItem value="all">All service types</SelectItem>
                     {serviceTypes.map((serviceType) => (
                       <SelectItem key={serviceType.id} value={serviceType.id}>
                         {serviceType.name}
@@ -312,7 +312,7 @@ export default function FinanceTransactions() {
                     <SelectValue placeholder="All statuses" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All statuses</SelectItem>
+                    <SelectItem value="all">All statuses</SelectItem>
                     <SelectItem value="paid">Paid</SelectItem>
                     <SelectItem value="due">Due</SelectItem>
                     <SelectItem value="overdue">Overdue</SelectItem>
