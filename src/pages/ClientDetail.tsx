@@ -4,11 +4,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Loader2, User, Phone, Mail, DollarSign, Calendar, Target, Activity, Plus, Clock, Edit } from 'lucide-react';
+import { ArrowLeft, Loader2, User, Phone, Mail, DollarSign, Calendar, Target, Activity, Plus, Clock, Edit, Trash2 } from 'lucide-react';
 import { DashboardNavigation } from '@/components/Navigation';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface Client {
   id: string;
@@ -56,6 +57,8 @@ export default function ClientDetail() {
   const [isLoadingPayments, setIsLoadingPayments] = useState(true);
   const [clientSessions, setClientSessions] = useState<ClientSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const fetchClientData = async () => {
@@ -159,6 +162,41 @@ export default function ClientDetail() {
     navigate(`/clients/${clientId}/edit`);
   };
 
+  const handleDeleteClient = async () => {
+    if (!user || !clientId) return;
+
+    try {
+      setIsDeleting(true);
+      
+      const { error } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', clientId)
+        .eq('trainer_id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Client deleted",
+        description: "The client and all associated data have been deleted successfully.",
+      });
+
+      navigate('/clients');
+    } catch (error) {
+      console.error('Error deleting client:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete client. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setIsConfirmModalOpen(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
@@ -194,14 +232,24 @@ export default function ClientDetail() {
             </Button>
             <div className="flex items-center justify-between mb-2">
               <h1 className="text-heading-1">{client.name}</h1>
-              <Button 
-                onClick={handleEditClient}
-                variant="outline"
-                className="flex items-center gap-2"
-              >
-                <Edit className="w-4 h-4" />
-                Edit Client
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  onClick={handleEditClient}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <Edit className="w-4 h-4" />
+                  Edit Client
+                </Button>
+                <Button 
+                  onClick={() => setIsConfirmModalOpen(true)}
+                  variant="destructive"
+                  className="flex items-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Client
+                </Button>
+              </div>
             </div>
             <p className="text-muted-foreground">Client Profile</p>
           </div>
@@ -485,6 +533,46 @@ export default function ClientDetail() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Delete Confirmation Modal */}
+        <Dialog open={isConfirmModalOpen} onOpenChange={setIsConfirmModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Deletion</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete <strong>{client?.name}</strong>? This action cannot be undone. 
+                All associated payments and sessions will also be deleted.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsConfirmModalOpen(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteClient}
+                disabled={isDeleting}
+                className="flex items-center gap-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
