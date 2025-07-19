@@ -40,6 +40,7 @@ export default function Dashboard() {
   // State for sessions running low feature
   const [allActiveClients, setAllActiveClients] = useState<any[]>([]);
   const [upcomingScheduledSessions, setUpcomingScheduledSessions] = useState<any[]>([]);
+  const [lowSessionClients, setLowSessionClients] = useState<any[]>([]);
   const [isLoadingLowSessions, setIsLoadingLowSessions] = useState(true);
 
   // Data fetching effect
@@ -228,6 +229,23 @@ export default function Dashboard() {
         if (scheduledSessionsError) throw scheduledSessionsError;
         setUpcomingScheduledSessions(scheduledSessionsData || []);
 
+        // Calculate low session clients
+        const clientsWithUpcomingSessionsSet = new Set(scheduledSessionsData?.map((s: any) => s.client_id));
+
+        const runningLowClients = activeClientsData?.filter((client: any) => {
+          // A client is "running low" if they are active AND they do NOT have an upcoming session in the next 30 days
+          return !clientsWithUpcomingSessionsSet.has(client.id);
+        }) || [];
+
+        // Format these clients for display
+        const formattedLowSessionClients = runningLowClients.map((client: any) => ({
+          id: client.id,
+          name: client.name,
+          phone: client.phone_number,
+        }));
+
+        setLowSessionClients(formattedLowSessionClients);
+
       } catch (error: any) {
         console.error('Error fetching dashboard data:', error);
         toast({
@@ -383,9 +401,26 @@ export default function Dashboard() {
             }}
           >
             <div className="space-y-3">
-              <div className="text-center py-4">
-                <p className="text-body-small text-muted-foreground">Sessions running low calculation in progress...</p>
-              </div>
+              {lowSessionClients.length > 0 ? (
+                lowSessionClients.map((client) => (
+                  <div key={client.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                    <div>
+                      <p className="font-medium text-body-small">{client.name}</p>
+                      <p className="text-body-small text-muted-foreground">{client.phone}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-body-small font-medium text-warning">
+                        No upcoming sessions
+                      </p>
+                      <p className="text-xs text-muted-foreground">in next 30 days</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-body-small text-muted-foreground">No clients currently running low on scheduled sessions in the next 30 days</p>
+                </div>
+              )}
             </div>
           </DashboardCard>
 
