@@ -17,7 +17,7 @@ import EditSession from "./pages/EditSession";
 import ScheduleSession from "./pages/ScheduleSession";
 import RecordPayment from "./pages/RecordPayment";
 import ServiceTypes from "./pages/ServiceTypes";
-import FinanceOverview from "./pages/FinanceOverview";
+import FinanceTransactions from "./pages/FinanceTransactions";
 import ScheduleOverview from "./pages/ScheduleOverview";
 import NotFound from "./pages/NotFound";
 
@@ -43,7 +43,8 @@ const App = () => (
             <Route path="/schedule" element={<ScheduleOverview />} />
             <Route path="/schedule/new" element={<ScheduleSession />} />
             <Route path="/payments/new" element={<RecordPayment />} />
-            <Route path="/finance" element={<FinanceOverview />} />
+            <Route path="/finance" element={<FinanceTransactions />} />
+            <Route path="/finance/transactions" element={<FinanceTransactions />} />
             <Route path="/settings/service-types" element={<ServiceTypes />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

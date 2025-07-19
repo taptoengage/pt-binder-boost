@@ -235,6 +235,10 @@ export default function Dashboard() {
     navigate('/payments/new');
   };
 
+  const handleViewFinanceTransactions = () => {
+    navigate('/finance/transactions');
+  };
+
   // Show loading spinner while data is being fetched
   if (isLoadingDashboard) {
     return (
@@ -267,14 +271,16 @@ export default function Dashboard() {
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <MetricCard
-            title="Weekly Earnings"
-            value={`$${weeklyEarnings?.toFixed(2) || '0.00'}`}
-            change={weeklyEarningsChange || 0}
-            changeLabel="from last week"
-            icon={<TrendingUp className="w-6 h-6 text-primary" />}
-            positive={weeklyEarningsChange !== null && weeklyEarningsChange >= 0}
-          />
+          <div className="cursor-pointer" onClick={handleViewFinanceTransactions}>
+            <MetricCard
+              title="Weekly Earnings"
+              value={`$${weeklyEarnings?.toFixed(2) || '0.00'}`}
+              change={weeklyEarningsChange || 0}
+              changeLabel="from last week"
+              icon={<TrendingUp className="w-6 h-6 text-primary" />}
+              positive={weeklyEarningsChange !== null && weeklyEarningsChange >= 0}
+            />
+          </div>
           <MetricCard
             title="Sessions This Week"
             value={sessionsThisWeek?.toString() || '0'}

@@ -176,7 +176,7 @@ export function DashboardNavigation() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuItem onClick={() => navigate('/finance')}>
+                <DropdownMenuItem onClick={() => navigate('/finance/transactions')}>
                   Overview
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/payments/new')}>
@@ -268,7 +268,7 @@ export function DashboardNavigation() {
               <span>Schedule</span>
             </button>
             <button 
-              onClick={() => handleMobileNavClick('/finance')}
+              onClick={() => handleMobileNavClick('/finance/transactions')}
               className="flex items-center space-x-3 text-body hover:text-primary transition-colors py-2 px-1"
             >
               <CreditCard className="w-4 h-4" />
