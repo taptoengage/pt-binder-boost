@@ -1,5 +1,8 @@
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Navigation } from '@/components/Navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { 
@@ -12,11 +15,24 @@ import {
   Smartphone,
   ArrowRight,
   Check,
-  Star
+  Star,
+  Calculator
 } from 'lucide-react';
 
 export default function Landing() {
   const { signInWithGoogle } = useAuth();
+  
+  // Calculator state
+  const [hoursOnAdmin, setHoursOnAdmin] = useState<number>(10);
+  const [hourlyRate, setHourlyRate] = useState<number>(75);
+  
+  // Calculate potential savings
+  const potentialSavings = useMemo(() => {
+    if (!hoursOnAdmin || !hourlyRate || hoursOnAdmin <= 0 || hourlyRate <= 0) {
+      return 0;
+    }
+    return hoursOnAdmin * hourlyRate;
+  }, [hoursOnAdmin, hourlyRate]);
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
@@ -211,6 +227,85 @@ export default function Landing() {
                 </CardContent>
               </Card>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Savings Calculator Section */}
+      <section className="py-16 px-4">
+        <div className="container mx-auto">
+          <div className="max-w-2xl mx-auto">
+            <Card className="card-elevated">
+              <CardHeader className="text-center">
+                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <Calculator className="w-6 h-6 text-primary" />
+                </div>
+                <CardTitle className="text-heading-2">Calculate Your Potential Weekly Savings</CardTitle>
+                <CardDescription className="text-body-large">
+                  See how much more you could earn by reducing administrative time with PT Binder
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-hours" className="text-body font-medium">
+                      Hours on Admin Per Week:
+                    </Label>
+                    <Input
+                      id="admin-hours"
+                      type="number"
+                      placeholder="e.g., 10"
+                      value={hoursOnAdmin || ''}
+                      onChange={(e) => setHoursOnAdmin(Number(e.target.value))}
+                      min="0"
+                      step="0.5"
+                      className="text-center"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="hourly-rate" className="text-body font-medium">
+                      Your Hourly Session Rate:
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                        $
+                      </span>
+                      <Input
+                        id="hourly-rate"
+                        type="number"
+                        placeholder="e.g., 75"
+                        value={hourlyRate || ''}
+                        onChange={(e) => setHourlyRate(Number(e.target.value))}
+                        min="0"
+                        step="0.01"
+                        className="pl-8 text-center"
+                      />
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="text-center p-6 bg-gradient-primary/10 rounded-lg border border-primary/20">
+                  <p className="text-body-small text-muted-foreground mb-2">
+                    Your Potential Weekly Earnings Gain:
+                  </p>
+                  <p className="text-display text-primary font-bold">
+                    {potentialSavings > 0 
+                      ? `$${potentialSavings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                      : '$0.00'
+                    }
+                  </p>
+                  <p className="text-body-small text-muted-foreground mt-2">
+                    That's <strong>${(potentialSavings * 52).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</strong> more per year!
+                  </p>
+                </div>
+                
+                <div className="text-center">
+                  <p className="text-body-small text-muted-foreground">
+                    *Based on time saved through automated scheduling, payment tracking, and client management
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </section>
