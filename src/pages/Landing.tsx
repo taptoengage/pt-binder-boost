@@ -174,7 +174,7 @@ export default function Landing() {
                     <Check className="w-4 h-4 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-heading-4 mb-1">Reduce Time Spent On Admin</h3>
+                    <h3 className="text-heading-4 mb-1">Reclaim Your Time</h3>
                     <p className="text-muted-foreground">
                       Automate scheduling, payment tracking, and client communications.
                     </p>
