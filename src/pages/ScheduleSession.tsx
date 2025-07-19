@@ -25,7 +25,7 @@ const sessionFormSchema = z.object({
   session_date: z.date({
     required_error: 'Please select a session date',
   }),
-  session_time: z.string().min(1, 'Please enter a session time').regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Please enter time in HH:MM format'),
+  session_time: z.string().min(1, 'Please select a session time'),
   status: z.enum(['scheduled', 'completed', 'cancelled_late', 'cancelled_early']),
   notes: z.string().optional(),
 });
@@ -164,6 +164,20 @@ export default function ScheduleSession() {
     navigate(-1);
   };
 
+  // Generate time options with 30-minute intervals
+  const generateTimeOptions = () => {
+    const times = [];
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute = 0; minute < 60; minute += 30) {
+        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        times.push(timeString);
+      }
+    }
+    return times;
+  };
+
+  const timeOptions = generateTimeOptions();
+
   return (
     <div className="min-h-screen bg-gradient-subtle">
       <DashboardNavigation />
@@ -294,16 +308,20 @@ export default function ScheduleSession() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Session Time</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                          <Input
-                            placeholder="HH:MM (e.g., 14:30)"
-                            className="pl-10"
-                            {...field}
-                          />
-                        </div>
-                      </FormControl>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select session time" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent className="max-h-[200px] overflow-y-auto">
+                          {timeOptions.map((time) => (
+                            <SelectItem key={time} value={time}>
+                              {time}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
