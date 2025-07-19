@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Loader2, User, Phone, Mail, DollarSign, Calendar, Target, Activity, Plus } from 'lucide-react';
+import { ArrowLeft, Loader2, User, Phone, Mail, DollarSign, Calendar, Target, Activity, Plus, Clock } from 'lucide-react';
 import { DashboardNavigation } from '@/components/Navigation';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -34,6 +34,16 @@ interface ClientPayment {
   };
 }
 
+interface ClientSession {
+  id: string;
+  session_date: string;
+  status: string;
+  notes: string | null;
+  service_types: {
+    name: string;
+  };
+}
+
 export default function ClientDetail() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
@@ -44,18 +54,22 @@ export default function ClientDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [clientPayments, setClientPayments] = useState<ClientPayment[]>([]);
   const [isLoadingPayments, setIsLoadingPayments] = useState(true);
+  const [clientSessions, setClientSessions] = useState<ClientSession[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
 
   useEffect(() => {
     const fetchClientData = async () => {
       if (!user || !clientId) {
         setIsLoading(false);
         setIsLoadingPayments(false);
+        setIsLoadingSessions(false);
         return;
       }
 
       try {
         setIsLoading(true);
         setIsLoadingPayments(true);
+        setIsLoadingSessions(true);
         
         // Fetch client details
         const { data: clientData, error: clientError } = await supabase
@@ -100,6 +114,25 @@ export default function ClientDetail() {
           setClientPayments(paymentsData || []);
         }
 
+        // Fetch client sessions
+        const { data: sessionsData, error: sessionsError } = await supabase
+          .from('sessions')
+          .select('*, service_types(name)')
+          .eq('client_id', clientId)
+          .eq('trainer_id', user.id)
+          .order('session_date', { ascending: false });
+
+        if (sessionsError) {
+          console.error('Error fetching sessions:', sessionsError);
+          toast({
+            title: "Warning",
+            description: "Failed to load session history. Client details loaded successfully.",
+            variant: "destructive",
+          });
+        } else {
+          setClientSessions(sessionsData || []);
+        }
+
       } catch (error) {
         console.error('Error fetching client data:', error);
         toast({
@@ -111,6 +144,7 @@ export default function ClientDetail() {
       } finally {
         setIsLoading(false);
         setIsLoadingPayments(false);
+        setIsLoadingSessions(false);
       }
     };
 
@@ -324,19 +358,86 @@ export default function ClientDetail() {
           </CardContent>
         </Card>
 
-        {/* Future Features Placeholder */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Sessions</CardTitle>
-            </CardHeader>
-            <CardContent>
+        {/* Session History */}
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center">
+                <Clock className="w-5 h-5 mr-2" />
+                Session History
+              </CardTitle>
+              <Button 
+                onClick={() => navigate('/schedule/new')}
+                size="sm"
+                className="flex items-center space-x-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Schedule New Session</span>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoadingSessions ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <span className="ml-2 text-muted-foreground">Loading session history...</span>
+              </div>
+            ) : clientSessions.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">
-                Session tracking coming soon
+                No session history for this client yet.
               </p>
-            </CardContent>
-          </Card>
-          
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Service Type</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Notes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {clientSessions.map((session) => (
+                      <TableRow key={session.id}>
+                        <TableCell className="font-medium">
+                          {new Date(session.session_date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          {new Date(session.session_date).toLocaleTimeString([], { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          {session.service_types.name}
+                        </TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            session.status === 'completed' 
+                              ? 'bg-green-100 text-green-800' 
+                              : session.status === 'cancelled'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {session.status}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {session.notes || 'N/A'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Future Features Placeholder */}
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
           <Card>
             <CardHeader>
               <CardTitle>Custom Rates</CardTitle>
