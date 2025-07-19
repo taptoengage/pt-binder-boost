@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Loader2, User, Phone, Mail, DollarSign, Calendar, Target, Activity, Plus, Clock } from 'lucide-react';
+import { ArrowLeft, Loader2, User, Phone, Mail, DollarSign, Calendar, Target, Activity, Plus, Clock, Edit } from 'lucide-react';
 import { DashboardNavigation } from '@/components/Navigation';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -155,6 +155,10 @@ export default function ClientDetail() {
     navigate('/clients');
   };
 
+  const handleEditClient = () => {
+    navigate(`/clients/${clientId}/edit`);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
@@ -188,7 +192,17 @@ export default function ClientDetail() {
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Clients
             </Button>
-            <h1 className="text-heading-1 mb-2">{client.name}</h1>
+            <div className="flex items-center justify-between mb-2">
+              <h1 className="text-heading-1">{client.name}</h1>
+              <Button 
+                onClick={handleEditClient}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Edit className="w-4 h-4" />
+                Edit Client
+              </Button>
+            </div>
             <p className="text-muted-foreground">Client Profile</p>
           </div>
         </div>

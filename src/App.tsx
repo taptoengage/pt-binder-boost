@@ -11,6 +11,7 @@ import Onboarding from "./pages/Onboarding";
 import Clients from "./pages/Clients";
 import AddClient from "./pages/AddClient";
 import ClientDetail from "./pages/ClientDetail";
+import EditClient from "./pages/EditClient";
 import ScheduleSession from "./pages/ScheduleSession";
 import RecordPayment from "./pages/RecordPayment";
 import ServiceTypes from "./pages/ServiceTypes";
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/clients" element={<Clients />} />
             <Route path="/clients/new" element={<AddClient />} />
             <Route path="/clients/:clientId" element={<ClientDetail />} />
+            <Route path="/clients/:clientId/edit" element={<EditClient />} />
             <Route path="/schedule" element={<ScheduleOverview />} />
             <Route path="/schedule/new" element={<ScheduleSession />} />
             <Route path="/payments/new" element={<RecordPayment />} />
