@@ -272,7 +272,7 @@ export default function EditSession() {
                       <FormLabel>Client</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger disabled={true}>
                             <SelectValue placeholder={isLoadingClients ? "Loading clients..." : "Select a client"} />
                           </SelectTrigger>
                         </FormControl>
