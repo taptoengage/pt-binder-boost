@@ -22,6 +22,10 @@ import {
 export default function Landing() {
   const { signInWithGoogle } = useAuth();
   
+  // PT Binder pricing
+  const PT_BINDER_MONTHLY_COST = 60;
+  const PT_BINDER_WEEKLY_COST = PT_BINDER_MONTHLY_COST / 4;
+  
   // Calculator state
   const [hoursOnAdmin, setHoursOnAdmin] = useState<number>(10);
   const [hourlyRate, setHourlyRate] = useState<number>(75);
@@ -33,6 +37,12 @@ export default function Landing() {
     }
     return hoursOnAdmin * hourlyRate;
   }, [hoursOnAdmin, hourlyRate]);
+
+  // Calculate net weekly savings after PT Binder cost
+  const netWeeklySavings = useMemo(() => {
+    const savings = potentialSavings - PT_BINDER_WEEKLY_COST;
+    return savings > 0 ? savings : 0;
+  }, [potentialSavings, PT_BINDER_WEEKLY_COST]);
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
@@ -286,16 +296,16 @@ export default function Landing() {
                 
                 <div className="text-center p-6 bg-gradient-primary/10 rounded-lg border border-primary/20">
                   <p className="text-body-small text-muted-foreground mb-2">
-                    Your Potential Weekly Earnings Gain:
+                    With PT Binder at ${PT_BINDER_MONTHLY_COST}/month, your net
+                  </p>
+                  <p className="text-body-small text-muted-foreground mb-2">
+                    Potential Weekly Earnings Gain:
                   </p>
                   <p className="text-display text-primary font-bold">
-                    {potentialSavings > 0 
-                      ? `$${potentialSavings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
-                      : '$0.00'
-                    }
+                    {netWeeklySavings > 0 ? `$${netWeeklySavings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00'}
                   </p>
                   <p className="text-body-small text-muted-foreground mt-2">
-                    That's <strong>${(potentialSavings * 52).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</strong> more per year!
+                    That's <strong>${(netWeeklySavings * 52).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</strong> more per year!
                   </p>
                 </div>
                 
