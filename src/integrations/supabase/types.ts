@@ -179,27 +179,36 @@ export type Database = {
       }
       service_types: {
         Row: {
+          billing_model: string
           created_at: string
+          default_price: number
           description: string | null
           id: string
           name: string
           trainer_id: string
+          units_included: number | null
           updated_at: string
         }
         Insert: {
+          billing_model?: string
           created_at?: string
+          default_price?: number
           description?: string | null
           id?: string
           name: string
           trainer_id: string
+          units_included?: number | null
           updated_at?: string
         }
         Update: {
+          billing_model?: string
           created_at?: string
+          default_price?: number
           description?: string | null
           id?: string
           name?: string
           trainer_id?: string
+          units_included?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -218,6 +227,7 @@ export type Database = {
           created_at: string
           id: string
           notes: string | null
+          service_type_id: string
           session_date: string
           status: string
           trainer_id: string
@@ -228,6 +238,7 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
+          service_type_id: string
           session_date: string
           status: string
           trainer_id: string
@@ -238,6 +249,7 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
+          service_type_id?: string
           session_date?: string
           status?: string
           trainer_id?: string
@@ -249,6 +261,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_service_type_id_fkey"
+            columns: ["service_type_id"]
+            isOneToOne: false
+            referencedRelation: "service_types"
             referencedColumns: ["id"]
           },
           {
