@@ -59,6 +59,9 @@ export default function ClientDetail() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isPaymentConfirmModalOpen, setIsPaymentConfirmModalOpen] = useState(false);
+  const [paymentToDeleteId, setPaymentToDeleteId] = useState<string | null>(null);
+  const [isDeletingPayment, setIsDeletingPayment] = useState(false);
 
   useEffect(() => {
     const fetchClientData = async () => {
@@ -194,6 +197,54 @@ export default function ClientDetail() {
     } finally {
       setIsDeleting(false);
       setIsConfirmModalOpen(false);
+    }
+  };
+
+  const handleDeletePayment = async () => {
+    if (!user || !clientId || !paymentToDeleteId) return;
+
+    try {
+      setIsDeletingPayment(true);
+      
+      const { error } = await supabase
+        .from('payments')
+        .delete()
+        .eq('id', paymentToDeleteId)
+        .eq('client_id', clientId)
+        .eq('trainer_id', user.id);
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Payment deleted",
+        description: "The payment record has been deleted successfully.",
+      });
+
+      // Refresh the payments list
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('*, service_types(name)')
+        .eq('client_id', clientId)
+        .eq('trainer_id', user.id)
+        .order('due_date', { ascending: false });
+
+      if (!paymentsError) {
+        setClientPayments(paymentsData || []);
+      }
+
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete payment. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeletingPayment(false);
+      setIsPaymentConfirmModalOpen(false);
+      setPaymentToDeleteId(null);
     }
   };
 
@@ -413,14 +464,27 @@ export default function ClientDetail() {
                             {payment.service_types.name}
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => navigate(`/clients/${clientId}/payments/${payment.id}/edit`)}
-                              className="p-2"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => navigate(`/clients/${clientId}/payments/${payment.id}/edit`)}
+                                className="p-2"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setPaymentToDeleteId(payment.id);
+                                  setIsPaymentConfirmModalOpen(true);
+                                }}
+                                className="p-2 text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -559,6 +623,48 @@ export default function ClientDetail() {
                 className="flex items-center gap-2"
               >
                 {isDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Payment Delete Confirmation Modal */}
+        <Dialog open={isPaymentConfirmModalOpen} onOpenChange={setIsPaymentConfirmModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Payment Deletion</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this payment record? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setIsPaymentConfirmModalOpen(false);
+                  setPaymentToDeleteId(null);
+                }}
+                disabled={isDeletingPayment}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeletePayment}
+                disabled={isDeletingPayment}
+                className="flex items-center gap-2"
+              >
+                {isDeletingPayment ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Deleting...
