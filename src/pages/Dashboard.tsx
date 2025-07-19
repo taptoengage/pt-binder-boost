@@ -39,6 +39,8 @@ export default function Dashboard() {
   const [sessionsThisWeek, setSessionsThisWeek] = useState<number | null>(null);
   const [activeClientsCount, setActiveClientsCount] = useState<number | null>(null);
   const [outstandingPaymentsTotal, setOutstandingPaymentsTotal] = useState<number | null>(null);
+  const [weeklyEarningsChange, setWeeklyEarningsChange] = useState<number | null>(null);
+  const [sessionsThisWeekChange, setSessionsThisWeekChange] = useState<number | null>(null);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
 
   // Data fetching effect
@@ -161,6 +163,47 @@ export default function Dashboard() {
         const totalOutstanding = outstandingPayments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
         setOutstandingPaymentsTotal(totalOutstanding);
 
+        // Calculate last week's date ranges for percentage changes
+        const startOfLastWeek = new Date(startOfWeek);
+        startOfLastWeek.setDate(startOfWeek.getDate() - 7);
+        const endOfLastWeek = new Date(endOfWeek);
+        endOfLastWeek.setDate(endOfWeek.getDate() - 7);
+
+        // Fetch last week's earnings
+        const { data: lastWeekPayments, error: lastWeekEarningsError } = await supabase
+          .from('payments')
+          .select('amount')
+          .eq('trainer_id', user.id)
+          .eq('status', 'paid')
+          .gte('date_paid', startOfLastWeek.toISOString().split('T')[0])
+          .lte('date_paid', endOfLastWeek.toISOString().split('T')[0]);
+
+        if (lastWeekEarningsError) throw lastWeekEarningsError;
+
+        const previousWeekEarnings = lastWeekPayments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+        const earningsChange = (previousWeekEarnings === 0) 
+          ? (totalEarnings > 0 ? 100 : 0) 
+          : ((totalEarnings - previousWeekEarnings) / previousWeekEarnings) * 100;
+        setWeeklyEarningsChange(earningsChange);
+
+        // Fetch last week's sessions
+        const { data: lastWeekSessions, error: lastWeekSessionsError } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('trainer_id', user.id)
+          .eq('status', 'completed')
+          .gte('session_date', startOfLastWeek.toISOString())
+          .lte('session_date', endOfLastWeek.toISOString());
+
+        if (lastWeekSessionsError) throw lastWeekSessionsError;
+
+        const previousWeekSessions = lastWeekSessions?.length || 0;
+        const sessionsCount = weeklySessions?.length || 0;
+        const sessionsChange = (previousWeekSessions === 0) 
+          ? (sessionsCount > 0 ? 100 : 0) 
+          : ((sessionsCount - previousWeekSessions) / previousWeekSessions) * 100;
+        setSessionsThisWeekChange(sessionsChange);
+
       } catch (error: any) {
         console.error('Error fetching dashboard data:', error);
         toast({
@@ -227,16 +270,18 @@ export default function Dashboard() {
           <MetricCard
             title="Weekly Earnings"
             value={`$${weeklyEarnings?.toFixed(2) || '0.00'}`}
-            change={12}
+            change={weeklyEarningsChange || 0}
             changeLabel="from last week"
             icon={<TrendingUp className="w-6 h-6 text-primary" />}
+            positive={weeklyEarningsChange !== null && weeklyEarningsChange >= 0}
           />
           <MetricCard
             title="Sessions This Week"
             value={sessionsThisWeek?.toString() || '0'}
-            change={8}
+            change={sessionsThisWeekChange || 0}
             changeLabel="from last week"
             icon={<Calendar className="w-6 h-6 text-primary" />}
+            positive={sessionsThisWeekChange !== null && sessionsThisWeekChange >= 0}
           />
           <MetricCard
             title="Active Clients"
