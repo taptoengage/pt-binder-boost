@@ -303,7 +303,7 @@ export default function ClientDetail() {
                 Payment History
               </CardTitle>
               <Button 
-                onClick={() => navigate('/payments/new')}
+                onClick={() => navigate(`/payments/new?clientId=${clientId}`)}
                 size="sm"
                 className="flex items-center space-x-2"
               >
@@ -392,7 +392,7 @@ export default function ClientDetail() {
                 Session History
               </CardTitle>
               <Button 
-                onClick={() => navigate('/schedule/new')}
+                onClick={() => navigate(`/schedule/new?clientId=${clientId}`)}
                 size="sm"
                 className="flex items-center space-x-2"
               >
