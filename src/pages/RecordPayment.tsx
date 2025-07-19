@@ -186,8 +186,8 @@ export default function RecordPayment() {
     }
   };
 
-  const handleBackToDashboard = () => {
-    navigate('/dashboard');
+  const handleBack = () => {
+    navigate(-1);
   };
 
   return (
@@ -198,11 +198,11 @@ export default function RecordPayment() {
         <div className="mb-6">
           <Button 
             variant="outline" 
-            onClick={handleBackToDashboard}
+            onClick={handleBack}
             className="mb-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
+            Return
           </Button>
           
           <h1 className="text-heading-1 mb-4">Record New Payment</h1>
