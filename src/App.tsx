@@ -15,6 +15,7 @@ import ScheduleSession from "./pages/ScheduleSession";
 import RecordPayment from "./pages/RecordPayment";
 import ServiceTypes from "./pages/ServiceTypes";
 import FinanceOverview from "./pages/FinanceOverview";
+import ScheduleOverview from "./pages/ScheduleOverview";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ const App = () => (
             <Route path="/clients" element={<Clients />} />
             <Route path="/clients/new" element={<AddClient />} />
             <Route path="/clients/:clientId" element={<ClientDetail />} />
+            <Route path="/schedule" element={<ScheduleOverview />} />
             <Route path="/schedule/new" element={<ScheduleSession />} />
             <Route path="/payments/new" element={<RecordPayment />} />
             <Route path="/finance" element={<FinanceOverview />} />
