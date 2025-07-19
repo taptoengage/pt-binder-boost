@@ -94,11 +94,17 @@ export function Navigation() {
 }
 
 export function DashboardNavigation() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate('/');
+  };
+
+  const handleMobileNavClick = (path: string) => {
+    navigate(path);
+    setIsMobileMenuOpen(false);
   };
 
   return (
@@ -190,8 +196,8 @@ export function DashboardNavigation() {
             </DropdownMenu>
           </nav>
 
-          {/* User Menu */}
-          <div className="flex items-center space-x-4">
+          {/* User Menu (Desktop) */}
+          <div className="hidden md:flex items-center space-x-4">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="flex items-center space-x-2">
@@ -222,6 +228,65 @@ export function DashboardNavigation() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+
+          {/* Mobile Menu Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </Button>
+        </div>
+
+        {/* Mobile Navigation */}
+        <div className={cn(
+          "md:hidden transition-all duration-200 overflow-hidden",
+          isMobileMenuOpen ? "max-h-96 pb-4" : "max-h-0"
+        )}>
+          <nav className="flex flex-col space-y-4 pt-4 border-t border-border">
+            <button 
+              onClick={() => handleMobileNavClick('/dashboard')}
+              className="flex items-center space-x-3 text-body hover:text-primary transition-colors py-2 px-1"
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>Dashboard</span>
+            </button>
+            <button 
+              onClick={() => handleMobileNavClick('/clients')}
+              className="flex items-center space-x-3 text-body hover:text-primary transition-colors py-2 px-1"
+            >
+              <Users className="w-4 h-4" />
+              <span>Clients</span>
+            </button>
+            <button 
+              onClick={() => handleMobileNavClick('/schedule')}
+              className="flex items-center space-x-3 text-body hover:text-primary transition-colors py-2 px-1"
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Schedule</span>
+            </button>
+            <button 
+              onClick={() => handleMobileNavClick('/finance')}
+              className="flex items-center space-x-3 text-body hover:text-primary transition-colors py-2 px-1"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Finance</span>
+            </button>
+            <div className="border-t border-border pt-4">
+              <button 
+                onClick={() => {
+                  handleSignOut();
+                  setIsMobileMenuOpen(false);
+                }}
+                className="flex items-center space-x-3 text-body hover:text-primary transition-colors py-2 px-1 w-full"
+              >
+                <User className="w-4 h-4" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </nav>
         </div>
       </div>
     </header>
