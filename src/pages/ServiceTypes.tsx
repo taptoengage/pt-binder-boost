@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowLeft, Plus, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,6 +20,20 @@ import { useToast } from '@/hooks/use-toast';
 const serviceTypeSchema = z.object({
   name: z.string().min(1, 'Service type name is required').max(100, 'Name must be less than 100 characters'),
   description: z.string().max(500, 'Description must be less than 500 characters').optional(),
+  billing_model: z.enum(['per_unit', 'pack', 'subscription'], {
+    required_error: 'Please select a billing model',
+  }),
+  units_included: z.number().int().min(1, 'Units included must be at least 1').optional().nullable(),
+  default_price: z.number().min(0.01, 'Price must be greater than 0'),
+}).superRefine((data, ctx) => {
+  // If billing model is 'pack', units_included is required
+  if (data.billing_model === 'pack' && (!data.units_included || data.units_included < 1)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Units included is required for pack billing model',
+      path: ['units_included'],
+    });
+  }
 });
 
 type ServiceTypeFormData = z.infer<typeof serviceTypeSchema>;
@@ -27,6 +42,9 @@ interface ServiceType {
   id: string;
   name: string;
   description: string | null;
+  billing_model: string;
+  units_included: number | null;
+  default_price: number;
   created_at: string;
 }
 
@@ -45,6 +63,9 @@ export default function ServiceTypes() {
     defaultValues: {
       name: '',
       description: '',
+      billing_model: 'per_unit',
+      units_included: null,
+      default_price: 0,
     },
   });
 
@@ -97,6 +118,9 @@ export default function ServiceTypes() {
         .insert({
           name: data.name,
           description: data.description || null,
+          billing_model: data.billing_model,
+          units_included: data.billing_model === 'pack' ? data.units_included : null,
+          default_price: Number(data.default_price),
           trainer_id: user.id,
         });
 
@@ -196,6 +220,77 @@ export default function ServiceTypes() {
                         </FormItem>
                       )}
                     />
+
+                    <FormField
+                      control={form.control}
+                      name="billing_model"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Billing Model *</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select billing model" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="per_unit">Per Unit</SelectItem>
+                              <SelectItem value="pack">Pack</SelectItem>
+                              <SelectItem value="subscription">Subscription</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="default_price"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Default Price *</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">$</span>
+                              <Input 
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                className="pl-8"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                              />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {form.watch('billing_model') === 'pack' && (
+                      <FormField
+                        control={form.control}
+                        name="units_included"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Units Included *</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number"
+                                min="1"
+                                placeholder="e.g., 10 sessions"
+                                {...field}
+                                onChange={(e) => field.onChange(parseInt(e.target.value) || null)}
+                                value={field.value || ''}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                     
                     <div className="flex justify-end space-x-2 pt-4">
                       <Button 
@@ -243,6 +338,9 @@ export default function ServiceTypes() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Description</TableHead>
+                    <TableHead>Billing Model</TableHead>
+                    <TableHead>Default Price</TableHead>
+                    <TableHead>Units Included</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -254,6 +352,20 @@ export default function ServiceTypes() {
                       </TableCell>
                       <TableCell>
                         {serviceType.description || <span className="text-muted-foreground">No description</span>}
+                      </TableCell>
+                      <TableCell>
+                        <span className="capitalize">
+                          {serviceType.billing_model.replace('_', ' ')}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        ${serviceType.default_price?.toFixed(2) || '0.00'}
+                      </TableCell>
+                      <TableCell>
+                        {serviceType.billing_model === 'pack' 
+                          ? serviceType.units_included || 'N/A'
+                          : <span className="text-muted-foreground">N/A</span>
+                        }
                       </TableCell>
                       <TableCell>
                         {new Date(serviceType.created_at).toLocaleDateString()}
