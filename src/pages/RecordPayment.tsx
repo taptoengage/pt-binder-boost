@@ -29,6 +29,8 @@ const paymentSchema = z.object({
   status: z.enum(['paid', 'due', 'overdue'], {
     required_error: 'Please select a status',
   }),
+  total_sessions: z.number().int().min(1, 'Total sessions must be at least 1').optional().nullable(),
+  expiry_date: z.date().optional(),
 });
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
@@ -41,6 +43,8 @@ interface Client {
 interface ServiceType {
   id: string;
   name: string;
+  billing_model: string;
+  units_included: number | null;
 }
 
 export default function RecordPayment() {
@@ -117,7 +121,7 @@ export default function RecordPayment() {
       try {
         const { data, error } = await supabase
           .from('service_types')
-          .select('id, name')
+          .select('id, name, billing_model, units_included')
           .eq('trainer_id', user.id)
           .order('name');
 
