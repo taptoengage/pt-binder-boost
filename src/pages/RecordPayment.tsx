@@ -29,8 +29,18 @@ const paymentSchema = z.object({
   status: z.enum(['paid', 'due', 'overdue'], {
     required_error: 'Please select a status',
   }),
+  billing_model: z.string().optional(), // Hidden field for validation
   total_sessions: z.number().int().min(1, 'Total sessions must be at least 1').optional().nullable(),
   expiry_date: z.date().optional(),
+}).superRefine((data, ctx) => {
+  // Conditional validation: total_sessions is required for pack billing model
+  if (data.billing_model === 'pack' && (!data.total_sessions || data.total_sessions < 1)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Total sessions is required for pack billing model and must be at least 1.',
+      path: ['total_sessions'],
+    });
+  }
 });
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
@@ -152,6 +162,15 @@ export default function RecordPayment() {
       form.setValue('client_id', initialClientId);
     }
   }, [initialClientId, clients, form]);
+
+  // Update billing_model field when service type changes for validation
+  useEffect(() => {
+    if (selectedServiceType) {
+      setValue('billing_model', selectedServiceType.billing_model);
+    } else {
+      setValue('billing_model', '');
+    }
+  }, [selectedServiceType, setValue]);
 
   const onSubmit = async (data: PaymentFormData) => {
     if (!user?.id) {
