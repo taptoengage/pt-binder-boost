@@ -42,6 +42,9 @@ export default function ClientDashboard() {
         .limit(1)
         .maybeSingle();
 
+      if (nextSession) {
+        console.log("DEBUG: Fetched next upcoming session data:", nextSession);
+      }
       setUpcomingSession(nextSession);
 
       // Determine payment status
@@ -92,6 +95,9 @@ export default function ClientDashboard() {
         .order('session_date', { ascending: true })
         .limit(5);
 
+      if (sessions) {
+        console.log("DEBUG: Fetched client sessions data:", sessions);
+      }
       setClientSessions(sessions || []);
 
     } catch (error) {
