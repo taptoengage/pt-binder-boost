@@ -221,6 +221,83 @@ export type Database = {
           },
         ]
       }
+      session_packs: {
+        Row: {
+          amount_paid: number
+          client_id: string
+          created_at: string
+          expiry_date: string | null
+          id: string
+          payment_id: string | null
+          purchase_date: string
+          service_type_id: string
+          sessions_remaining: number
+          status: string
+          total_sessions: number
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount_paid: number
+          client_id: string
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          payment_id?: string | null
+          purchase_date?: string
+          service_type_id: string
+          sessions_remaining: number
+          status?: string
+          total_sessions: number
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount_paid?: number
+          client_id?: string
+          created_at?: string
+          expiry_date?: string | null
+          id?: string
+          payment_id?: string | null
+          purchase_date?: string
+          service_type_id?: string
+          sessions_remaining?: number
+          status?: string
+          total_sessions?: number
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_packs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_packs_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_packs_service_type_id_fkey"
+            columns: ["service_type_id"]
+            isOneToOne: false
+            referencedRelation: "service_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_packs_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sessions: {
         Row: {
           client_id: string
@@ -229,6 +306,7 @@ export type Database = {
           notes: string | null
           service_type_id: string
           session_date: string
+          session_pack_id: string | null
           status: string
           trainer_id: string
           updated_at: string
@@ -240,6 +318,7 @@ export type Database = {
           notes?: string | null
           service_type_id: string
           session_date: string
+          session_pack_id?: string | null
           status: string
           trainer_id: string
           updated_at?: string
@@ -251,6 +330,7 @@ export type Database = {
           notes?: string | null
           service_type_id?: string
           session_date?: string
+          session_pack_id?: string | null
           status?: string
           trainer_id?: string
           updated_at?: string
@@ -268,6 +348,13 @@ export type Database = {
             columns: ["service_type_id"]
             isOneToOne: false
             referencedRelation: "service_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_session_pack_id_fkey"
+            columns: ["session_pack_id"]
+            isOneToOne: false
+            referencedRelation: "session_packs"
             referencedColumns: ["id"]
           },
           {
