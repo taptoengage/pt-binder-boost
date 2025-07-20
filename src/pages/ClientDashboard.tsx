@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from 'react';
 import { Clock, CreditCard, Calendar, DollarSign, Loader2 } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { format } from 'date-fns';
 
 export default function ClientDashboard() {
@@ -17,6 +18,8 @@ export default function ClientDashboard() {
   const [clientPaymentStatus, setClientPaymentStatus] = useState<string>('');
   const [clientPayments, setClientPayments] = useState<any[]>([]);
   const [clientSessions, setClientSessions] = useState<any[]>([]);
+  const [clientSessionPacks, setClientSessionPacks] = useState<any[]>([]);
+  const [isLoadingPacks, setIsLoadingPacks] = useState(true);
 
   useEffect(() => {
     if (client?.id && client?.trainer_id) {
@@ -29,6 +32,7 @@ export default function ClientDashboard() {
     
     try {
       setIsLoadingDashboard(true);
+      setIsLoadingPacks(true);
 
       // Fetch upcoming session
       const { data: nextSession } = await supabase
@@ -100,6 +104,26 @@ export default function ClientDashboard() {
       }
       setClientSessions(sessions || []);
 
+      // Fetch client session packs
+      const { data: sessionPacks, error: sessionPacksError } = await supabase
+        .from('session_packs')
+        .select('total_sessions, sessions_remaining, status, service_types(name)')
+        .eq('client_id', client.id)
+        .eq('trainer_id', client.trainer_id)
+        .eq('status', 'active')
+        .order('purchase_date', { ascending: false });
+
+      if (sessionPacksError) {
+        console.error('Error fetching session packs:', sessionPacksError);
+        toast({
+          title: "Error",
+          description: "Failed to load session pack data. Please try again.",
+          variant: "destructive",
+        });
+      } else {
+        setClientSessionPacks(sessionPacks || []);
+      }
+
     } catch (error) {
       console.error('Error fetching client dashboard data:', error);
       toast({
@@ -109,6 +133,7 @@ export default function ClientDashboard() {
       });
     } finally {
       setIsLoadingDashboard(false);
+      setIsLoadingPacks(false);
     }
   };
 
@@ -172,8 +197,38 @@ export default function ClientDashboard() {
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">Coming Soon</div>
-              <p className="text-xs text-muted-foreground">Contact your trainer for session balance</p>
+              {isLoadingPacks ? (
+                <div className="flex items-center space-x-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm text-muted-foreground">Loading...</span>
+                </div>
+              ) : clientSessionPacks.length === 0 ? (
+                <div>
+                  <div className="text-2xl font-bold">No Active Packs</div>
+                  <p className="text-xs text-muted-foreground">Contact your trainer to purchase a pack</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(() => {
+                    const totalSumRemaining = clientSessionPacks.reduce((sum, pack) => sum + pack.sessions_remaining, 0);
+                    const totalSumTotal = clientSessionPacks.reduce((sum, pack) => sum + pack.total_sessions, 0);
+                    const percentageRemaining = totalSumTotal > 0 ? (totalSumRemaining / totalSumTotal) * 100 : 0;
+                    
+                    return (
+                      <>
+                        <div className="text-2xl font-bold">{totalSumRemaining} / {totalSumTotal}</div>
+                        <div className="space-y-2">
+                          <Progress value={percentageRemaining} className="h-2" />
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>{Math.round(percentageRemaining)}% remaining</span>
+                            <span>{clientSessionPacks.length} active pack{clientSessionPacks.length !== 1 ? 's' : ''}</span>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
             </CardContent>
           </Card>
 
