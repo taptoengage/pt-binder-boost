@@ -3,8 +3,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/hooks/useAuth";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { useEffect } from "react";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
@@ -24,6 +26,70 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+function AppRoutes() {
+  const { user, loading, trainer, client, authStatus } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (loading) return; // Wait for auth state to be confirmed
+
+    // Handle access denied state explicitly
+    if (authStatus === 'access_denied_unregistered') {
+      toast({
+        title: "Access Denied",
+        description: "Your email is not registered as a client or trainer. Please contact support.",
+        variant: "destructive",
+      });
+      navigate('/'); // Redirect to landing page
+      return; // Stop further navigation attempts
+    }
+
+    const currentPath = window.location.pathname;
+
+    if (user) { // User is authenticated (and not access_denied_unregistered)
+      if (trainer) { // User is a trainer
+        if (currentPath === '/' || currentPath.startsWith('/client/')) {
+          navigate('/dashboard');
+        }
+      } else if (client) { // User is a client
+        if (currentPath === '/' || !currentPath.startsWith('/client/')) {
+          navigate('/client/dashboard');
+        }
+      }
+      // If user is logged in but somehow role is not trainer/client, just let them stay or redirect to default safe page if needed.
+    } else { // User is not authenticated
+      // Redirect from protected routes to landing
+      if (currentPath !== '/' && !currentPath.startsWith('/auth/')) {
+        navigate('/');
+      }
+    }
+  }, [user, loading, trainer, client, authStatus, navigate, toast]);
+
+  return (
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/onboarding" element={<Onboarding />} />
+      <Route path="/clients" element={<Clients />} />
+      <Route path="/clients/new" element={<AddClient />} />
+      <Route path="/clients/:clientId" element={<ClientDetail />} />
+      <Route path="/clients/:clientId/edit" element={<EditClient />} />
+      <Route path="/clients/:clientId/payments/:paymentId/edit" element={<EditPayment />} />
+      <Route path="/clients/:clientId/sessions/:sessionId/edit" element={<EditSession />} />
+      <Route path="/schedule" element={<ScheduleOverview />} />
+      <Route path="/schedule/new" element={<ScheduleSession />} />
+      <Route path="/payments/new" element={<RecordPayment />} />
+      <Route path="/finance" element={<FinanceTransactions />} />
+      <Route path="/finance/transactions" element={<FinanceTransactions />} />
+      <Route path="/settings/service-types" element={<ServiceTypes />} />
+      <Route path="/client/dashboard" element={<ClientDashboard />} />
+      {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -31,26 +97,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-            <Route path="/clients" element={<Clients />} />
-            <Route path="/clients/new" element={<AddClient />} />
-            <Route path="/clients/:clientId" element={<ClientDetail />} />
-            <Route path="/clients/:clientId/edit" element={<EditClient />} />
-            <Route path="/clients/:clientId/payments/:paymentId/edit" element={<EditPayment />} />
-            <Route path="/clients/:clientId/sessions/:sessionId/edit" element={<EditSession />} />
-            <Route path="/schedule" element={<ScheduleOverview />} />
-            <Route path="/schedule/new" element={<ScheduleSession />} />
-            <Route path="/payments/new" element={<RecordPayment />} />
-            <Route path="/finance" element={<FinanceTransactions />} />
-            <Route path="/finance/transactions" element={<FinanceTransactions />} />
-            <Route path="/settings/service-types" element={<ServiceTypes />} />
-            <Route path="/client/dashboard" element={<ClientDashboard />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <AppRoutes />
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

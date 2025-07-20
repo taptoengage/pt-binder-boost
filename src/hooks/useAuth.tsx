@@ -27,6 +27,7 @@ interface AuthContextType {
   trainer: Trainer | null
   client: Client | null
   loading: boolean
+  authStatus: 'loading' | 'authenticated' | 'unauthenticated' | 'access_denied_unregistered'
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
 }
@@ -39,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [trainer, setTrainer] = useState<Trainer | null>(null)
   const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
+  const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated' | 'access_denied_unregistered'>('loading')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -57,6 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setTrainer(null)
         setClient(null)
+        setAuthStatus('unauthenticated')
         setLoading(false)
       }
     })
@@ -68,6 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         checkUserType(session.user)
       } else {
+        setAuthStatus('unauthenticated')
         setLoading(false)
       }
     })
@@ -93,6 +97,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (existingTrainer) {
         // User is a trainer
         setTrainer(existingTrainer)
+        setAuthStatus('authenticated')
+        setLoading(false)
         navigate('/dashboard')
         return
       }
@@ -113,35 +119,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (existingClient) {
         // User is a registered client
         setClient(existingClient)
+        setAuthStatus('authenticated')
+        setLoading(false)
         navigate('/client/dashboard')
         return
       }
 
-      // Check if this could be a new trainer (first-time login)
+      // If user is neither a trainer nor a registered client
       if (!existingTrainer && !existingClient) {
-        // Create new trainer record for first-time login
-        const { data: newTrainer, error: insertError } = await supabase
-          .from('trainers')
-          .insert({
-            id: user.id,
-            business_name: 'My Fitness Business',
-            contact_email: user.email || '',
-          })
-          .select()
-          .single()
-
-        if (insertError) {
-          // User is neither trainer nor registered client - deny access
-          console.error('Access denied: User not registered as trainer or client')
-          await supabase.auth.signOut()
-          // TODO: Add toast notification here when available
-          navigate('/')
-          setLoading(false)
-          return
-        }
-
-        setTrainer(newTrainer)
-        navigate('/onboarding')
+        console.error('Access denied: User not registered as trainer or client. Email:', user.email)
+        // Sign out the unauthorized user
+        await supabase.auth.signOut()
+        // Update auth state to reflect denied access and completion of loading
+        setTrainer(null)
+        setClient(null)
+        setAuthStatus('access_denied_unregistered')
+        setLoading(false)
+        // Don't navigate here - let App.tsx handle navigation based on authStatus
+        return
       }
     } catch (error) {
       console.error('Error in checkUserType:', error)
@@ -181,6 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     trainer,
     client,
     loading,
+    authStatus,
     signInWithGoogle,
     signOut,
   }
