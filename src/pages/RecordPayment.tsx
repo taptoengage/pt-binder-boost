@@ -193,7 +193,8 @@ export default function RecordPayment() {
         finalStatus = 'due';
       }
 
-      const { error } = await supabase
+      // Insert payment and get the ID back
+      const { data: paymentResult, error: paymentError } = await supabase
         .from('payments')
         .insert({
           trainer_id: user.id,
@@ -203,13 +204,44 @@ export default function RecordPayment() {
           due_date: data.due_date.toISOString().split('T')[0], // Format as YYYY-MM-DD
           date_paid: data.date_paid ? data.date_paid.toISOString().split('T')[0] : null,
           status: finalStatus,
-        });
+        })
+        .select('id')
+        .single();
 
-      if (error) throw error;
+      if (paymentError) throw paymentError;
+
+      const newPaymentId = paymentResult.id;
+
+      // Conditional session_packs creation for 'pack' billing model
+      if (selectedServiceType?.billing_model === 'pack') {
+        const sessionPackData = {
+          trainer_id: user.id,
+          client_id: data.client_id,
+          service_type_id: data.service_type_id,
+          total_sessions: data.total_sessions!, // This is guaranteed by validation for 'pack'
+          sessions_remaining: data.total_sessions!, // Starts equal to total_sessions
+          amount_paid: data.amount, // Link to the payment amount
+          payment_id: newPaymentId, // Link to the just-created payment record
+          purchase_date: new Date().toISOString(), // Current timestamp
+          expiry_date: data.expiry_date ? data.expiry_date.toISOString().split('T')[0] : null,
+          status: 'active', // Default status for a new pack
+        };
+
+        const { error: sessionPackError } = await supabase
+          .from('session_packs')
+          .insert([sessionPackData]);
+
+        if (sessionPackError) {
+          // Handle pack creation failure
+          throw sessionPackError;
+        }
+      }
 
       toast({
         title: 'Success',
-        description: 'Payment recorded successfully!',
+        description: selectedServiceType?.billing_model === 'pack' 
+          ? 'Payment and session pack created successfully!' 
+          : 'Payment recorded successfully!',
       });
 
       form.reset();
