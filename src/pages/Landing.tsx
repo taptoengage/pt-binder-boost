@@ -64,8 +64,8 @@ export default function Landing() {
                 Start Your Free Trial
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
-              <Button size="xl" variant="professional">
-                Watch Demo
+              <Button size="xl" variant="professional" onClick={signInWithGoogle}>
+                Client Login
               </Button>
             </div>
             <p className="text-body-small text-muted-foreground mt-4">
@@ -333,8 +333,8 @@ export default function Landing() {
                 Start Free Trial
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
-              <Button size="xl" variant="professional">
-                Schedule Demo
+              <Button size="xl" variant="professional" onClick={signInWithGoogle}>
+                Client Login
               </Button>
             </div>
             <div className="flex items-center justify-center space-x-1 mt-6">

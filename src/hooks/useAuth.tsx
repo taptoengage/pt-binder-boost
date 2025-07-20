@@ -11,10 +11,21 @@ export interface Trainer {
   updated_at: string
 }
 
+export interface Client {
+  id: string
+  name: string
+  email: string
+  phone_number: string
+  trainer_id: string
+  created_at: string
+  updated_at: string
+}
+
 interface AuthContextType {
   user: User | null
   session: Session | null
   trainer: Trainer | null
+  client: Client | null
   loading: boolean
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
@@ -26,6 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [trainer, setTrainer] = useState<Trainer | null>(null)
+  const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
@@ -40,10 +52,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         // Defer Supabase calls to avoid blocking auth state changes
         setTimeout(() => {
-          checkTrainerRecord(session.user)
+          checkUserType(session.user)
         }, 0)
       } else {
         setTrainer(null)
+        setClient(null)
         setLoading(false)
       }
     })
@@ -53,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
-        checkTrainerRecord(session.user)
+        checkUserType(session.user)
       } else {
         setLoading(false)
       }
@@ -62,21 +75,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  const checkTrainerRecord = async (user: User) => {
+  const checkUserType = async (user: User) => {
     try {
-      const { data: existingTrainer, error } = await supabase
+      // First check if user is a trainer
+      const { data: existingTrainer, error: trainerError } = await supabase
         .from('trainers')
         .select('*')
         .eq('id', user.id)
         .maybeSingle()
 
-      if (error) {
-        console.error('Error checking trainer record:', error)
+      if (trainerError) {
+        console.error('Error checking trainer record:', trainerError)
         setLoading(false)
         return
       }
 
-      if (!existingTrainer) {
+      if (existingTrainer) {
+        // User is a trainer
+        setTrainer(existingTrainer)
+        navigate('/dashboard')
+        return
+      }
+
+      // Not a trainer, check if user is a client
+      const { data: existingClient, error: clientError } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('email', user.email)
+        .maybeSingle()
+
+      if (clientError) {
+        console.error('Error checking client record:', clientError)
+        setLoading(false)
+        return
+      }
+
+      if (existingClient) {
+        // User is a registered client
+        setClient(existingClient)
+        navigate('/client/dashboard')
+        return
+      }
+
+      // Check if this could be a new trainer (first-time login)
+      if (!existingTrainer && !existingClient) {
         // Create new trainer record for first-time login
         const { data: newTrainer, error: insertError } = await supabase
           .from('trainers')
@@ -89,19 +131,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .single()
 
         if (insertError) {
-          console.error('Error creating trainer record:', insertError)
+          // User is neither trainer nor registered client - deny access
+          console.error('Access denied: User not registered as trainer or client')
+          await supabase.auth.signOut()
+          // TODO: Add toast notification here when available
+          navigate('/')
           setLoading(false)
           return
         }
 
         setTrainer(newTrainer)
         navigate('/onboarding')
-      } else {
-        setTrainer(existingTrainer)
-        navigate('/dashboard')
       }
     } catch (error) {
-      console.error('Error in checkTrainerRecord:', error)
+      console.error('Error in checkUserType:', error)
     } finally {
       setLoading(false)
     }
@@ -127,6 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else {
       setUser(null)
       setTrainer(null)
+      setClient(null)
       navigate('/')
     }
   }
@@ -135,6 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     session,
     trainer,
+    client,
     loading,
     signInWithGoogle,
     signOut,

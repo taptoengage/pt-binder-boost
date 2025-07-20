@@ -19,6 +19,7 @@ import RecordPayment from "./pages/RecordPayment";
 import ServiceTypes from "./pages/ServiceTypes";
 import FinanceTransactions from "./pages/FinanceTransactions";
 import ScheduleOverview from "./pages/ScheduleOverview";
+import ClientDashboard from "./pages/ClientDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,7 @@ const App = () => (
             <Route path="/finance" element={<FinanceTransactions />} />
             <Route path="/finance/transactions" element={<FinanceTransactions />} />
             <Route path="/settings/service-types" element={<ServiceTypes />} />
+            <Route path="/client/dashboard" element={<ClientDashboard />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
