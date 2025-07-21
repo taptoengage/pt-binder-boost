@@ -193,6 +193,17 @@ export default function RecordPayment() {
         finalStatus = 'due';
       }
 
+      console.log("DEBUG: onSubmit: Preparing payment insert.");
+      console.log("DEBUG: onSubmit: paymentData for payments table (pre-insert):", {
+        trainer_id: user.id,
+        client_id: data.client_id,
+        service_type_id: data.service_type_id,
+        amount: data.amount,
+        due_date: data.due_date.toISOString().split('T')[0],
+        date_paid: data.date_paid ? data.date_paid.toISOString().split('T')[0] : null,
+        status: finalStatus,
+      });
+
       // Insert payment and get the ID back
       const { data: paymentResult, error: paymentError } = await supabase
         .from('payments')
@@ -211,9 +222,12 @@ export default function RecordPayment() {
       if (paymentError) throw paymentError;
 
       const newPaymentId = paymentResult.id;
+      console.log("DEBUG: onSubmit: Payment inserted successfully. New Payment ID:", newPaymentId);
 
       // Conditional session_packs creation for 'pack' billing model
       if (selectedServiceType?.billing_model === 'pack') {
+        console.log("DEBUG: onSubmit: Billing model is 'pack'. Preparing session pack insert.");
+        
         const sessionPackData = {
           trainer_id: user.id,
           client_id: data.client_id,
@@ -226,6 +240,8 @@ export default function RecordPayment() {
           expiry_date: data.expiry_date ? data.expiry_date.toISOString().split('T')[0] : null,
           status: 'active', // Default status for a new pack
         };
+
+        console.log("DEBUG: onSubmit: sessionPackData for session_packs table (pre-insert):", sessionPackData);
 
         const { error: sessionPackError } = await supabase
           .from('session_packs')
@@ -246,7 +262,7 @@ export default function RecordPayment() {
 
       form.reset();
     } catch (error) {
-      console.error('Error recording payment:', error);
+      console.error('DEBUG: onSubmit: Full error during payment/pack recording:', error);
       toast({
         title: 'Error',
         description: 'Failed to record payment. Please try again.',
