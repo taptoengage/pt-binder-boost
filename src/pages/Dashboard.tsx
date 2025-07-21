@@ -38,8 +38,6 @@ export default function Dashboard() {
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
 
   // State for sessions running low feature
-  const [allActiveClients, setAllActiveClients] = useState<any[]>([]);
-  const [upcomingScheduledSessions, setUpcomingScheduledSessions] = useState<any[]>([]);
   const [lowSessionClients, setLowSessionClients] = useState<any[]>([]);
   const [isLoadingLowSessions, setIsLoadingLowSessions] = useState(true);
 
@@ -204,47 +202,50 @@ export default function Dashboard() {
           : ((sessionsCount - previousWeekSessions) / previousWeekSessions) * 100;
         setSessionsThisWeekChange(sessionsChange);
 
-        // Calculate date range for next 30 days
-        const thirtyDaysFromNow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30, 23, 59, 59, 999);
-
-        // Fetch active clients with session rates
-        const { data: activeClientsData, error: activeClientsError } = await supabase
-          .from('clients')
-          .select('id, name, phone_number, default_session_rate')
+        // Fetch all active session_packs for the trainer
+        const { data: allActivePacks, error: allPacksError } = await supabase
+          .from('session_packs')
+          .select('*, clients(id, name, phone_number), service_types(name)')
           .eq('trainer_id', user.id)
-          .not('default_session_rate', 'is', null);
+          .eq('status', 'active')
+          .gt('sessions_remaining', 0);
 
-        if (activeClientsError) throw activeClientsError;
-        setAllActiveClients(activeClientsData || []);
+        if (allPacksError) throw allPacksError;
 
-        // Fetch upcoming scheduled sessions
-        const { data: scheduledSessionsData, error: scheduledSessionsError } = await supabase
-          .from('sessions')
-          .select('client_id')
-          .eq('trainer_id', user.id)
-          .eq('status', 'scheduled')
-          .gte('session_date', now.toISOString())
-          .lte('session_date', thirtyDaysFromNow.toISOString());
+        // Client-side aggregation to identify "running low" clients
+        const clientPackSummaries = new Map<string, { id: string; name: string; phone_number: string; total_remaining: number; total_initial: number; }>();
 
-        if (scheduledSessionsError) throw scheduledSessionsError;
-        setUpcomingScheduledSessions(scheduledSessionsData || []);
+        (allActivePacks || []).forEach(pack => {
+          const clientId = pack.clients?.id || 'unknown';
+          if (!clientPackSummaries.has(clientId)) {
+            clientPackSummaries.set(clientId, {
+              id: clientId,
+              name: pack.clients?.name || 'Unknown Client',
+              phone_number: pack.clients?.phone_number || 'N/A',
+              total_remaining: 0,
+              total_initial: 0,
+            });
+          }
+          const summary = clientPackSummaries.get(clientId)!;
+          summary.total_remaining += pack.sessions_remaining;
+          summary.total_initial += pack.total_sessions;
+        });
 
-        // Calculate low session clients
-        const clientsWithUpcomingSessionsSet = new Set(scheduledSessionsData?.map((s: any) => s.client_id));
+        // Convert map to array, filter for 'low' status, and sort
+        const clientsByPackStatus = Array.from(clientPackSummaries.values()).filter(client => {
+          // Define 'running low' threshold here (≤ 5 sessions remaining)
+          return client.total_remaining <= 5;
+        }).sort((a, b) => a.total_remaining - b.total_remaining);
 
-        const runningLowClients = activeClientsData?.filter((client: any) => {
-          // A client is "running low" if they are active AND they do NOT have an upcoming session in the next 30 days
-          return !clientsWithUpcomingSessionsSet.has(client.id);
-        }) || [];
-
-        // Format these clients for display
-        const formattedLowSessionClients = runningLowClients.map((client: any) => ({
+        // Take top 3 as requested for the card
+        const topLowSessionClients = clientsByPackStatus.slice(0, 3).map(client => ({
           id: client.id,
           name: client.name,
           phone: client.phone_number,
+          remaining: client.total_remaining,
         }));
 
-        setLowSessionClients(formattedLowSessionClients);
+        setLowSessionClients(topLowSessionClients);
 
       } catch (error: any) {
         console.error('Error fetching dashboard data:', error);
@@ -392,7 +393,7 @@ export default function Dashboard() {
           {/* Clients Nearing Package End */}
           <DashboardCard
             title="Sessions Running Low"
-            description="Clients with 3 or fewer sessions remaining"
+            description="Clients with 5 or fewer sessions remaining"
             icon={<AlertTriangle className="w-5 h-5 text-warning" />}
             action={{
               label: "Contact Clients",
@@ -410,15 +411,15 @@ export default function Dashboard() {
                     </div>
                     <div className="text-right">
                       <p className="text-body-small font-medium text-warning">
-                        No upcoming sessions
+                        {client.remaining} sessions remaining
                       </p>
-                      <p className="text-xs text-muted-foreground">in next 30 days</p>
+                      <p className="text-xs text-muted-foreground">across all active packs</p>
                     </div>
                   </div>
                 ))
               ) : (
                 <div className="text-center py-4">
-                  <p className="text-body-small text-muted-foreground">No clients currently running low on scheduled sessions in the next 30 days</p>
+                  <p className="text-body-small text-muted-foreground">No clients currently low on session packs</p>
                 </div>
               )}
             </div>
