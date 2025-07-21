@@ -256,9 +256,11 @@ export default function RecordPayment() {
           .insert([sessionPackData]);
 
         if (sessionPackError) {
-          // Handle pack creation failure
+          console.error('DEBUG: onSubmit: sessionPackError details:', sessionPackError);
           throw sessionPackError;
         }
+
+        console.log("DEBUG: onSubmit: Session pack created successfully.");
       }
 
       toast({
@@ -273,7 +275,7 @@ export default function RecordPayment() {
       console.error('DEBUG: onSubmit: Full error during payment/pack recording:', error);
       toast({
         title: 'Error',
-        description: 'Failed to record payment. Please try again.',
+        description: error.message || 'Failed to record payment/pack. Please check the amount and try again.',
         variant: 'destructive',
       });
     }
