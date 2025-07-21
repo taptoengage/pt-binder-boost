@@ -41,6 +41,14 @@ const paymentSchema = z.object({
       path: ['total_sessions'],
     });
   }
+  // Conditional validation: amount must be greater than 0 for pack billing model
+  if (data.billing_model === 'pack' && (data.amount <= 0.00)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Amount must be greater than 0 for pack billing models.',
+      path: ['amount'],
+    });
+  }
 });
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
