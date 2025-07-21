@@ -62,15 +62,12 @@ export default function ClientDashboard() {
         .maybeSingle();
 
       if (recentPayment) {
-        const dueDate = new Date(recentPayment.due_date);
-        const today = new Date();
-        
         if (recentPayment.status === 'paid') {
           setClientPaymentStatus('Up to Date');
-        } else if (recentPayment.status === 'pending' && dueDate < today) {
+        } else if (recentPayment.status === 'overdue') {
           setClientPaymentStatus('Overdue');
-        } else if (recentPayment.status === 'pending') {
-          setClientPaymentStatus(`Next Payment Due: ${format(dueDate, 'MMM dd, yyyy')}`);
+        } else if (recentPayment.status === 'due') {
+          setClientPaymentStatus(`Next Payment Due: ${format(new Date(recentPayment.due_date), 'MMM dd, yyyy')}`);
         } else {
           setClientPaymentStatus('Payment Status Unknown');
         }
@@ -96,6 +93,7 @@ export default function ClientDashboard() {
         .eq('client_id', client.id)
         .eq('trainer_id', client.trainer_id)
         .gte('session_date', new Date().toISOString())
+        .eq('status', 'scheduled')
         .order('session_date', { ascending: true })
         .limit(5);
 
@@ -139,7 +137,7 @@ export default function ClientDashboard() {
 
   const getPaymentStatusColor = (status: string) => {
     if (status === 'paid') return 'text-green-600';
-    if (status === 'pending') return 'text-yellow-600';
+    if (status === 'due') return 'text-yellow-600';
     if (status === 'overdue') return 'text-red-600';
     return 'text-muted-foreground';
   };
