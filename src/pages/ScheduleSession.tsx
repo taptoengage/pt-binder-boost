@@ -27,6 +27,7 @@ const sessionFormSchema = z.object({
   }),
   session_time: z.string().min(1, 'Please select a session time'),
   status: z.enum(['scheduled', 'completed', 'cancelled_late', 'cancelled_early']),
+  session_pack_id: z.string().uuid('Please select a session pack').optional().nullable(),
   notes: z.string().optional(),
 });
 
@@ -50,8 +51,10 @@ export default function ScheduleSession() {
   const initialClientId = searchParams.get('clientId');
   const [clients, setClients] = useState<Client[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
+  const [activeSessionPacks, setActiveSessionPacks] = useState<any[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(true);
   const [isLoadingServiceTypes, setIsLoadingServiceTypes] = useState(true);
+  const [isLoadingPacks, setIsLoadingPacks] = useState(true);
 
   const form = useForm<SessionFormData>({
     resolver: zodResolver(sessionFormSchema),
@@ -115,6 +118,34 @@ export default function ScheduleSession() {
     }
   };
 
+  const fetchActiveSessionPacks = async (clientId: string) => {
+    if (!clientId || !user?.id) return;
+    
+    try {
+      setIsLoadingPacks(true);
+      const { data, error } = await supabase
+        .from('session_packs')
+        .select('id, total_sessions, sessions_remaining, service_types(name)')
+        .eq('trainer_id', user.id)
+        .eq('client_id', clientId)
+        .eq('status', 'active')
+        .gt('sessions_remaining', 0)
+        .order('sessions_remaining', { ascending: true });
+
+      if (error) throw error;
+      setActiveSessionPacks(data || []);
+    } catch (error) {
+      console.error('Error fetching session packs:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load session packs. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingPacks(false);
+    }
+  };
+
   const onSubmit = async (data: SessionFormData) => {
     try {
       // Combine date and time into a proper timestamp
@@ -128,6 +159,7 @@ export default function ScheduleSession() {
         service_type_id: data.service_type_id,
         session_date: sessionDateTime.toISOString(),
         status: data.status,
+        session_pack_id: data.session_pack_id || null,
         notes: data.notes || null,
       };
 
@@ -157,8 +189,20 @@ export default function ScheduleSession() {
   useEffect(() => {
     if (initialClientId && clients.length > 0) {
       form.setValue('client_id', initialClientId);
+      fetchActiveSessionPacks(initialClientId);
     }
   }, [initialClientId, clients, form]);
+
+  // Watch for client changes to fetch session packs
+  useEffect(() => {
+    const clientId = form.watch('client_id');
+    if (clientId) {
+      fetchActiveSessionPacks(clientId);
+    } else {
+      setActiveSessionPacks([]);
+      setIsLoadingPacks(false);
+    }
+  }, [form.watch('client_id')]);
 
   const handleBack = () => {
     navigate(-1);
@@ -260,6 +304,34 @@ export default function ScheduleSession() {
                     </FormItem>
                   )}
                 />
+
+                {activeSessionPacks.length > 0 && (
+                  <FormField
+                    control={form.control}
+                    name="session_pack_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Session Pack (Optional)</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={isLoadingPacks ? "Loading packs..." : "Select a session pack (Optional)"} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="">Do not assign to pack</SelectItem>
+                            {activeSessionPacks.map((pack) => (
+                              <SelectItem key={pack.id} value={pack.id}>
+                                {pack.service_types?.name || 'Untitled Pack'} ({pack.sessions_remaining} remaining)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <FormField
                   control={form.control}
