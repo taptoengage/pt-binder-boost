@@ -159,7 +159,7 @@ export default function ScheduleSession() {
         service_type_id: data.service_type_id,
         session_date: sessionDateTime.toISOString(),
         status: data.status,
-        session_pack_id: data.session_pack_id || null,
+        session_pack_id: data.session_pack_id === "none" ? null : data.session_pack_id || null,
         notes: data.notes || null,
       };
 
@@ -261,7 +261,7 @@ export default function ScheduleSession() {
                         </FormControl>
                         <SelectContent>
                           {clients.length === 0 && !isLoadingClients ? (
-                            <SelectItem value="" disabled>No clients found</SelectItem>
+                            <SelectItem value="no-clients" disabled>No clients found</SelectItem>
                           ) : (
                             clients.map((client) => (
                               <SelectItem key={client.id} value={client.id}>
@@ -290,7 +290,7 @@ export default function ScheduleSession() {
                         </FormControl>
                         <SelectContent>
                           {serviceTypes.length === 0 && !isLoadingServiceTypes ? (
-                            <SelectItem value="" disabled>No service types found</SelectItem>
+                            <SelectItem value="no-service-types" disabled>No service types found</SelectItem>
                           ) : (
                             serviceTypes.map((serviceType) => (
                               <SelectItem key={serviceType.id} value={serviceType.id}>
@@ -312,14 +312,14 @@ export default function ScheduleSession() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Session Pack (Optional)</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <Select onValueChange={field.onChange} value={field.value || "none"}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder={isLoadingPacks ? "Loading packs..." : "Select a session pack (Optional)"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">Do not assign to pack</SelectItem>
+                            <SelectItem value="none">Do not assign to pack</SelectItem>
                             {activeSessionPacks.map((pack) => (
                               <SelectItem key={pack.id} value={pack.id}>
                                 {pack.service_types?.name || 'Untitled Pack'} ({pack.sessions_remaining} remaining)
