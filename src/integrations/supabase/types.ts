@@ -177,6 +177,63 @@ export type Database = {
           },
         ]
       }
+      service_offerings: {
+        Row: {
+          billing_model: string
+          created_at: string
+          description: string | null
+          id: string
+          name_suffix: string | null
+          price: number
+          service_type_id: string
+          status: string
+          trainer_id: string
+          units_included: number | null
+          updated_at: string
+        }
+        Insert: {
+          billing_model: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name_suffix?: string | null
+          price?: number
+          service_type_id: string
+          status?: string
+          trainer_id: string
+          units_included?: number | null
+          updated_at?: string
+        }
+        Update: {
+          billing_model?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name_suffix?: string | null
+          price?: number
+          service_type_id?: string
+          status?: string
+          trainer_id?: string
+          units_included?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_offerings_service_type_id_fkey"
+            columns: ["service_type_id"]
+            isOneToOne: false
+            referencedRelation: "service_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_offerings_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_types: {
         Row: {
           billing_model: string
