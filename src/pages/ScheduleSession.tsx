@@ -132,9 +132,12 @@ export default function ScheduleSession() {
         .gt('sessions_remaining', 0)
         .order('sessions_remaining', { ascending: true });
 
+      console.log("DEBUG: Fetched activeSessionPacks data (within fetchActiveSessionPacks):", data);
+
       if (error) throw error;
       setActiveSessionPacks(data || []);
     } catch (error) {
+      console.error('DEBUG: Error fetching active session packs (from fetchActiveSessionPacks):', error);
       console.error('Error fetching session packs:', error);
       toast({
         title: 'Error',
@@ -221,6 +224,10 @@ export default function ScheduleSession() {
   };
 
   const timeOptions = generateTimeOptions();
+
+  // Debug logs for conditional rendering
+  console.log("DEBUG: Render Check: activeSessionPacks.length:", activeSessionPacks.length);
+  console.log("DEBUG: Render Check: isLoadingPacks:", isLoadingPacks);
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
