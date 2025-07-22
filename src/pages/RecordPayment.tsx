@@ -58,9 +58,12 @@ interface Client {
   name: string;
 }
 
-interface ServiceType {
+interface ServiceOffering {
   id: string;
-  name: string;
+  service_types: {
+    id: string;
+    name: string;
+  } | null;
   billing_model: string;
   units_included: number | null;
 }
@@ -72,9 +75,9 @@ export default function RecordPayment() {
   const [searchParams] = useSearchParams();
   const initialClientId = searchParams.get('clientId');
   const [clients, setClients] = useState<Client[]>([]);
-  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
+  const [serviceOfferings, setServiceOfferings] = useState<ServiceOffering[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
-  const [loadingServiceTypes, setLoadingServiceTypes] = useState(true);
+  const [loadingServiceOfferings, setLoadingServiceOfferings] = useState(true);
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
@@ -89,7 +92,7 @@ export default function RecordPayment() {
 
   const { watch, setValue } = form;
   const selectedServiceTypeId = watch('service_type_id');
-  const selectedServiceType = serviceTypes.find(st => st.id === selectedServiceTypeId);
+  const selectedServiceOffering = serviceOfferings.find(so => so.id === selectedServiceTypeId);
   const datePaid = watch('date_paid');
   const dueDate = watch('due_date');
 
@@ -139,16 +142,17 @@ export default function RecordPayment() {
     const fetchServiceTypes = async () => {
       if (!user?.id) return;
       
-      setLoadingServiceTypes(true);
+      setLoadingServiceOfferings(true);
       try {
         const { data, error } = await supabase
-          .from('service_types')
-          .select('id, name, billing_model, units_included')
+          .from('service_offerings')
+          .select('id, service_types(id, name), billing_model, units_included')
           .eq('trainer_id', user.id)
-          .order('name');
+          .eq('status', 'active')
+          .order('created_at');
 
         if (error) throw error;
-        setServiceTypes(data || []);
+        setServiceOfferings(data || []);
       } catch (error) {
         console.error('Error fetching service types:', error);
         toast({
@@ -157,7 +161,7 @@ export default function RecordPayment() {
           variant: 'destructive',
         });
       } finally {
-        setLoadingServiceTypes(false);
+        setLoadingServiceOfferings(false);
       }
     };
 
@@ -171,14 +175,14 @@ export default function RecordPayment() {
     }
   }, [initialClientId, clients, form]);
 
-  // Update billing_model field when service type changes for validation
+  // Update billing_model field when service offering changes for validation
   useEffect(() => {
-    if (selectedServiceType) {
-      setValue('billing_model', selectedServiceType.billing_model);
+    if (selectedServiceOffering) {
+      setValue('billing_model', selectedServiceOffering.billing_model);
     } else {
       setValue('billing_model', '');
     }
-  }, [selectedServiceType, setValue]);
+  }, [selectedServiceOffering, setValue]);
 
   const onSubmit = async (data: PaymentFormData) => {
     if (!user?.id) {
@@ -222,7 +226,7 @@ export default function RecordPayment() {
       const newPaymentId = paymentResult.id;
 
       // Conditional session_packs creation for 'pack' billing model
-      if (selectedServiceType?.billing_model === 'pack') {
+      if (selectedServiceOffering?.billing_model === 'pack') {
         
         const sessionPackData = {
           trainer_id: user.id,
@@ -250,7 +254,7 @@ export default function RecordPayment() {
 
       toast({
         title: 'Success',
-        description: selectedServiceType?.billing_model === 'pack' 
+        description: selectedServiceOffering?.billing_model === 'pack' 
           ? 'Payment and session pack created successfully!' 
           : 'Payment recorded successfully!',
       });
@@ -340,18 +344,19 @@ export default function RecordPayment() {
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={loadingServiceTypes ? "Loading service types..." : "Select a service type"} />
+                              <SelectValue placeholder={loadingServiceOfferings ? "Loading service offerings..." : "Select a service offering"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {serviceTypes.length === 0 && !loadingServiceTypes && (
-                              <SelectItem value="no-service-types" disabled>
-                                No service types found
+                            {serviceOfferings.length === 0 && !loadingServiceOfferings && (
+                              <SelectItem value="no-service-offerings" disabled>
+                                No service offerings found
                               </SelectItem>
                             )}
-                            {serviceTypes.map((serviceType) => (
-                              <SelectItem key={serviceType.id} value={serviceType.id}>
-                                {serviceType.name}
+                            {serviceOfferings.map((offering) => (
+                              <SelectItem key={offering.id} value={offering.id}>
+                                {offering.service_types?.name || 'Unknown Service'} 
+                                {offering.billing_model === 'pack' && ` (${offering.units_included} sessions)`}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -497,7 +502,7 @@ export default function RecordPayment() {
                 </div>
 
                 {/* Conditional Session Pack Fields */}
-                {selectedServiceType?.billing_model === 'pack' && (
+                {selectedServiceOffering?.billing_model === 'pack' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
                     <div className="md:col-span-2">
                       <h3 className="text-lg font-medium mb-4">Session Pack Details</h3>

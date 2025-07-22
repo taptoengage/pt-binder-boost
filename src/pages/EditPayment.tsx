@@ -52,7 +52,11 @@ interface Payment {
   date_paid: string | null;
   status: string;
   clients: { name: string };
-  service_types: { name: string };
+  service_offerings: { 
+    service_types: { 
+      name: string; 
+    } | null; 
+  } | null;
 }
 
 export default function EditPayment() {
@@ -99,7 +103,7 @@ export default function EditPayment() {
       try {
         const { data, error } = await supabase
           .from('payments')
-          .select('*, clients(name), service_types(name)')
+          .select('*, clients(name), service_offerings(service_types(name))')
           .eq('id', paymentId)
           .eq('trainer_id', user.id)
           .single();
@@ -173,26 +177,34 @@ export default function EditPayment() {
     fetchClients();
   }, [user?.id, toast]);
 
-  // Fetch service types
+  // Fetch service offerings (which are now used instead of service types)
   useEffect(() => {
-    const fetchServiceTypes = async () => {
+    const fetchServiceOfferings = async () => {
       if (!user?.id) return;
       
       setLoadingServiceTypes(true);
       try {
         const { data, error } = await supabase
-          .from('service_types')
-          .select('id, name')
+          .from('service_offerings')
+          .select('id, service_types(id, name)')
           .eq('trainer_id', user.id)
-          .order('name');
+          .eq('status', 'active')
+          .order('created_at');
 
         if (error) throw error;
-        setServiceTypes(data || []);
+        
+        // Transform the data to match the ServiceType interface
+        const transformedData = data?.map(offering => ({
+          id: offering.id,
+          name: offering.service_types?.name || 'Unknown Service'
+        })) || [];
+        
+        setServiceTypes(transformedData);
       } catch (error) {
-        console.error('Error fetching service types:', error);
+        console.error('Error fetching service offerings:', error);
         toast({
           title: 'Error',
-          description: 'Failed to load service types. Please try again.',
+          description: 'Failed to load service offerings. Please try again.',
           variant: 'destructive',
         });
       } finally {
@@ -200,7 +212,7 @@ export default function EditPayment() {
       }
     };
 
-    fetchServiceTypes();
+    fetchServiceOfferings();
   }, [user?.id, toast]);
 
   const onSubmit = async (data: PaymentFormData) => {

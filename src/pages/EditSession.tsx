@@ -52,9 +52,11 @@ interface SessionData {
   clients: {
     name: string;
   };
-  service_types: {
-    name: string;
-  };
+  service_offerings: {
+    service_types: {
+      name: string;
+    } | null;
+  } | null;
 }
 
 export default function EditSession() {
@@ -91,7 +93,7 @@ export default function EditSession() {
     try {
       const { data, error } = await supabase
         .from('sessions')
-        .select('*, clients(name), service_types(name)')
+        .select('*, clients(name), service_offerings(service_types(name))')
         .eq('id', sessionId)
         .eq('trainer_id', user?.id)
         .maybeSingle();
@@ -161,18 +163,26 @@ export default function EditSession() {
   const fetchServiceTypes = async () => {
     try {
       const { data, error } = await supabase
-        .from('service_types')
-        .select('id, name')
+        .from('service_offerings')
+        .select('id, service_types(id, name)')
         .eq('trainer_id', user?.id)
-        .order('name');
+        .eq('status', 'active')
+        .order('created_at');
 
       if (error) throw error;
-      setServiceTypes(data || []);
+      
+      // Transform the data to match the ServiceType interface
+      const transformedData = data?.map(offering => ({
+        id: offering.id,
+        name: offering.service_types?.name || 'Unknown Service'
+      })) || [];
+      
+      setServiceTypes(transformedData);
     } catch (error) {
-      console.error('Error fetching service types:', error);
+      console.error('Error fetching service offerings:', error);
       toast({
         title: 'Error',
-        description: 'Failed to load service types. Please try again.',
+        description: 'Failed to load service offerings. Please try again.',
         variant: 'destructive',
       });
     } finally {

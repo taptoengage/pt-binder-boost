@@ -30,9 +30,11 @@ interface ClientPayment {
   due_date: string;
   date_paid: string | null;
   status: string;
-  service_types: {
-    name: string;
-  };
+  service_offerings: {
+    service_types: {
+      name: string;
+    } | null;
+  } | null;
 }
 
 interface ClientSession {
@@ -40,9 +42,11 @@ interface ClientSession {
   session_date: string;
   status: string;
   notes: string | null;
-  service_types: {
-    name: string;
-  };
+  service_offerings: {
+    service_types: {
+      name: string;
+    } | null;
+  } | null;
 }
 
 export default function ClientDetail() {
@@ -104,10 +108,10 @@ export default function ClientDetail() {
 
         setClient(clientData);
 
-        // Fetch client payments
+        // Fetch client payments with service offerings
         const { data: paymentsData, error: paymentsError } = await supabase
           .from('payments')
-          .select('*, service_types(name)')
+          .select('*, service_offerings(service_types(name))')
           .eq('client_id', clientId)
           .eq('trainer_id', user.id)
           .order('due_date', { ascending: false });
@@ -123,10 +127,10 @@ export default function ClientDetail() {
           setClientPayments(paymentsData || []);
         }
 
-        // Fetch client sessions
+        // Fetch client sessions with service offerings
         const { data: sessionsData, error: sessionsError } = await supabase
           .from('sessions')
-          .select('*, service_types(name)')
+          .select('*, service_offerings(service_types(name))')
           .eq('client_id', clientId)
           .eq('trainer_id', user.id)
           .order('session_date', { ascending: false });
@@ -228,7 +232,7 @@ export default function ClientDetail() {
       // Refresh the payments list
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payments')
-        .select('*, service_types(name)')
+        .select('*, service_offerings(service_types(name))')
         .eq('client_id', clientId)
         .eq('trainer_id', user.id)
         .order('due_date', { ascending: false });
@@ -276,7 +280,7 @@ export default function ClientDetail() {
       // Refresh the sessions list
       const { data: sessionsData, error: sessionsError } = await supabase
         .from('sessions')
-        .select('*, service_types(name)')
+        .select('*, service_offerings(service_types(name))')
         .eq('client_id', clientId)
         .eq('trainer_id', user.id)
         .order('session_date', { ascending: false });
@@ -512,7 +516,7 @@ export default function ClientDetail() {
                             </span>
                           </TableCell>
                           <TableCell>
-                            {payment.service_types.name}
+                            {payment.service_offerings?.service_types?.name || 'Unknown Service'}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -600,7 +604,7 @@ export default function ClientDetail() {
                           })}
                         </TableCell>
                         <TableCell>
-                          {session.service_types.name}
+                          {session.service_offerings?.service_types?.name || 'Unknown Service'}
                         </TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
