@@ -70,7 +70,9 @@ const packSchema = z.object({
   service_type_id: z.string().min(1, 'Service type is required'),
   quantity: z.number().min(1, 'Quantity must be at least 1'),
   cost_per_session: z.number().min(0.01, 'Cost per session must be greater than 0'),
-  purchase_date: z.date().optional(),
+  purchase_date: z.date({
+    message: "Purchase date is required",
+  }),
   expiry_date: z.date().optional(),
 });
 
@@ -398,15 +400,18 @@ export default function ClientDetail() {
     try {
       setIsSubmittingPack(true);
       
+      // Ensure purchase_date is available with fallback
+      const purchaseDate = data.purchase_date || new Date();
+      
       // First, insert the payment record
       console.log("DEBUG: onAddPackSubmit: Attempting payments insert with data:", {
         trainer_id: user.id,
         client_id: clientId,
         service_type_id: data.service_type_id,
         amount: totalPackValue,
-        due_date: data.purchase_date.toISOString().split('T')[0],
+        due_date: purchaseDate.toISOString().split('T')[0],
         status: 'paid',
-        date_paid: data.purchase_date.toISOString().split('T')[0],
+        date_paid: purchaseDate.toISOString().split('T')[0],
       });
 
       const { data: paymentResult, error: paymentError } = await supabase
@@ -416,9 +421,9 @@ export default function ClientDetail() {
           client_id: clientId,
           service_type_id: data.service_type_id,
           amount: totalPackValue,
-          due_date: data.purchase_date.toISOString().split('T')[0],
+          due_date: purchaseDate.toISOString().split('T')[0],
           status: 'paid',
-          date_paid: data.purchase_date.toISOString().split('T')[0],
+          date_paid: purchaseDate.toISOString().split('T')[0],
         })
         .select()
         .single();
@@ -437,7 +442,7 @@ export default function ClientDetail() {
         sessions_remaining: data.quantity,
         amount_paid: totalPackValue,
         payment_id: newPaymentId,
-        purchase_date: data.purchase_date.toISOString(),
+        purchase_date: purchaseDate.toISOString(),
         expiry_date: data.expiry_date ? data.expiry_date.toISOString().split('T')[0] : null,
         status: 'active',
       });
@@ -452,7 +457,7 @@ export default function ClientDetail() {
           sessions_remaining: data.quantity,
           amount_paid: totalPackValue,
           payment_id: newPaymentId,
-          purchase_date: data.purchase_date.toISOString(),
+          purchase_date: purchaseDate.toISOString(),
           expiry_date: data.expiry_date ? data.expiry_date.toISOString().split('T')[0] : null,
           status: 'active',
         });
