@@ -400,19 +400,21 @@ export default function ClientDetail() {
     try {
       setIsSubmittingPack(true);
       
-      // Robust type check for purchase_date
-      const purchaseDate = data.purchase_date instanceof Date
-        ? data.purchase_date
-        : new Date(); // Fallback to current date if not a valid Date object
-      
-      // Robust type check for expiry_date
-      const expiryDateIso = data.expiry_date instanceof Date
-        ? data.expiry_date.toISOString().split('T')[0]
-        : null; // Ensure this handles undefined/null by converting to null
-      
-      let offeringIdToUse: string;
+      // Inside handleAddPackSubmit, at the very beginning of the try block,
+      // or where purchaseDate/expiryDateIso are currently declared:
+      const purchaseDateObj = data.purchase_date ? new Date(data.purchase_date) : new Date(); // Ensure it's a Date object, default to now
+      const purchaseDateForInsert = purchaseDateObj.toISOString().split('T')[0];
 
-      // Get the selected Core Service Type to build offering name
+      const expiryDateObj = data.expiry_date; // This will be Date | undefined
+      const expiryDateForInsert = expiryDateObj instanceof Date
+        ? expiryDateObj.toISOString().split('T')[0]
+        : null; // Convert to null if undefined or not a Date
+      
+      // Inside handleAddPackSubmit, AFTER `purchaseDateForInsert` and `expiryDateForInsert` are defined,
+      // AND BEFORE the `payments` insert.
+      let serviceOfferingIdForFK: string;
+
+      // Get the selected Core Service Type to build offering name/description
       const selectedCoreServiceType = coreServiceTypes.find(st => st.id === data.service_type_id);
       const offeringNameSuffix = ` - ${data.quantity} Pack`;
       const offeringDescription = `Pack of ${data.quantity} ${selectedCoreServiceType?.name || 'sessions'}`;
@@ -426,14 +428,17 @@ export default function ClientDetail() {
         .eq('billing_model', 'pack')
         .eq('units_included', data.quantity)
         .eq('price', totalPackValue) // totalPackValue from the form
-        .maybeSingle();
+        .maybeSingle(); // Use maybeSingle to get null if not found
 
-      if (findOfferingError) throw findOfferingError; // Propagate error if find fails
+      if (findOfferingError) {
+        console.error("DEBUG: Error finding existing offering:", findOfferingError);
+        throw findOfferingError; // Propagate error if find fails unexpectedly
+      }
 
       if (existingOfferings) {
         // Found an existing offering, use its ID
-        offeringIdToUse = existingOfferings.id;
-        console.log("DEBUG: Found existing service offering (ID used for FK):", offeringIdToUse);
+        serviceOfferingIdForFK = existingOfferings.id;
+        console.log("DEBUG: Found existing service offering (ID used for FK):", serviceOfferingIdForFK);
       } else {
         // No matching offering found, create a new one
         console.log("DEBUG: Creating new service offering for pack...");
@@ -450,22 +455,25 @@ export default function ClientDetail() {
             status: 'active',
           })
           .select('id')
-          .single();
+          .single(); // Get the ID of the newly created offering
 
-        if (createOfferingError) throw createOfferingError; // Propagate error if create fails
-        offeringIdToUse = newOffering.id;
-        console.log("DEBUG: Created new service offering (ID used for FK):", offeringIdToUse);
+        if (createOfferingError) {
+          console.error("DEBUG: Error creating new service offering:", createOfferingError);
+          throw createOfferingError; // Propagate error if create fails
+        }
+        serviceOfferingIdForFK = newOffering.id;
+        console.log("DEBUG: Created new service offering (ID used for FK):", serviceOfferingIdForFK);
       }
 
       // First, insert the payment record
       console.log("DEBUG: onAddPackSubmit: Attempting payments insert with data:", {
         trainer_id: user.id,
         client_id: clientId,
-        service_type_id: offeringIdToUse, // NOW THIS POINTS TO service_offerings.id
-        amount: totalPackValue,
-        due_date: purchaseDate.toISOString().split('T')[0],
+        service_type_id: serviceOfferingIdForFK, // This is the ID from public.service_offerings
+        amount: totalPackValue, // Correctly using totalPackValue
+        due_date: purchaseDateForInsert,
         status: 'paid',
-        date_paid: purchaseDate.toISOString().split('T')[0],
+        date_paid: purchaseDateForInsert,
       });
 
       const { data: paymentResult, error: paymentError } = await supabase
@@ -473,11 +481,11 @@ export default function ClientDetail() {
         .insert({
           trainer_id: user.id,
           client_id: clientId,
-          service_type_id: offeringIdToUse, // NOW THIS POINTS TO service_offerings.id
-          amount: totalPackValue,
-          due_date: purchaseDate.toISOString().split('T')[0],
+          service_type_id: serviceOfferingIdForFK, // This is the ID from public.service_offerings
+          amount: totalPackValue, // Correctly using totalPackValue
+          due_date: purchaseDateForInsert,
           status: 'paid',
-          date_paid: purchaseDate.toISOString().split('T')[0],
+          date_paid: purchaseDateForInsert,
         })
         .select()
         .single();
@@ -491,13 +499,13 @@ export default function ClientDetail() {
       console.log("DEBUG: onAddPackSubmit: Attempting session_packs insert with data:", {
         trainer_id: user.id,
         client_id: clientId,
-        service_type_id: offeringIdToUse, // NOW THIS POINTS TO service_offerings.id
+        service_type_id: serviceOfferingIdForFK, // This is the ID from public.service_offerings
         total_sessions: data.quantity,
         sessions_remaining: data.quantity,
-        amount_paid: totalPackValue,
+        amount_paid: totalPackValue, // Correctly using totalPackValue
         payment_id: newPaymentId,
-        purchase_date: purchaseDate.toISOString(),
-        expiry_date: expiryDateIso,
+        purchase_date: purchaseDateForInsert,
+        expiry_date: expiryDateForInsert,
         status: 'active',
       });
 
@@ -506,13 +514,13 @@ export default function ClientDetail() {
         .insert({
           trainer_id: user.id,
           client_id: clientId,
-          service_type_id: offeringIdToUse, // NOW THIS POINTS TO service_offerings.id
+          service_type_id: serviceOfferingIdForFK, // This is the ID from public.service_offerings
           total_sessions: data.quantity,
           sessions_remaining: data.quantity,
-          amount_paid: totalPackValue,
+          amount_paid: totalPackValue, // Correctly using totalPackValue
           payment_id: newPaymentId,
-          purchase_date: purchaseDate.toISOString(),
-          expiry_date: expiryDateIso,
+          purchase_date: purchaseDateForInsert,
+          expiry_date: expiryDateForInsert,
           status: 'active',
         });
 
