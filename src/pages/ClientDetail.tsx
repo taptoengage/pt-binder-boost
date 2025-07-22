@@ -1,15 +1,26 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Loader2, User, Phone, Mail, DollarSign, Calendar, Target, Activity, Plus, Clock, Edit, Trash2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format } from 'date-fns';
+import { ArrowLeft, Loader2, User, Phone, Mail, DollarSign, Calendar, Target, Activity, Plus, Clock, Edit, Trash2, CalendarIcon, Package } from 'lucide-react';
 import { DashboardNavigation } from '@/components/Navigation';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 interface Client {
   id: string;
@@ -49,6 +60,22 @@ interface ClientSession {
   } | null;
 }
 
+interface ServiceType {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+const packSchema = z.object({
+  service_type_id: z.string().min(1, 'Service type is required'),
+  quantity: z.number().min(1, 'Quantity must be at least 1'),
+  cost_per_session: z.number().min(0.01, 'Cost per session must be greater than 0'),
+  purchase_date: z.date().optional(),
+  expiry_date: z.date().optional(),
+});
+
+type PackFormData = z.infer<typeof packSchema>;
+
 export default function ClientDetail() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
@@ -69,6 +96,51 @@ export default function ClientDetail() {
   const [isSessionConfirmModalOpen, setIsSessionConfirmModalOpen] = useState(false);
   const [sessionToDeleteId, setSessionToDeleteId] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
+  
+  // Add New Pack state and form
+  const [isAddPackModalOpen, setIsAddPackModalOpen] = useState(false);
+  const [isSubmittingPack, setIsSubmittingPack] = useState(false);
+  const [coreServiceTypes, setCoreServiceTypes] = useState<ServiceType[]>([]);
+  const [isLoadingServiceTypes, setIsLoadingServiceTypes] = useState(false);
+
+  const packForm = useForm<PackFormData>({
+    resolver: zodResolver(packSchema),
+    defaultValues: {
+      service_type_id: '',
+      quantity: 1,
+      cost_per_session: 0,
+      purchase_date: new Date(),
+      expiry_date: undefined,
+    },
+  });
+
+  // Fetch core service types for pack form
+  useEffect(() => {
+    const fetchServiceTypes = async () => {
+      if (!user) return;
+
+      try {
+        setIsLoadingServiceTypes(true);
+        const { data, error } = await supabase
+          .from('service_types')
+          .select('id, name, description')
+          .eq('trainer_id', user.id)
+          .order('name');
+
+        if (error) {
+          throw error;
+        }
+
+        setCoreServiceTypes(data || []);
+      } catch (error) {
+        console.error('Error fetching service types:', error);
+      } finally {
+        setIsLoadingServiceTypes(false);
+      }
+    };
+
+    fetchServiceTypes();
+  }, [user?.id]);
 
   useEffect(() => {
     const fetchClientData = async () => {
@@ -163,6 +235,13 @@ export default function ClientDetail() {
 
     fetchClientData();
   }, [clientId, user?.id, toast, navigate]);
+
+  // Calculate total pack value
+  const totalPackValue = useMemo(() => {
+    const quantity = packForm.watch('quantity') || 0;
+    const costPerSession = packForm.watch('cost_per_session') || 0;
+    return quantity * costPerSession;
+  }, [packForm.watch('quantity'), packForm.watch('cost_per_session')]);
 
   const handleBackToClients = () => {
     navigate('/clients');
@@ -300,6 +379,33 @@ export default function ClientDetail() {
       setIsDeletingSession(false);
       setIsSessionConfirmModalOpen(false);
       setSessionToDeleteId(null);
+    }
+  };
+
+  const handleAddPackSubmit = async (data: PackFormData) => {
+    if (!user || !clientId) return;
+
+    try {
+      setIsSubmittingPack(true);
+      console.log('Pack form data:', {
+        ...data,
+        client_id: clientId,
+        trainer_id: user.id,
+        total_value: totalPackValue,
+      });
+      
+      toast({
+        title: "Pack data logged",
+        description: "Check the console for the pack form data.",
+      });
+
+      // Reset form and close modal
+      packForm.reset();
+      setIsAddPackModalOpen(false);
+    } catch (error) {
+      console.error('Error handling pack submission:', error);
+    } finally {
+      setIsSubmittingPack(false);
     }
   };
 
@@ -652,19 +758,30 @@ export default function ClientDetail() {
           </CardContent>
         </Card>
 
-        {/* Future Features Placeholder */}
-        <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Custom Rates</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground text-center py-8">
-                Custom service rates coming soon
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Client Offerings */}
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center">
+                <Package className="w-5 h-5 mr-2" />
+                Client Offerings
+              </CardTitle>
+              <Button 
+                onClick={() => setIsAddPackModalOpen(true)}
+                size="sm"
+                className="flex items-center space-x-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add New Pack</span>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground text-center py-8">
+              Session packs and subscriptions coming soon
+            </p>
+          </CardContent>
+        </Card>
 
         {/* Delete Confirmation Modal */}
         <Dialog open={isConfirmModalOpen} onOpenChange={setIsConfirmModalOpen}>
@@ -787,6 +904,229 @@ export default function ClientDetail() {
                 )}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Add New Pack Modal */}
+        <Dialog open={isAddPackModalOpen} onOpenChange={setIsAddPackModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add New Session Pack for {client?.name}</DialogTitle>
+              <DialogDescription>
+                Create a pre-paid pack of sessions for this client.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <Form {...packForm}>
+              <form onSubmit={packForm.handleSubmit(handleAddPackSubmit)} className="space-y-6">
+                {/* Core Service Type */}
+                <FormField
+                  control={packForm.control}
+                  name="service_type_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Core Service Type *</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a service type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {isLoadingServiceTypes ? (
+                            <div className="flex items-center justify-center py-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span className="ml-2 text-sm">Loading...</span>
+                            </div>
+                          ) : coreServiceTypes.length === 0 ? (
+                            <div className="py-2 px-3 text-sm text-muted-foreground">
+                              No service types found
+                            </div>
+                          ) : (
+                            coreServiceTypes.map((serviceType) => (
+                              <SelectItem key={serviceType.id} value={serviceType.id}>
+                                {serviceType.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Quantity of Sessions */}
+                <FormField
+                  control={packForm.control}
+                  name="quantity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Quantity of Sessions in Pack *</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="e.g., 10"
+                          {...field}
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Cost per Session */}
+                <FormField
+                  control={packForm.control}
+                  name="cost_per_session"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cost Per Session in Pack *</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">$</span>
+                          <Input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            placeholder="e.g., 75.00"
+                            className="pl-8"
+                            {...field}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Total Pack Value (Display Only) */}
+                <div className="p-4 bg-muted rounded-lg">
+                  <Label className="text-sm font-medium">Total Pack Value</Label>
+                  <p className="text-2xl font-bold text-primary">
+                    ${totalPackValue.toFixed(2)}
+                  </p>
+                </div>
+
+                {/* Purchase Date */}
+                <FormField
+                  control={packForm.control}
+                  name="purchase_date"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Purchase Date</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full pl-3 text-left font-normal",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value ? (
+                                format(field.value, "PPP")
+                              ) : (
+                                <span>Pick a date</span>
+                              )}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <CalendarComponent
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            disabled={(date) =>
+                              date > new Date() || date < new Date("1900-01-01")
+                            }
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Expiry Date */}
+                <FormField
+                  control={packForm.control}
+                  name="expiry_date"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Expiry Date (Optional)</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full pl-3 text-left font-normal",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value ? (
+                                format(field.value, "PPP")
+                              ) : (
+                                <span>Pick a date</span>
+                              )}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <CalendarComponent
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            disabled={(date) =>
+                              date < new Date()
+                            }
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <DialogFooter>
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    onClick={() => setIsAddPackModalOpen(false)}
+                    disabled={isSubmittingPack}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    type="submit"
+                    disabled={isSubmittingPack}
+                    className="flex items-center gap-2"
+                  >
+                    {isSubmittingPack ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Adding Pack...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4" />
+                        Add Pack
+                      </>
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
           </DialogContent>
         </Dialog>
       </div>
