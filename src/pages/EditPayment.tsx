@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 
 const paymentSchema = z.object({
   client_id: z.string().uuid('Please select a client'),
-  service_type_id: z.string().uuid('Please select a service type'),
+  service_type_id: z.string().uuid('Please select a core service type'),
   amount: z.number().min(0.01, 'Amount must be greater than 0'),
   due_date: z.date({
     message: 'Due date is required',
@@ -52,10 +52,8 @@ interface Payment {
   date_paid: string | null;
   status: string;
   clients: { name: string };
-  service_offerings: { 
-    service_types: { 
-      name: string; 
-    } | null; 
+  service_types: { 
+    name: string; 
   } | null;
 }
 
@@ -65,10 +63,10 @@ export default function EditPayment() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
-  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
+  const [coreServiceTypes, setCoreServiceTypes] = useState<ServiceType[]>([]);
   const [payment, setPayment] = useState<Payment | null>(null);
   const [loadingClients, setLoadingClients] = useState(true);
-  const [loadingServiceTypes, setLoadingServiceTypes] = useState(true);
+  const [loadingCoreServiceTypes, setLoadingCoreServiceTypes] = useState(true);
   const [loadingPayment, setLoadingPayment] = useState(true);
 
   const form = useForm<PaymentFormData>({
@@ -103,7 +101,7 @@ export default function EditPayment() {
       try {
         const { data, error } = await supabase
           .from('payments')
-          .select('*, clients(name), service_offerings(service_types(name))')
+          .select('*, clients(name), service_types(name)')
           .eq('id', paymentId)
           .eq('trainer_id', user.id)
           .single();
@@ -177,42 +175,35 @@ export default function EditPayment() {
     fetchClients();
   }, [user?.id, toast]);
 
-  // Fetch service offerings (which are now used instead of service types)
+  // Fetch core service types
   useEffect(() => {
-    const fetchServiceOfferings = async () => {
+    const fetchCoreServiceTypes = async () => {
       if (!user?.id) return;
       
-      setLoadingServiceTypes(true);
+      setLoadingCoreServiceTypes(true);
       try {
         const { data, error } = await supabase
-          .from('service_offerings')
-          .select('id, service_types(id, name)')
+          .from('service_types')
+          .select('id, name')
           .eq('trainer_id', user.id)
-          .eq('status', 'active')
-          .order('created_at');
+          .order('name');
 
         if (error) throw error;
         
-        // Transform the data to match the ServiceType interface
-        const transformedData = data?.map(offering => ({
-          id: offering.id,
-          name: offering.service_types?.name || 'Unknown Service'
-        })) || [];
-        
-        setServiceTypes(transformedData);
+        setCoreServiceTypes(data || []);
       } catch (error) {
-        console.error('Error fetching service offerings:', error);
+        console.error('Error fetching core service types:', error);
         toast({
           title: 'Error',
-          description: 'Failed to load service offerings. Please try again.',
+          description: 'Failed to load core service types. Please try again.',
           variant: 'destructive',
         });
       } finally {
-        setLoadingServiceTypes(false);
+        setLoadingCoreServiceTypes(false);
       }
     };
 
-    fetchServiceOfferings();
+    fetchCoreServiceTypes();
   }, [user?.id, toast]);
 
   const onSubmit = async (data: PaymentFormData) => {
@@ -353,20 +344,20 @@ export default function EditPayment() {
                     name="service_type_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Service Type</FormLabel>
+                        <FormLabel>Core Service Type</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={loadingServiceTypes ? "Loading service types..." : "Select a service type"} />
+                              <SelectValue placeholder={loadingCoreServiceTypes ? "Loading core service types..." : "Select a core service type"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {serviceTypes.length === 0 && !loadingServiceTypes && (
+                            {coreServiceTypes.length === 0 && !loadingCoreServiceTypes && (
                               <SelectItem value="no-service-types" disabled>
-                                No service types found
+                                No core service types found
                               </SelectItem>
                             )}
-                            {serviceTypes.map((serviceType) => (
+                            {coreServiceTypes.map((serviceType) => (
                               <SelectItem key={serviceType.id} value={serviceType.id}>
                                 {serviceType.name}
                               </SelectItem>
