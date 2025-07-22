@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 
 const paymentSchema = z.object({
   client_id: z.string().uuid('Please select a client'),
-  service_type_id: z.string().uuid('Please select a service type'),
+  service_type_id: z.string().uuid('Please select a core service type'),
   amount: z.number().min(0.01, 'Amount must be greater than 0'),
   due_date: z.date({
     message: 'Due date is required',
@@ -29,26 +29,6 @@ const paymentSchema = z.object({
   status: z.enum(['paid', 'due', 'overdue'], {
     message: 'Please select a status',
   }),
-  billing_model: z.string().optional(), // Hidden field for validation
-  total_sessions: z.number().int().min(1, 'Total sessions must be at least 1').optional().nullable(),
-  expiry_date: z.date().optional(),
-}).superRefine((data, ctx) => {
-  // Conditional validation: total_sessions is required for pack billing model
-  if (data.billing_model === 'pack' && (!data.total_sessions || data.total_sessions < 1)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Total sessions is required for pack billing model and must be at least 1.',
-      path: ['total_sessions'],
-    });
-  }
-  // Conditional validation: amount must be greater than 0 for pack billing model
-  if (data.billing_model === 'pack' && (data.amount <= 0.00)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Amount must be greater than 0 for pack billing models.',
-      path: ['amount'],
-    });
-  }
 });
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
@@ -58,14 +38,9 @@ interface Client {
   name: string;
 }
 
-interface ServiceOffering {
+interface ServiceType {
   id: string;
-  service_types: {
-    id: string;
-    name: string;
-  } | null;
-  billing_model: string;
-  units_included: number | null;
+  name: string;
 }
 
 export default function RecordPayment() {
@@ -75,9 +50,9 @@ export default function RecordPayment() {
   const [searchParams] = useSearchParams();
   const initialClientId = searchParams.get('clientId');
   const [clients, setClients] = useState<Client[]>([]);
-  const [serviceOfferings, setServiceOfferings] = useState<ServiceOffering[]>([]);
+  const [coreServiceTypes, setCoreServiceTypes] = useState<ServiceType[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
-  const [loadingServiceOfferings, setLoadingServiceOfferings] = useState(true);
+  const [loadingCoreServiceTypes, setLoadingCoreServiceTypes] = useState(true);
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
@@ -85,14 +60,10 @@ export default function RecordPayment() {
       client_id: initialClientId || '',
       amount: 0,
       status: 'due',
-      total_sessions: null,
-      expiry_date: undefined,
     },
   });
 
   const { watch, setValue } = form;
-  const selectedServiceTypeId = watch('service_type_id');
-  const selectedServiceOffering = serviceOfferings.find(so => so.id === selectedServiceTypeId);
   const datePaid = watch('date_paid');
   const dueDate = watch('due_date');
 
@@ -137,22 +108,21 @@ export default function RecordPayment() {
     fetchClients();
   }, [user?.id, toast]);
 
-  // Fetch service types
+  // Fetch core service types
   useEffect(() => {
-    const fetchServiceTypes = async () => {
+    const fetchCoreServiceTypes = async () => {
       if (!user?.id) return;
       
-      setLoadingServiceOfferings(true);
+      setLoadingCoreServiceTypes(true);
       try {
         const { data, error } = await supabase
-          .from('service_offerings')
-          .select('id, service_types(id, name), billing_model, units_included')
+          .from('service_types')
+          .select('id, name')
           .eq('trainer_id', user.id)
-          .eq('status', 'active')
-          .order('created_at');
+          .order('name');
 
         if (error) throw error;
-        setServiceOfferings(data || []);
+        setCoreServiceTypes(data || []);
       } catch (error) {
         console.error('Error fetching service types:', error);
         toast({
@@ -161,11 +131,11 @@ export default function RecordPayment() {
           variant: 'destructive',
         });
       } finally {
-        setLoadingServiceOfferings(false);
+        setLoadingCoreServiceTypes(false);
       }
     };
 
-    fetchServiceTypes();
+    fetchCoreServiceTypes();
   }, [user?.id, toast]);
 
   // Set form value when clients load and initialClientId exists
@@ -174,15 +144,6 @@ export default function RecordPayment() {
       form.setValue('client_id', initialClientId);
     }
   }, [initialClientId, clients, form]);
-
-  // Update billing_model field when service offering changes for validation
-  useEffect(() => {
-    if (selectedServiceOffering) {
-      setValue('billing_model', selectedServiceOffering.billing_model);
-    } else {
-      setValue('billing_model', '');
-    }
-  }, [selectedServiceOffering, setValue]);
 
   const onSubmit = async (data: PaymentFormData) => {
     if (!user?.id) {
@@ -205,58 +166,24 @@ export default function RecordPayment() {
         finalStatus = 'due';
       }
 
-
-      // Insert payment and get the ID back
-      const { data: paymentResult, error: paymentError } = await supabase
+      // Insert payment - directly using service_type_id from core service types
+      const { error: paymentError } = await supabase
         .from('payments')
         .insert({
           trainer_id: user.id,
           client_id: data.client_id,
-          service_type_id: data.service_type_id,
+          service_type_id: data.service_type_id, // Now links directly to public.service_types.id
           amount: data.amount,
           due_date: data.due_date.toISOString().split('T')[0], // Format as YYYY-MM-DD
           date_paid: data.date_paid ? data.date_paid.toISOString().split('T')[0] : null,
           status: finalStatus,
-        })
-        .select('id')
-        .single();
+        });
 
       if (paymentError) throw paymentError;
 
-      const newPaymentId = paymentResult.id;
-
-      // Conditional session_packs creation for 'pack' billing model
-      if (selectedServiceOffering?.billing_model === 'pack') {
-        
-        const sessionPackData = {
-          trainer_id: user.id,
-          client_id: data.client_id,
-          service_type_id: data.service_type_id,
-          total_sessions: data.total_sessions!, // This is guaranteed by validation for 'pack'
-          sessions_remaining: data.total_sessions!, // Starts equal to total_sessions
-          amount_paid: data.amount, // Link to the payment amount
-          payment_id: newPaymentId, // Link to the just-created payment record
-          purchase_date: new Date().toISOString(), // Current timestamp
-          expiry_date: data.expiry_date ? data.expiry_date.toISOString().split('T')[0] : null,
-          status: 'active', // Default status for a new pack
-        };
-
-        
-
-        const { error: sessionPackError } = await supabase
-          .from('session_packs')
-          .insert([sessionPackData]);
-
-        if (sessionPackError) {
-          throw sessionPackError;
-        }
-      }
-
       toast({
         title: 'Success',
-        description: selectedServiceOffering?.billing_model === 'pack' 
-          ? 'Payment and session pack created successfully!' 
-          : 'Payment recorded successfully!',
+        description: 'Payment recorded successfully!',
       });
 
       form.reset();
@@ -264,7 +191,7 @@ export default function RecordPayment() {
       console.error('Error recording payment:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to record payment/pack. Please check the amount and try again.',
+        description: error.message || 'Failed to record payment. Please try again.',
         variant: 'destructive',
       });
     }
