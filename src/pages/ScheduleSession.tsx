@@ -23,7 +23,7 @@ const sessionFormSchema = z.object({
   client_id: z.string().min(1, 'Please select a client'),
   service_type_id: z.string().min(1, 'Please select a service type'),
   session_date: z.date({
-    required_error: 'Please select a session date',
+    message: 'Please select a session date',
   }),
   session_time: z.string().min(1, 'Please select a session time'),
   status: z.enum(['scheduled', 'completed', 'cancelled_late', 'cancelled_early']),

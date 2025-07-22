@@ -23,11 +23,11 @@ const paymentSchema = z.object({
   service_type_id: z.string().uuid('Please select a service type'),
   amount: z.number().min(0.01, 'Amount must be greater than 0'),
   due_date: z.date({
-    required_error: 'Due date is required',
+    message: 'Due date is required',
   }),
   date_paid: z.date().optional(),
   status: z.enum(['paid', 'due', 'overdue'], {
-    required_error: 'Please select a status',
+    message: 'Please select a status',
   }),
 });
 

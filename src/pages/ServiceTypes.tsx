@@ -27,7 +27,7 @@ const serviceTypeSchema = z.object({
 // Schema for service offerings
 const serviceOfferingSchema = z.object({
   billing_model: z.enum(['per_unit', 'pack', 'subscription'], {
-    required_error: 'Please select a billing model',
+    message: 'Please select a billing model',
   }),
   price: z.number().min(0.01, 'Price must be greater than 0'),
   units_included: z.number().int().min(1, 'Units included must be at least 1').optional().nullable(),
