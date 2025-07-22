@@ -386,27 +386,107 @@ export default function ClientDetail() {
     console.log("DEBUG: Add Pack onSubmit triggered!");
     console.log("DEBUG: Pack form data:", data);
     
-    if (!user || !clientId) return;
+    if (!user?.id) {
+      console.error("DEBUG: onAddPackSubmit: User not authenticated, cannot submit.");
+      toast({ title: "Error", description: "You must be logged in to add a pack.", variant: "destructive" });
+      return;
+    }
+    console.log("DEBUG: onAddPackSubmit: User authenticated. Proceeding with inserts.");
+
+    if (!clientId) return;
 
     try {
       setIsSubmittingPack(true);
-      console.log('Pack form data:', {
-        ...data,
-        client_id: clientId,
-        trainer_id: user.id,
-        total_value: totalPackValue,
-      });
       
+      // First, insert the payment record
+      console.log("DEBUG: onAddPackSubmit: Attempting payments insert with data:", {
+        trainer_id: user.id,
+        client_id: clientId,
+        service_type_id: data.service_type_id,
+        amount: totalPackValue,
+        due_date: data.purchase_date.toISOString().split('T')[0],
+        status: 'paid',
+        date_paid: data.purchase_date.toISOString().split('T')[0],
+      });
+
+      const { data: paymentResult, error: paymentError } = await supabase
+        .from('payments')
+        .insert({
+          trainer_id: user.id,
+          client_id: clientId,
+          service_type_id: data.service_type_id,
+          amount: totalPackValue,
+          due_date: data.purchase_date.toISOString().split('T')[0],
+          status: 'paid',
+          date_paid: data.purchase_date.toISOString().split('T')[0],
+        })
+        .select()
+        .single();
+
+      if (paymentError) throw paymentError;
+
+      const newPaymentId = paymentResult.id;
+      console.log("DEBUG: onAddPackSubmit: Payment inserted. New Payment ID:", newPaymentId);
+
+      // Then, insert the session pack record
+      console.log("DEBUG: onAddPackSubmit: Attempting session_packs insert with data:", {
+        trainer_id: user.id,
+        client_id: clientId,
+        service_type_id: data.service_type_id,
+        total_sessions: data.quantity,
+        sessions_remaining: data.quantity,
+        amount_paid: totalPackValue,
+        payment_id: newPaymentId,
+        purchase_date: data.purchase_date.toISOString(),
+        expiry_date: data.expiry_date ? data.expiry_date.toISOString().split('T')[0] : null,
+        status: 'active',
+      });
+
+      const { error: sessionPackError } = await supabase
+        .from('session_packs')
+        .insert({
+          trainer_id: user.id,
+          client_id: clientId,
+          service_type_id: data.service_type_id,
+          total_sessions: data.quantity,
+          sessions_remaining: data.quantity,
+          amount_paid: totalPackValue,
+          payment_id: newPaymentId,
+          purchase_date: data.purchase_date.toISOString(),
+          expiry_date: data.expiry_date ? data.expiry_date.toISOString().split('T')[0] : null,
+          status: 'active',
+        });
+
+      if (sessionPackError) throw sessionPackError;
+
       toast({
-        title: "Pack data logged",
-        description: "Check the console for the pack form data.",
+        title: "Success",
+        description: "Session pack created successfully!",
       });
 
       // Reset form and close modal
       packForm.reset();
       setIsAddPackModalOpen(false);
+      
+      // Refresh the payments list to show the new payment
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('*, service_offerings(service_types(name))')
+        .eq('client_id', clientId)
+        .eq('trainer_id', user.id)
+        .order('due_date', { ascending: false });
+
+      if (!paymentsError) {
+        setClientPayments(paymentsData || []);
+      }
+      
     } catch (error) {
-      console.error('Error handling pack submission:', error);
+      console.error('DEBUG: onAddPackSubmit: Full error during pack creation:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create session pack. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsSubmittingPack(false);
     }
