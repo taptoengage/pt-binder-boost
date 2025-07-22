@@ -410,11 +410,58 @@ export default function ClientDetail() {
         ? data.expiry_date.toISOString().split('T')[0]
         : null; // Ensure this handles undefined/null by converting to null
       
+      let offeringIdToUse: string;
+
+      // Get the selected Core Service Type to build offering name
+      const selectedCoreServiceType = coreServiceTypes.find(st => st.id === data.service_type_id);
+      const offeringNameSuffix = ` - ${data.quantity} Pack`;
+      const offeringDescription = `Pack of ${data.quantity} ${selectedCoreServiceType?.name || 'sessions'}`;
+
+      // 1. Try to find an existing matching service offering
+      const { data: existingOfferings, error: findOfferingError } = await supabase
+        .from('service_offerings')
+        .select('id')
+        .eq('trainer_id', user.id)
+        .eq('service_type_id', data.service_type_id) // Link to CORE service type
+        .eq('billing_model', 'pack')
+        .eq('units_included', data.quantity)
+        .eq('price', totalPackValue) // totalPackValue from the form
+        .maybeSingle();
+
+      if (findOfferingError) throw findOfferingError; // Propagate error if find fails
+
+      if (existingOfferings) {
+        // Found an existing offering, use its ID
+        offeringIdToUse = existingOfferings.id;
+        console.log("DEBUG: Found existing service offering (ID used for FK):", offeringIdToUse);
+      } else {
+        // No matching offering found, create a new one
+        console.log("DEBUG: Creating new service offering for pack...");
+        const { data: newOffering, error: createOfferingError } = await supabase
+          .from('service_offerings')
+          .insert({
+            trainer_id: user.id,
+            service_type_id: data.service_type_id, // Link to CORE service type
+            billing_model: 'pack',
+            price: totalPackValue, // Use the calculated total pack value
+            units_included: data.quantity,
+            name_suffix: offeringNameSuffix,
+            description: offeringDescription,
+            status: 'active',
+          })
+          .select('id')
+          .single();
+
+        if (createOfferingError) throw createOfferingError; // Propagate error if create fails
+        offeringIdToUse = newOffering.id;
+        console.log("DEBUG: Created new service offering (ID used for FK):", offeringIdToUse);
+      }
+
       // First, insert the payment record
       console.log("DEBUG: onAddPackSubmit: Attempting payments insert with data:", {
         trainer_id: user.id,
         client_id: clientId,
-        service_type_id: data.service_type_id,
+        service_type_id: offeringIdToUse, // NOW THIS POINTS TO service_offerings.id
         amount: totalPackValue,
         due_date: purchaseDate.toISOString().split('T')[0],
         status: 'paid',
@@ -426,7 +473,7 @@ export default function ClientDetail() {
         .insert({
           trainer_id: user.id,
           client_id: clientId,
-          service_type_id: data.service_type_id,
+          service_type_id: offeringIdToUse, // NOW THIS POINTS TO service_offerings.id
           amount: totalPackValue,
           due_date: purchaseDate.toISOString().split('T')[0],
           status: 'paid',
@@ -444,7 +491,7 @@ export default function ClientDetail() {
       console.log("DEBUG: onAddPackSubmit: Attempting session_packs insert with data:", {
         trainer_id: user.id,
         client_id: clientId,
-        service_type_id: data.service_type_id,
+        service_type_id: offeringIdToUse, // NOW THIS POINTS TO service_offerings.id
         total_sessions: data.quantity,
         sessions_remaining: data.quantity,
         amount_paid: totalPackValue,
@@ -459,7 +506,7 @@ export default function ClientDetail() {
         .insert({
           trainer_id: user.id,
           client_id: clientId,
-          service_type_id: data.service_type_id,
+          service_type_id: offeringIdToUse, // NOW THIS POINTS TO service_offerings.id
           total_sessions: data.quantity,
           sessions_remaining: data.quantity,
           amount_paid: totalPackValue,
