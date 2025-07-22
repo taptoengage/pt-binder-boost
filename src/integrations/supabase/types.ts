@@ -162,10 +162,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "payments_service_offering_id_fkey"
+            foreignKeyName: "payments_core_service_type_fkey"
             columns: ["service_type_id"]
             isOneToOne: false
-            referencedRelation: "service_offerings"
+            referencedRelation: "service_types"
             referencedColumns: ["id"]
           },
           {
@@ -324,17 +324,17 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "session_packs_core_service_type_fkey"
+            columns: ["service_type_id"]
+            isOneToOne: false
+            referencedRelation: "service_types"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "session_packs_payment_id_fkey"
             columns: ["payment_id"]
             isOneToOne: false
             referencedRelation: "payments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "session_packs_service_offering_id_fkey"
-            columns: ["service_type_id"]
-            isOneToOne: false
-            referencedRelation: "service_offerings"
             referencedColumns: ["id"]
           },
           {
@@ -392,10 +392,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "sessions_service_offering_id_fkey"
+            foreignKeyName: "sessions_core_service_type_fkey"
             columns: ["service_type_id"]
             isOneToOne: false
-            referencedRelation: "service_offerings"
+            referencedRelation: "service_types"
             referencedColumns: ["id"]
           },
           {
