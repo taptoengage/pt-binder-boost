@@ -383,6 +383,9 @@ export default function ClientDetail() {
   };
 
   const handleAddPackSubmit = async (data: PackFormData) => {
+    console.log("DEBUG: Add Pack onSubmit triggered!");
+    console.log("DEBUG: Pack form data:", data);
+    
     if (!user || !clientId) return;
 
     try {
