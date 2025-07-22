@@ -201,16 +201,6 @@ export default function RecordPayment() {
         finalStatus = 'due';
       }
 
-      console.log("DEBUG: onSubmit: Preparing payment insert.");
-      console.log("DEBUG: onSubmit: paymentData for payments table (pre-insert):", {
-        trainer_id: user.id,
-        client_id: data.client_id,
-        service_type_id: data.service_type_id,
-        amount: data.amount,
-        due_date: data.due_date.toISOString().split('T')[0],
-        date_paid: data.date_paid ? data.date_paid.toISOString().split('T')[0] : null,
-        status: finalStatus,
-      });
 
       // Insert payment and get the ID back
       const { data: paymentResult, error: paymentError } = await supabase
@@ -230,11 +220,9 @@ export default function RecordPayment() {
       if (paymentError) throw paymentError;
 
       const newPaymentId = paymentResult.id;
-      console.log("DEBUG: onSubmit: Payment inserted successfully. New Payment ID:", newPaymentId);
 
       // Conditional session_packs creation for 'pack' billing model
       if (selectedServiceType?.billing_model === 'pack') {
-        console.log("DEBUG: onSubmit: Billing model is 'pack'. Preparing session pack insert.");
         
         const sessionPackData = {
           trainer_id: user.id,
@@ -249,18 +237,15 @@ export default function RecordPayment() {
           status: 'active', // Default status for a new pack
         };
 
-        console.log("DEBUG: onSubmit: sessionPackData for session_packs table (pre-insert):", sessionPackData);
+        
 
         const { error: sessionPackError } = await supabase
           .from('session_packs')
           .insert([sessionPackData]);
 
         if (sessionPackError) {
-          console.error('DEBUG: onSubmit: sessionPackError details:', sessionPackError);
           throw sessionPackError;
         }
-
-        console.log("DEBUG: onSubmit: Session pack created successfully.");
       }
 
       toast({
@@ -272,7 +257,7 @@ export default function RecordPayment() {
 
       form.reset();
     } catch (error) {
-      console.error('DEBUG: onSubmit: Full error during payment/pack recording:', error);
+      console.error('Error recording payment:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to record payment/pack. Please check the amount and try again.',
