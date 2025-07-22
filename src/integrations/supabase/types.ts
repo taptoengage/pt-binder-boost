@@ -162,13 +162,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "payments_service_type_id_fkey"
-            columns: ["service_type_id"]
-            isOneToOne: false
-            referencedRelation: "service_types"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "payments_trainer_id_fkey"
             columns: ["trainer_id"]
             isOneToOne: false
@@ -340,13 +333,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "session_packs_service_type_id_fkey"
-            columns: ["service_type_id"]
-            isOneToOne: false
-            referencedRelation: "service_types"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "session_packs_trainer_id_fkey"
             columns: ["trainer_id"]
             isOneToOne: false
@@ -398,13 +384,6 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "sessions_service_type_id_fkey"
-            columns: ["service_type_id"]
-            isOneToOne: false
-            referencedRelation: "service_types"
             referencedColumns: ["id"]
           },
           {
