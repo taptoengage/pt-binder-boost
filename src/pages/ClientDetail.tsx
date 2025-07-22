@@ -400,8 +400,15 @@ export default function ClientDetail() {
     try {
       setIsSubmittingPack(true);
       
-      // Ensure purchase_date is available with fallback
-      const purchaseDate = data.purchase_date || new Date();
+      // Robust type check for purchase_date
+      const purchaseDate = data.purchase_date instanceof Date
+        ? data.purchase_date
+        : new Date(); // Fallback to current date if not a valid Date object
+      
+      // Robust type check for expiry_date
+      const expiryDateIso = data.expiry_date instanceof Date
+        ? data.expiry_date.toISOString().split('T')[0]
+        : null; // Ensure this handles undefined/null by converting to null
       
       // First, insert the payment record
       console.log("DEBUG: onAddPackSubmit: Attempting payments insert with data:", {
@@ -443,7 +450,7 @@ export default function ClientDetail() {
         amount_paid: totalPackValue,
         payment_id: newPaymentId,
         purchase_date: purchaseDate.toISOString(),
-        expiry_date: data.expiry_date ? data.expiry_date.toISOString().split('T')[0] : null,
+        expiry_date: expiryDateIso,
         status: 'active',
       });
 
@@ -458,7 +465,7 @@ export default function ClientDetail() {
           amount_paid: totalPackValue,
           payment_id: newPaymentId,
           purchase_date: purchaseDate.toISOString(),
-          expiry_date: data.expiry_date ? data.expiry_date.toISOString().split('T')[0] : null,
+          expiry_date: expiryDateIso,
           status: 'active',
         });
 
