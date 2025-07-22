@@ -41,10 +41,8 @@ interface ClientPayment {
   due_date: string;
   date_paid: string | null;
   status: string;
-  service_offerings: {
-    service_types: {
-      name: string;
-    } | null;
+  service_types: {
+    name: string;
   } | null;
 }
 
@@ -53,10 +51,8 @@ interface ClientSession {
   session_date: string;
   status: string;
   notes: string | null;
-  service_offerings: {
-    service_types: {
-      name: string;
-    } | null;
+  service_types: {
+    name: string;
   } | null;
 }
 
@@ -182,10 +178,10 @@ export default function ClientDetail() {
 
         setClient(clientData);
 
-        // Fetch client payments with service offerings
+        // Fetch client payments with service types
         const { data: paymentsData, error: paymentsError } = await supabase
           .from('payments')
-          .select('*, service_offerings(service_types(name))')
+          .select('*, service_types(name)')
           .eq('client_id', clientId)
           .eq('trainer_id', user.id)
           .order('due_date', { ascending: false });
@@ -201,10 +197,10 @@ export default function ClientDetail() {
           setClientPayments(paymentsData || []);
         }
 
-        // Fetch client sessions with service offerings
+        // Fetch client sessions with service types
         const { data: sessionsData, error: sessionsError } = await supabase
           .from('sessions')
-          .select('*, service_offerings(service_types(name))')
+          .select('*, service_types(name)')
           .eq('client_id', clientId)
           .eq('trainer_id', user.id)
           .order('session_date', { ascending: false });
@@ -313,7 +309,7 @@ export default function ClientDetail() {
       // Refresh the payments list
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payments')
-        .select('*, service_offerings(service_types(name))')
+        .select('*, service_types(name)')
         .eq('client_id', clientId)
         .eq('trainer_id', user.id)
         .order('due_date', { ascending: false });
@@ -361,7 +357,7 @@ export default function ClientDetail() {
       // Refresh the sessions list
       const { data: sessionsData, error: sessionsError } = await supabase
         .from('sessions')
-        .select('*, service_offerings(service_types(name))')
+        .select('*, service_types(name)')
         .eq('client_id', clientId)
         .eq('trainer_id', user.id)
         .order('session_date', { ascending: false });
@@ -385,104 +381,36 @@ export default function ClientDetail() {
   };
 
   const handleAddPackSubmit = async (data: PackFormData) => {
-    console.log("DEBUG: Add Pack onSubmit triggered!");
-    console.log("DEBUG: Pack form data:", data);
-    
     if (!user?.id) {
-      console.error("DEBUG: onAddPackSubmit: User not authenticated, cannot submit.");
       toast({ title: "Error", description: "You must be logged in to add a pack.", variant: "destructive" });
       return;
     }
-    console.log("DEBUG: onAddPackSubmit: User authenticated. Proceeding with inserts.");
 
     if (!clientId) return;
 
     try {
       setIsSubmittingPack(true);
       
-      // Inside handleAddPackSubmit, at the very beginning of the try block,
-      // or where purchaseDate/expiryDateIso are currently declared:
-      const purchaseDateObj = data.purchase_date ? new Date(data.purchase_date) : new Date(); // Ensure it's a Date object, default to now
+      // Robust date handling with validation
+      const purchaseDateObj = data.purchase_date ? new Date(data.purchase_date) : new Date(); 
+      if (isNaN(purchaseDateObj.getTime())) {
+        throw new Error("Invalid purchase date provided.");
+      }
       const purchaseDateForInsert = purchaseDateObj.toISOString().split('T')[0];
 
-      const expiryDateObj = data.expiry_date; // This will be Date | undefined
-      const expiryDateForInsert = expiryDateObj instanceof Date
+      const expiryDateObj = data.expiry_date; 
+      const expiryDateForInsert = expiryDateObj instanceof Date && !isNaN(expiryDateObj.getTime())
         ? expiryDateObj.toISOString().split('T')[0]
-        : null; // Convert to null if undefined or not a Date
-      
-      // Inside handleAddPackSubmit, AFTER `purchaseDateForInsert` and `expiryDateForInsert` are defined,
-      // AND BEFORE the `payments` insert.
-      let serviceOfferingIdForFK: string;
-
-      // Get the selected Core Service Type to build offering name/description
-      const selectedCoreServiceType = coreServiceTypes.find(st => st.id === data.service_type_id);
-      const offeringNameSuffix = ` - ${data.quantity} Pack`;
-      const offeringDescription = `Pack of ${data.quantity} ${selectedCoreServiceType?.name || 'sessions'}`;
-
-      // 1. Try to find an existing matching service offering
-      const { data: existingOfferings, error: findOfferingError } = await supabase
-        .from('service_offerings')
-        .select('id')
-        .eq('trainer_id', user.id)
-        .eq('service_type_id', data.service_type_id) // Link to CORE service type
-        .eq('billing_model', 'pack')
-        .eq('units_included', data.quantity)
-        .eq('price', totalPackValue) // totalPackValue from the form
-        .maybeSingle(); // Use maybeSingle to get null if not found
-
-      if (findOfferingError) {
-        console.error("DEBUG: Error finding existing offering:", findOfferingError);
-        throw findOfferingError; // Propagate error if find fails unexpectedly
-      }
-
-      if (existingOfferings) {
-        // Found an existing offering, use its ID
-        serviceOfferingIdForFK = existingOfferings.id;
-        console.log("DEBUG: Found existing service offering (ID used for FK):", serviceOfferingIdForFK);
-      } else {
-        // No matching offering found, create a new one
-        console.log("DEBUG: Creating new service offering for pack...");
-        const { data: newOffering, error: createOfferingError } = await supabase
-          .from('service_offerings')
-          .insert({
-            trainer_id: user.id,
-            service_type_id: data.service_type_id, // Link to CORE service type
-            billing_model: 'pack',
-            price: totalPackValue, // Use the calculated total pack value
-            units_included: data.quantity,
-            name_suffix: offeringNameSuffix,
-            description: offeringDescription,
-            status: 'active',
-          })
-          .select('id')
-          .single(); // Get the ID of the newly created offering
-
-        if (createOfferingError) {
-          console.error("DEBUG: Error creating new service offering:", createOfferingError);
-          throw createOfferingError; // Propagate error if create fails
-        }
-        serviceOfferingIdForFK = newOffering.id;
-        console.log("DEBUG: Created new service offering (ID used for FK):", serviceOfferingIdForFK);
-      }
+        : null; 
 
       // First, insert the payment record
-      console.log("DEBUG: onAddPackSubmit: Attempting payments insert with data:", {
-        trainer_id: user.id,
-        client_id: clientId,
-        service_type_id: serviceOfferingIdForFK, // This is the ID from public.service_offerings
-        amount: totalPackValue, // Correctly using totalPackValue
-        due_date: purchaseDateForInsert,
-        status: 'paid',
-        date_paid: purchaseDateForInsert,
-      });
-
       const { data: paymentResult, error: paymentError } = await supabase
         .from('payments')
         .insert({
           trainer_id: user.id,
           client_id: clientId,
-          service_type_id: serviceOfferingIdForFK, // This is the ID from public.service_offerings
-          amount: totalPackValue, // Correctly using totalPackValue
+          service_type_id: data.service_type_id, // Now links directly to public.service_types.id
+          amount: totalPackValue,
           due_date: purchaseDateForInsert,
           status: 'paid',
           date_paid: purchaseDateForInsert,
@@ -493,31 +421,17 @@ export default function ClientDetail() {
       if (paymentError) throw paymentError;
 
       const newPaymentId = paymentResult.id;
-      console.log("DEBUG: onAddPackSubmit: Payment inserted. New Payment ID:", newPaymentId);
 
       // Then, insert the session pack record
-      console.log("DEBUG: onAddPackSubmit: Attempting session_packs insert with data:", {
-        trainer_id: user.id,
-        client_id: clientId,
-        service_type_id: serviceOfferingIdForFK, // This is the ID from public.service_offerings
-        total_sessions: data.quantity,
-        sessions_remaining: data.quantity,
-        amount_paid: totalPackValue, // Correctly using totalPackValue
-        payment_id: newPaymentId,
-        purchase_date: purchaseDateForInsert,
-        expiry_date: expiryDateForInsert,
-        status: 'active',
-      });
-
       const { error: sessionPackError } = await supabase
         .from('session_packs')
         .insert({
           trainer_id: user.id,
           client_id: clientId,
-          service_type_id: serviceOfferingIdForFK, // This is the ID from public.service_offerings
+          service_type_id: data.service_type_id, // Now links directly to public.service_types.id
           total_sessions: data.quantity,
           sessions_remaining: data.quantity,
-          amount_paid: totalPackValue, // Correctly using totalPackValue
+          amount_paid: totalPackValue,
           payment_id: newPaymentId,
           purchase_date: purchaseDateForInsert,
           expiry_date: expiryDateForInsert,
@@ -538,7 +452,7 @@ export default function ClientDetail() {
       // Refresh the payments list to show the new payment
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payments')
-        .select('*, service_offerings(service_types(name))')
+        .select('*, service_types(name)')
         .eq('client_id', clientId)
         .eq('trainer_id', user.id)
         .order('due_date', { ascending: false });
@@ -548,7 +462,7 @@ export default function ClientDetail() {
       }
       
     } catch (error) {
-      console.error('DEBUG: onAddPackSubmit: Full error during pack creation:', error);
+      console.error('Error during pack creation:', error);
       toast({
         title: "Error",
         description: "Failed to create session pack. Please try again.",
@@ -772,7 +686,7 @@ export default function ClientDetail() {
                             </span>
                           </TableCell>
                           <TableCell>
-                            {payment.service_offerings?.service_types?.name || 'Unknown Service'}
+                            {payment.service_types?.name || 'Unknown Service'}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -860,7 +774,7 @@ export default function ClientDetail() {
                           })}
                         </TableCell>
                         <TableCell>
-                          {session.service_offerings?.service_types?.name || 'Unknown Service'}
+                          {session.service_types?.name || 'Unknown Service'}
                         </TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
