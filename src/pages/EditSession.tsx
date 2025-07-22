@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 
 const sessionFormSchema = z.object({
   client_id: z.string().min(1, 'Please select a client'),
-  service_type_id: z.string().min(1, 'Please select a service type'),
+  service_type_id: z.string().min(1, 'Please select a core service type'),
   session_date: z.date({
     message: 'Please select a session date',
   }),
@@ -52,10 +52,8 @@ interface SessionData {
   clients: {
     name: string;
   };
-  service_offerings: {
-    service_types: {
-      name: string;
-    } | null;
+  service_types: {
+    name: string;
   } | null;
 }
 
@@ -65,9 +63,9 @@ export default function EditSession() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
-  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
+  const [coreServiceTypes, setCoreServiceTypes] = useState<ServiceType[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(true);
-  const [isLoadingServiceTypes, setIsLoadingServiceTypes] = useState(true);
+  const [isLoadingCoreServiceTypes, setIsLoadingCoreServiceTypes] = useState(true);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
 
@@ -85,7 +83,7 @@ export default function EditSession() {
     if (user?.id && sessionId) {
       fetchSessionData();
       fetchClients();
-      fetchServiceTypes();
+      fetchCoreServiceTypes();
     }
   }, [user?.id, sessionId]);
 
@@ -93,7 +91,7 @@ export default function EditSession() {
     try {
       const { data, error } = await supabase
         .from('sessions')
-        .select('*, clients(name), service_offerings(service_types(name))')
+        .select('*, clients(name), service_types(name)')
         .eq('id', sessionId)
         .eq('trainer_id', user?.id)
         .maybeSingle();
@@ -160,33 +158,26 @@ export default function EditSession() {
     }
   };
 
-  const fetchServiceTypes = async () => {
+  const fetchCoreServiceTypes = async () => {
     try {
       const { data, error } = await supabase
-        .from('service_offerings')
-        .select('id, service_types(id, name)')
+        .from('service_types')
+        .select('id, name')
         .eq('trainer_id', user?.id)
-        .eq('status', 'active')
-        .order('created_at');
+        .order('name');
 
       if (error) throw error;
       
-      // Transform the data to match the ServiceType interface
-      const transformedData = data?.map(offering => ({
-        id: offering.id,
-        name: offering.service_types?.name || 'Unknown Service'
-      })) || [];
-      
-      setServiceTypes(transformedData);
+      setCoreServiceTypes(data || []);
     } catch (error) {
-      console.error('Error fetching service offerings:', error);
+      console.error('Error fetching core service types:', error);
       toast({
         title: 'Error',
-        description: 'Failed to load service offerings. Please try again.',
+        description: 'Failed to load core service types. Please try again.',
         variant: 'destructive',
       });
     } finally {
-      setIsLoadingServiceTypes(false);
+      setIsLoadingCoreServiceTypes(false);
     }
   };
 
@@ -308,18 +299,18 @@ export default function EditSession() {
                   name="service_type_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Service Type</FormLabel>
+                      <FormLabel>Core Service Type</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder={isLoadingServiceTypes ? "Loading service types..." : "Select a service type"} />
+                            <SelectValue placeholder={isLoadingCoreServiceTypes ? "Loading core service types..." : "Select a core service type"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {serviceTypes.length === 0 && !isLoadingServiceTypes ? (
-                            <SelectItem value="" disabled>No service types found</SelectItem>
+                          {coreServiceTypes.length === 0 && !isLoadingCoreServiceTypes ? (
+                            <SelectItem value="" disabled>No core service types found</SelectItem>
                           ) : (
-                            serviceTypes.map((serviceType) => (
+                            coreServiceTypes.map((serviceType) => (
                               <SelectItem key={serviceType.id} value={serviceType.id}>
                                 {serviceType.name}
                               </SelectItem>
