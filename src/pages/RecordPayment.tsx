@@ -187,7 +187,7 @@ export default function RecordPayment() {
       });
 
       form.reset();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error recording payment:', error);
       toast({
         title: 'Error',
@@ -267,23 +267,22 @@ export default function RecordPayment() {
                     name="service_type_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Service Type</FormLabel>
+                        <FormLabel>Core Service Type</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={loadingServiceOfferings ? "Loading service offerings..." : "Select a service offering"} />
+                              <SelectValue placeholder={loadingCoreServiceTypes ? "Loading core service types..." : "Select a core service type"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {serviceOfferings.length === 0 && !loadingServiceOfferings && (
-                              <SelectItem value="no-service-offerings" disabled>
-                                No service offerings found
+                            {coreServiceTypes.length === 0 && !loadingCoreServiceTypes && (
+                              <SelectItem value="no-service-types" disabled>
+                                No core service types found
                               </SelectItem>
                             )}
-                            {serviceOfferings.map((offering) => (
-                              <SelectItem key={offering.id} value={offering.id}>
-                                {offering.service_types?.name || 'Unknown Service'} 
-                                {offering.billing_model === 'pack' && ` (${offering.units_included} sessions)`}
+                            {coreServiceTypes.map((serviceType) => (
+                              <SelectItem key={serviceType.id} value={serviceType.id}>
+                                {serviceType.name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -427,81 +426,6 @@ export default function RecordPayment() {
                     )}
                   />
                 </div>
-
-                {/* Conditional Session Pack Fields */}
-                {selectedServiceOffering?.billing_model === 'pack' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
-                    <div className="md:col-span-2">
-                      <h3 className="text-lg font-medium mb-4">Session Pack Details</h3>
-                    </div>
-
-                    {/* Total Sessions */}
-                    <FormField
-                      control={form.control}
-                      name="total_sessions"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Total Sessions in Pack *</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              step="1"
-                              min="1"
-                              placeholder="e.g., 10"
-                              value={field.value || ''}
-                              onChange={(e) => field.onChange(parseInt(e.target.value) || null)}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Expiry Date */}
-                    <FormField
-                      control={form.control}
-                      name="expiry_date"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                          <FormLabel>Expiry Date (Optional)</FormLabel>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button
-                                  variant={"outline"}
-                                  className={cn(
-                                    "w-full pl-3 text-left font-normal",
-                                    !field.value && "text-muted-foreground"
-                                  )}
-                                >
-                                  {field.value ? (
-                                    format(field.value, "PPP")
-                                  ) : (
-                                    <span>Pick a date</span>
-                                  )}
-                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                </Button>
-                              </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                initialFocus
-                                className="p-3 pointer-events-auto"
-                              />
-                            </PopoverContent>
-                          </Popover>
-                          <FormDescription>
-                            Optional expiry date for the session pack.
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                )}
 
                 <div className="flex justify-end">
                   <Button 
