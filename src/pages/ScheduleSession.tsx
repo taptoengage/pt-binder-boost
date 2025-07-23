@@ -33,6 +33,8 @@ const sessionFormSchema = z.object({
   session_time: z.string().min(1, 'Please select a session time'),
   status: z.enum(['scheduled', 'completed', 'cancelled_late', 'cancelled_early']),
   notes: z.string().optional(),
+  isFromCredit: z.boolean().optional(),
+  creditIdConsumed: z.string().optional(),
 }).superRefine((data, ctx) => {
   // Conditional validation based on scheduleType
   if (data.scheduleType === 'oneOff') {
@@ -69,14 +71,23 @@ const sessionFormSchema = z.object({
   }
 
   // Ensure mutual exclusivity (packId, subscriptionId)
-  if (data.packId && data.subscriptionId) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Session cannot be linked to both a pack and a subscription.",
-      path: ['packId', 'subscriptionId'],
-    });
-  }
-});
+    if (data.packId && data.subscriptionId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Session cannot be linked to both a pack and a subscription.",
+        path: ['packId', 'subscriptionId'],
+      });
+    }
+
+    // Add validation if both are set, creditIdConsumed must be present if isFromCredit is true
+    if (data.isFromCredit && !data.creditIdConsumed) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Credit ID must be provided if session is from credit.",
+        path: ['creditIdConsumed'],
+      });
+    }
+  });
 
 type SessionFormData = z.infer<typeof sessionFormSchema>;
 
@@ -257,6 +268,10 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
       let finalPackId: string | null = null;
       let finalSubscriptionId: string | null = null;
 
+      // Handle credit flags (for this prompt, mostly defaults or simulation)
+      const simulatedIsFromCredit = false; // For now, default to false
+      const simulatedCreditIdConsumed = null; // For now, default to null
+
       if (data.scheduleType === 'oneOff') {
         finalServiceTypeId = data.serviceTypeId;
       } else if (data.scheduleType === 'fromPack') {
@@ -299,6 +314,8 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         session_pack_id: finalPackId,
         subscription_id: finalSubscriptionId,
         notes: data.notes || null,
+        is_from_credit: simulatedIsFromCredit,
+        credit_id_consumed: simulatedCreditIdConsumed,
       };
 
       console.log("DEBUG: Final payload for Supabase insertion:", sessionData);

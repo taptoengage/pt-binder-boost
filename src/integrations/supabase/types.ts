@@ -335,7 +335,9 @@ export type Database = {
         Row: {
           client_id: string
           created_at: string
+          credit_id_consumed: string | null
           id: string
+          is_from_credit: boolean
           notes: string | null
           service_type_id: string
           session_date: string
@@ -348,7 +350,9 @@ export type Database = {
         Insert: {
           client_id: string
           created_at?: string
+          credit_id_consumed?: string | null
           id?: string
+          is_from_credit?: boolean
           notes?: string | null
           service_type_id: string
           session_date: string
@@ -361,7 +365,9 @@ export type Database = {
         Update: {
           client_id?: string
           created_at?: string
+          credit_id_consumed?: string | null
           id?: string
+          is_from_credit?: boolean
           notes?: string | null
           service_type_id?: string
           session_date?: string
@@ -377,6 +383,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_credit_id_consumed_fkey"
+            columns: ["credit_id_consumed"]
+            isOneToOne: false
+            referencedRelation: "subscription_session_credits"
             referencedColumns: ["id"]
           },
           {
@@ -450,6 +463,60 @@ export type Database = {
           },
           {
             foreignKeyName: "subscription_service_allocations_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "client_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_session_credits: {
+        Row: {
+          created_at: string
+          credit_amount: number
+          credit_reason: string | null
+          credit_value: number
+          expires_at: string | null
+          id: string
+          service_type_id: string
+          status: string
+          subscription_id: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          credit_amount?: number
+          credit_reason?: string | null
+          credit_value: number
+          expires_at?: string | null
+          id?: string
+          service_type_id: string
+          status?: string
+          subscription_id: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          credit_amount?: number
+          credit_reason?: string | null
+          credit_value?: number
+          expires_at?: string | null
+          id?: string
+          service_type_id?: string
+          status?: string
+          subscription_id?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_session_credits_service_type_id_fkey"
+            columns: ["service_type_id"]
+            isOneToOne: false
+            referencedRelation: "service_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_session_credits_subscription_id_fkey"
             columns: ["subscription_id"]
             isOneToOne: false
             referencedRelation: "client_subscriptions"

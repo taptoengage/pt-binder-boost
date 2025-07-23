@@ -57,6 +57,8 @@ interface ClientSession {
   notes: string | null;
   session_pack_id?: string | null;
   subscription_id?: string | null;
+  is_from_credit?: boolean;
+  credit_id_consumed?: string | null;
   service_types: {
     name: string;
   } | null;
@@ -391,6 +393,8 @@ export default function ClientDetail() {
             status,
             session_pack_id,
             subscription_id,
+            is_from_credit,
+            credit_id_consumed,
             notes,
             service_types(name)
             `,
@@ -1134,21 +1138,27 @@ export default function ClientDetail() {
                             {session.status}
                           </span>
                         </TableCell>
-                         <TableCell>
+                          <TableCell>
                            {session.session_pack_id ? (
-                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
-                               From Pack
-                             </span>
-                           ) : session.subscription_id ? (
-                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                               From Subscription
-                             </span>
-                           ) : (
-                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                               One-Off
-                             </span>
-                           )}
-                         </TableCell>
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
+                                From Pack
+                              </span>
+                            ) : session.subscription_id ? (
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                From Subscription
+                                {session.is_from_credit && (
+                                  <span className="ml-1 text-xs text-blue-600">(Credit)</span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                One-Off
+                                {session.is_from_credit && (
+                                  <span className="ml-1 text-xs text-gray-600">(Credit)</span>
+                                )}
+                              </span>
+                            )}
+                          </TableCell>
                          <TableCell>
                            {session.notes || 'N/A'}
                          </TableCell>
