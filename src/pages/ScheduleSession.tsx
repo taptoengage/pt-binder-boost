@@ -141,7 +141,7 @@ export default function ScheduleSession() {
       setIsLoadingPacks(true);
       const { data, error } = await supabase
         .from('session_packs')
-        .select('id, total_sessions, sessions_remaining, service_types(name)')
+        .select('id, service_type_id, total_sessions, sessions_remaining, service_types(name)')
         .eq('trainer_id', user.id)
         .eq('client_id', clientId)
         .eq('status', 'active')
@@ -167,22 +167,54 @@ export default function ScheduleSession() {
 
   const onSubmit = async (data: SessionFormData) => {
     try {
-      console.log("DEBUG: Form submitted with values:", data);
+      console.log("DEBUG: Form submitted with values BEFORE processing:", data);
       
       // Combine date and time into a proper timestamp
       const [hours, minutes] = data.session_time.split(':').map(Number);
       const sessionDateTime = new Date(data.session_date);
       sessionDateTime.setHours(hours, minutes, 0, 0);
 
+      let finalServiceTypeId: string | undefined = data.service_type_id; // Start with what's selected for once-off
+
+      // If a pack is selected, find its corresponding service_type_id
+      if (data.sessionTypeSelection === 'fromPack' && data.session_pack_id && data.session_pack_id !== "none") {
+        const selectedPack = activeSessionPacks?.find(pack => pack.id === data.session_pack_id);
+        if (selectedPack) {
+          finalServiceTypeId = selectedPack.service_type_id;
+          console.log("DEBUG: Service Type ID found from selected pack:", finalServiceTypeId);
+        } else {
+          console.error("DEBUG: Selected pack ID not found in activeSessionPacks data:", data.session_pack_id);
+          toast({
+            title: 'Error',
+            description: 'Could not find service type for selected pack. Please try again.',
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
+
+      // Ensure service_type_id is not undefined before inserting, as it's NOT NULL
+      if (!finalServiceTypeId) {
+        console.error("DEBUG: Attempting to submit session without a service_type_id.");
+        toast({
+          title: 'Error',
+          description: 'A service type must be associated with the session.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       const sessionData = {
         trainer_id: user?.id,
         client_id: data.client_id,
-        service_type_id: data.sessionTypeSelection === 'onceOff' ? data.service_type_id || null : null,
+        service_type_id: finalServiceTypeId,
         session_date: sessionDateTime.toISOString(),
         status: data.status,
         session_pack_id: data.sessionTypeSelection === 'fromPack' && data.session_pack_id !== "none" ? data.session_pack_id : null,
         notes: data.notes || null,
       };
+
+      console.log("DEBUG: Final payload for Supabase insertion:", sessionData);
 
       const { error } = await supabase
         .from('sessions')
