@@ -53,6 +53,7 @@ interface ClientSession {
   session_date: string;
   status: string;
   notes: string | null;
+  session_pack_id?: string | null;
   service_types: {
     name: string;
   } | null;
@@ -122,6 +123,23 @@ export default function ClientDetail() {
   // Pack detail modal state
   const [isPackDetailModalOpen, setIsPackDetailModalOpen] = useState(false);
   const [selectedPackForDetail, setSelectedPackForDetail] = useState<SessionPack | null>(null);
+
+  // Pagination state for session history
+  const [currentPage, setCurrentPage] = useState(1);
+  const sessionsPerPage = 10;
+  const [totalSessions, setTotalSessions] = useState(0);
+  const totalPages = Math.ceil(totalSessions / sessionsPerPage);
+
+  // Pagination handlers
+  const handlePreviousPage = () => {
+    setCurrentPage((prev) => Math.max(prev - 1, 1));
+    console.log(`DEBUG: Navigating to previous page. New page: ${Math.max(currentPage - 1, 1)}`);
+  };
+
+  const handleNextPage = () => {
+    setCurrentPage((prev) => Math.min(prev + 1, totalPages));
+    console.log(`DEBUG: Navigating to next page. New page: ${Math.min(currentPage + 1, totalPages)}`);
+  };
 
   const packForm = useForm<PackFormData>({
     resolver: zodResolver(packSchema),
@@ -221,24 +239,7 @@ export default function ClientDetail() {
           setClientPayments(paymentsData || []);
         }
 
-        // Fetch client sessions with service types
-        const { data: sessionsData, error: sessionsError } = await supabase
-          .from('sessions')
-          .select('*, service_types(name)')
-          .eq('client_id', clientId)
-          .eq('trainer_id', user.id)
-          .order('session_date', { ascending: false });
-
-        if (sessionsError) {
-          console.error('Error fetching sessions:', sessionsError);
-          toast({
-            title: "Warning",
-            description: "Failed to load session history. Client details loaded successfully.",
-            variant: "destructive",
-          });
-        } else {
-          setClientSessions(sessionsData || []);
-        }
+        // Session fetching is now handled by a separate useEffect with pagination
 
         // Fetch client session packs with service types
         const { data: sessionPacksData, error: sessionPacksError } = await supabase
@@ -288,6 +289,69 @@ export default function ClientDetail() {
 
     fetchClientData();
   }, [clientId, user?.id, toast, navigate]);
+
+  // Fetch sessions with pagination
+  useEffect(() => {
+    const fetchSessionsWithPagination = async () => {
+      if (!user || !clientId) {
+        setIsLoadingSessions(false);
+        return;
+      }
+
+      try {
+        setIsLoadingSessions(true);
+        
+        const from = (currentPage - 1) * sessionsPerPage;
+        const to = from + sessionsPerPage - 1;
+
+        console.log(`DEBUG: Fetching sessions for client ${clientId}, page ${currentPage}, range ${from}-${to}`);
+
+        const { data, error, count } = await supabase
+          .from('sessions')
+          .select(
+            `
+            id,
+            trainer_id,
+            client_id,
+            service_type_id,
+            session_date,
+            status,
+            session_pack_id,
+            notes,
+            service_types(name)
+            `,
+            { count: 'exact' }
+          )
+          .eq('client_id', clientId)
+          .eq('trainer_id', user.id)
+          .order('session_date', { ascending: true })
+          .range(from, to);
+
+        if (error) {
+          console.error("DEBUG: Error fetching sessions for client:", error.message);
+          throw error;
+        }
+        
+        console.log(`DEBUG: Fetched sessions for client page ${currentPage}:`, data);
+        console.log(`DEBUG: Total session count:`, count);
+        
+        setClientSessions(data || []);
+        setTotalSessions(count || 0);
+
+      } catch (error) {
+        console.error('Error fetching sessions:', error);
+        toast({
+          title: "Warning",
+          description: "Failed to load session history.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingSessions(false);
+      }
+    };
+
+    fetchSessionsWithPagination();
+  }, [clientId, user?.id, currentPage, toast]);
 
   // Calculate total pack value
   const totalPackValue = useMemo(() => {
@@ -835,16 +899,17 @@ export default function ClientDetail() {
             ) : (
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Service Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Notes</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
+                   <TableHeader>
+                     <TableRow>
+                       <TableHead>Date</TableHead>
+                       <TableHead>Time</TableHead>
+                       <TableHead>Service Type</TableHead>
+                       <TableHead>Status</TableHead>
+                       <TableHead>Linked To</TableHead>
+                       <TableHead>Notes</TableHead>
+                       <TableHead>Actions</TableHead>
+                     </TableRow>
+                   </TableHeader>
                   <TableBody>
                     {clientSessions.map((session) => (
                       <TableRow key={session.id}>
@@ -871,40 +936,66 @@ export default function ClientDetail() {
                             {session.status}
                           </span>
                         </TableCell>
-                        <TableCell>
-                          {session.notes || 'N/A'}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => navigate(`/clients/${clientId}/sessions/${session.id}/edit`)}
-                              className="p-2"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setSessionToDeleteId(session.id);
-                                setIsSessionConfirmModalOpen(true);
-                              }}
-                              className="p-2 text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+                         <TableCell>
+                           {session.session_pack_id ? 'Pack' : 'N/A'}
+                         </TableCell>
+                         <TableCell>
+                           {session.notes || 'N/A'}
+                         </TableCell>
+                         <TableCell>
+                           <div className="flex items-center gap-1">
+                             <Button
+                               variant="ghost"
+                               size="sm"
+                               onClick={() => navigate(`/clients/${clientId}/sessions/${session.id}/edit`)}
+                               className="p-2"
+                             >
+                               <Edit className="w-4 h-4" />
+                             </Button>
+                             <Button
+                               variant="ghost"
+                               size="sm"
+                               onClick={() => {
+                                 setSessionToDeleteId(session.id);
+                                 setIsSessionConfirmModalOpen(true);
+                               }}
+                               className="p-2 text-destructive hover:text-destructive"
+                             >
+                               <Trash2 className="w-4 h-4" />
+                             </Button>
+                           </div>
+                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+               </div>
+             )}
+             {totalPages > 1 && (
+               <div className="flex justify-end items-center space-x-2 mt-4">
+                 <Button
+                   onClick={handlePreviousPage}
+                   disabled={currentPage === 1 || isLoadingSessions}
+                   variant="outline"
+                   size="sm"
+                 >
+                   Previous
+                 </Button>
+                 <span className="text-sm text-gray-700">
+                   Page {currentPage} of {totalPages}
+                 </span>
+                 <Button
+                   onClick={handleNextPage}
+                   disabled={currentPage === totalPages || isLoadingSessions}
+                   variant="outline"
+                   size="sm"
+                 >
+                   Next
+                 </Button>
+               </div>
+             )}
+           </CardContent>
+         </Card>
 
         {/* Client Offerings */}
         <Card className="mb-8">
