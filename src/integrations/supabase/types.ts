@@ -442,6 +442,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_subscription_service_allocations_service_type"
+            columns: ["service_type_id"]
+            isOneToOne: false
+            referencedRelation: "service_types"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "subscription_service_allocations_subscription_id_fkey"
             columns: ["subscription_id"]
             isOneToOne: false
