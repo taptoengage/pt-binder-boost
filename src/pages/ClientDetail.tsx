@@ -141,6 +141,11 @@ export default function ClientDetail() {
     console.log(`DEBUG: Navigating to next page. New page: ${Math.min(currentPage + 1, totalPages)}`);
   };
 
+  // Filter state variables
+  const [filterDate, setFilterDate] = useState<Date | undefined>(undefined);
+  const [filterServiceTypeId, setFilterServiceTypeId] = useState<string | undefined>(undefined);
+  const [filterStatus, setFilterStatus] = useState<string | undefined>(undefined);
+
   const packForm = useForm<PackFormData>({
     resolver: zodResolver(packSchema),
     defaultValues: {
@@ -178,6 +183,33 @@ export default function ClientDetail() {
     };
 
     fetchServiceTypes();
+  }, [user?.id]);
+
+  // Fetch all service types for filter dropdown
+  useEffect(() => {
+    const fetchAllServiceTypes = async () => {
+      if (!user) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('service_types')
+          .select('id, name')
+          .eq('trainer_id', user.id)
+          .order('name');
+
+        if (error) {
+          console.error('Error fetching service types for filter:', error);
+          return;
+        }
+
+        // We'll use the existing coreServiceTypes state for the filter as well
+        // since it's already being fetched
+      } catch (error) {
+        console.error('Error fetching service types for filter:', error);
+      }
+    };
+
+    fetchAllServiceTypes();
   }, [user?.id]);
 
   useEffect(() => {
@@ -290,7 +322,7 @@ export default function ClientDetail() {
     fetchClientData();
   }, [clientId, user?.id, toast, navigate]);
 
-  // Fetch sessions with pagination
+  // Fetch sessions with pagination and filters
   useEffect(() => {
     const fetchSessionsWithPagination = async () => {
       if (!user || !clientId) {
@@ -304,9 +336,9 @@ export default function ClientDetail() {
         const from = (currentPage - 1) * sessionsPerPage;
         const to = from + sessionsPerPage - 1;
 
-        console.log(`DEBUG: Fetching sessions for client ${clientId}, page ${currentPage}, range ${from}-${to}`);
+        console.log(`DEBUG: Fetching sessions with filters - Page: ${currentPage}, Date: ${filterDate?.toDateString()}, ServiceType: ${filterServiceTypeId}, Status: ${filterStatus}`);
 
-        const { data, error, count } = await supabase
+        let query = supabase
           .from('sessions')
           .select(
             `
@@ -323,17 +355,38 @@ export default function ClientDetail() {
             { count: 'exact' }
           )
           .eq('client_id', clientId)
-          .eq('trainer_id', user.id)
+          .eq('trainer_id', user.id);
+
+        // Apply filters conditionally
+        if (filterDate) {
+          // Format date to 'YYYY-MM-DD' for Supabase date column filtering
+          const formattedDate = format(filterDate, 'yyyy-MM-dd');
+          query = query.gte('session_date', `${formattedDate}T00:00:00`)
+                      .lt('session_date', `${formattedDate}T23:59:59`);
+          console.log("DEBUG: Applying date filter:", formattedDate);
+        }
+        if (filterServiceTypeId) {
+          query = query.eq('service_type_id', filterServiceTypeId);
+          console.log("DEBUG: Applying service type filter:", filterServiceTypeId);
+        }
+        if (filterStatus) {
+          query = query.eq('status', filterStatus);
+          console.log("DEBUG: Applying status filter:", filterStatus);
+        }
+
+        query = query
           .order('session_date', { ascending: true })
           .range(from, to);
 
+        const { data, error, count } = await query;
+
         if (error) {
-          console.error("DEBUG: Error fetching sessions for client:", error.message);
+          console.error("DEBUG: Error fetching filtered sessions:", error.message);
           throw error;
         }
         
-        console.log(`DEBUG: Fetched sessions for client page ${currentPage}:`, data);
-        console.log(`DEBUG: Total session count:`, count);
+        console.log(`DEBUG: Fetched filtered sessions:`, data);
+        console.log(`DEBUG: Total filtered session count:`, count);
         
         setClientSessions(data || []);
         setTotalSessions(count || 0);
@@ -351,7 +404,7 @@ export default function ClientDetail() {
     };
 
     fetchSessionsWithPagination();
-  }, [clientId, user?.id, currentPage, toast]);
+  }, [clientId, user?.id, currentPage, filterDate, filterServiceTypeId, filterStatus, toast]);
 
   // Calculate total pack value
   const totalPackValue = useMemo(() => {
@@ -887,6 +940,109 @@ export default function ClientDetail() {
             </div>
           </CardHeader>
           <CardContent>
+            {/* Filter Controls */}
+            <div className="flex flex-wrap items-end gap-4 mb-6 p-4 border rounded-lg bg-gray-50">
+              {/* Date Filter */}
+              <div className="flex flex-col space-y-1">
+                <label className="text-sm font-medium text-gray-700">Filter by Date</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-[180px] justify-start text-left font-normal",
+                        !filterDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {filterDate ? format(filterDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <CalendarComponent
+                      mode="single"
+                      selected={filterDate}
+                      onSelect={(date) => {
+                        setFilterDate(date);
+                        setCurrentPage(1);
+                        console.log("DEBUG: Date filter set to:", date);
+                      }}
+                      initialFocus
+                      className={cn("p-3 pointer-events-auto")}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* Service Type Filter */}
+              <div className="flex flex-col space-y-1">
+                <label className="text-sm font-medium text-gray-700">Filter by Service Type</label>
+                <Select
+                  value={filterServiceTypeId || "all"}
+                  onValueChange={(value) => {
+                    setFilterServiceTypeId(value === "all" ? undefined : value);
+                    setCurrentPage(1);
+                    console.log("DEBUG: Service Type filter set to:", value);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="All Service Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Service Types</SelectItem>
+                    {isLoadingServiceTypes ? (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : (
+                      coreServiceTypes?.map((serviceType) => (
+                        <SelectItem key={serviceType.id} value={serviceType.id}>
+                          {serviceType.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Status Filter */}
+              <div className="flex flex-col space-y-1">
+                <label className="text-sm font-medium text-gray-700">Filter by Status</label>
+                <Select
+                  value={filterStatus || "all"}
+                  onValueChange={(value) => {
+                    setFilterStatus(value === "all" ? undefined : value);
+                    setCurrentPage(1);
+                    console.log("DEBUG: Status filter set to:", value);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="scheduled">Scheduled</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Clear Filters Button */}
+              {(filterDate || filterServiceTypeId || filterStatus) && (
+                <Button
+                  onClick={() => {
+                    setFilterDate(undefined);
+                    setFilterServiceTypeId(undefined);
+                    setFilterStatus(undefined);
+                    setCurrentPage(1);
+                    console.log("DEBUG: Filters cleared.");
+                  }}
+                  variant="secondary"
+                >
+                  Clear Filters
+                </Button>
+              )}
+            </div>
+
             {isLoadingSessions ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
