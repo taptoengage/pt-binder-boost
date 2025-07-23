@@ -914,14 +914,25 @@ export default function ClientDetail() {
                 <Package className="w-5 h-5 mr-2" />
                 Client Offerings
               </CardTitle>
-              <Button 
-                onClick={() => setIsAddPackModalOpen(true)}
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add New Pack</span>
-              </Button>
+              <div className="flex space-x-2">
+                <Button 
+                  onClick={() => navigate(`/clients/${clientId}/pack-history`)}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center space-x-2"
+                >
+                  <Clock className="w-4 h-4" />
+                  <span>See Pack History</span>
+                </Button>
+                <Button 
+                  onClick={() => setIsAddPackModalOpen(true)}
+                  size="sm"
+                  className="flex items-center space-x-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add New Pack</span>
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
