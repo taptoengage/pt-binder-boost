@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -99,6 +99,7 @@ export default function ClientDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   const [client, setClient] = useState<Client | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -396,7 +397,14 @@ export default function ClientDetail() {
             is_from_credit,
             credit_id_consumed,
             notes,
-            service_types(name)
+            service_types(name),
+            client_subscriptions!left(
+              id,
+              subscription_service_allocations!left(
+                service_type_id,
+                cost_per_session
+              )
+            )
             `,
             { count: 'exact' }
           )
@@ -573,16 +581,7 @@ export default function ClientDetail() {
       });
 
       // Refresh the sessions list
-      const { data: sessionsData, error: sessionsError } = await supabase
-        .from('sessions')
-        .select('*, service_types(name)')
-        .eq('client_id', clientId)
-        .eq('trainer_id', user.id)
-        .order('session_date', { ascending: false });
-
-      if (!sessionsError) {
-        setClientSessions(sessionsData || []);
-      }
+      queryClient.invalidateQueries({ queryKey: ['sessionsForClient', clientId] });
 
     } catch (error) {
       console.error('Error deleting session:', error);
@@ -595,6 +594,98 @@ export default function ClientDetail() {
       setIsDeletingSession(false);
       setIsSessionConfirmModalOpen(false);
       setSessionToDeleteId(null);
+    }
+  };
+
+  const handleCancelSession = async (sessionToCancel: any) => {
+    if (!sessionToCancel.id) {
+      toast({
+        title: "Error",
+        description: "Session ID is missing for cancellation.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (sessionToCancel.status === 'cancelled') {
+      toast({
+        title: "Info",
+        description: "Session is already cancelled.",
+      });
+      return;
+    }
+
+    console.log("DEBUG: Attempting to cancel session:", sessionToCancel.id);
+
+    try {
+      // Step 1: Update session status to 'cancelled'
+      const { error: sessionUpdateError } = await supabase
+        .from('sessions')
+        .update({ status: 'cancelled' })
+        .eq('id', sessionToCancel.id);
+
+      if (sessionUpdateError) {
+        throw new Error(`Failed to update session status: ${sessionUpdateError.message}`);
+      }
+      toast({
+        title: "Success",
+        description: "Session cancelled successfully!",
+      });
+      console.log("DEBUG: Session status updated to cancelled for session ID:", sessionToCancel.id);
+
+      // Step 2: If session was linked to a subscription, create a credit
+      if (sessionToCancel.subscription_id && sessionToCancel.service_type_id) {
+        console.log("DEBUG: Session linked to subscription, attempting to generate credit.");
+
+        // Find the cost_per_session directly from the joined data in the session object
+        const subscriptionDetails = sessionToCancel.client_subscriptions;
+        const allocation = subscriptionDetails?.subscription_service_allocations?.find(
+          (alloc: any) => alloc.service_type_id === sessionToCancel.service_type_id
+        );
+
+        if (allocation && typeof allocation.cost_per_session === 'number') {
+          const creditValue = allocation.cost_per_session;
+          console.log("DEBUG: Derived credit value:", creditValue, "for service_type_id:", sessionToCancel.service_type_id);
+
+          // Create the new credit entry
+          const { error: creditCreateError } = await supabase
+            .from('subscription_session_credits')
+            .insert({
+              subscription_id: sessionToCancel.subscription_id,
+              service_type_id: sessionToCancel.service_type_id,
+              credit_amount: 1, // One session credit
+              credit_value: creditValue,
+              credit_reason: 'cancelled_session',
+              status: 'available',
+            });
+
+          if (creditCreateError) {
+            throw new Error(`Failed to generate credit: ${creditCreateError.message}`);
+          }
+          toast({
+            title: "Success",
+            description: "Subscription credit generated!",
+          });
+          console.log("DEBUG: Subscription credit successfully generated for session ID:", sessionToCancel.id);
+        } else {
+          console.warn("DEBUG: Could not find matching service allocation or valid cost_per_session for credit generation. Session ID:", sessionToCancel.id, "Sub ID:", sessionToCancel.subscription_id, "Service Type ID:", sessionToCancel.service_type_id, "Allocation Found:", allocation);
+          toast({
+            title: "Warning",
+            description: "Could not generate credit: Service allocation details incomplete.",
+            variant: "destructive",
+          });
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: `Operation failed: ${error.message}`,
+        variant: "destructive",
+      });
+      console.error("DEBUG: Error during session cancellation/credit generation:", error);
+    } finally {
+      // Always invalidate queries to ensure UI is updated regardless of credit generation success
+      queryClient.invalidateQueries({ queryKey: ['sessionsForClient', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['activeClientSubscriptions', clientId] });
     }
   };
 
@@ -1162,29 +1253,40 @@ export default function ClientDetail() {
                          <TableCell>
                            {session.notes || 'N/A'}
                          </TableCell>
-                         <TableCell>
-                           <div className="flex items-center gap-1">
-                             <Button
-                               variant="ghost"
-                               size="sm"
-                               onClick={() => navigate(`/clients/${clientId}/sessions/${session.id}/edit`)}
-                               className="p-2"
-                             >
-                               <Edit className="w-4 h-4" />
-                             </Button>
-                             <Button
-                               variant="ghost"
-                               size="sm"
-                               onClick={() => {
-                                 setSessionToDeleteId(session.id);
-                                 setIsSessionConfirmModalOpen(true);
-                               }}
-                               className="p-2 text-destructive hover:text-destructive"
-                             >
-                               <Trash2 className="w-4 h-4" />
-                             </Button>
-                           </div>
-                         </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => navigate(`/clients/${clientId}/sessions/${session.id}/edit`)}
+                                className="p-2"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              {session.status !== 'cancelled' && session.subscription_id && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleCancelSession(session)}
+                                  className="p-2 text-orange-600 hover:text-orange-700"
+                                  title="Cancel session and generate credit"
+                                >
+                                  Cancel
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSessionToDeleteId(session.id);
+                                  setIsSessionConfirmModalOpen(true);
+                                }}
+                                className="p-2 text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
