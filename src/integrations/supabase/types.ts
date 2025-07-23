@@ -66,6 +66,48 @@ export type Database = {
           },
         ]
       }
+      client_subscriptions: {
+        Row: {
+          billing_amount: number | null
+          billing_cycle: string
+          client_id: string
+          created_at: string
+          end_date: string | null
+          id: string
+          payment_frequency: string
+          start_date: string
+          status: string
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          billing_amount?: number | null
+          billing_cycle: string
+          client_id: string
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          payment_frequency: string
+          start_date: string
+          status?: string
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          billing_amount?: number | null
+          billing_cycle?: string
+          client_id?: string
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          payment_frequency?: string
+          start_date?: string
+          status?: string
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       clients: {
         Row: {
           created_at: string
@@ -353,6 +395,47 @@ export type Database = {
             columns: ["trainer_id"]
             isOneToOne: false
             referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_service_allocations: {
+        Row: {
+          cost_per_session: number
+          created_at: string
+          id: string
+          period_type: string
+          quantity_per_period: number
+          service_type_id: string
+          subscription_id: string
+          updated_at: string
+        }
+        Insert: {
+          cost_per_session: number
+          created_at?: string
+          id?: string
+          period_type: string
+          quantity_per_period: number
+          service_type_id: string
+          subscription_id: string
+          updated_at?: string
+        }
+        Update: {
+          cost_per_session?: number
+          created_at?: string
+          id?: string
+          period_type?: string
+          quantity_per_period?: number
+          service_type_id?: string
+          subscription_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_service_allocations_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "client_subscriptions"
             referencedColumns: ["id"]
           },
         ]

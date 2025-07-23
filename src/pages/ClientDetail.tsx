@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import ClientPackDetailModal from '@/components/ClientPackDetailModal';
+import ClientSubscriptionModal from '@/components/ClientSubscriptionModal';
 
 interface Client {
   id: string;
@@ -123,6 +124,9 @@ export default function ClientDetail() {
   // Pack detail modal state
   const [isPackDetailModalOpen, setIsPackDetailModalOpen] = useState(false);
   const [selectedPackForDetail, setSelectedPackForDetail] = useState<SessionPack | null>(null);
+
+  // Subscription modal state
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
 
   // Pagination state for session history
   const [currentPage, setCurrentPage] = useState(1);
@@ -1180,6 +1184,15 @@ export default function ClientDetail() {
                   <span>See Pack History</span>
                 </Button>
                 <Button 
+                  onClick={() => setIsSubscriptionModalOpen(true)}
+                  size="sm"
+                  variant="outline"
+                  className="flex items-center space-x-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add New Subscription</span>
+                </Button>
+                <Button 
                   onClick={() => setIsAddPackModalOpen(true)}
                   size="sm"
                   className="flex items-center space-x-2"
@@ -1604,6 +1617,13 @@ export default function ClientDetail() {
           isOpen={isPackDetailModalOpen}
           onClose={() => setIsPackDetailModalOpen(false)}
           pack={selectedPackForDetail}
+        />
+
+        {/* Subscription Modal */}
+        <ClientSubscriptionModal
+          isOpen={isSubscriptionModalOpen}
+          onClose={() => setIsSubscriptionModalOpen(false)}
+          clientId={clientId || ''}
         />
       </div>
     </div>
