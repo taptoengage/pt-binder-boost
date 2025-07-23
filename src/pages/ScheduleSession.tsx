@@ -21,14 +21,29 @@ import { cn } from '@/lib/utils';
 
 const sessionFormSchema = z.object({
   client_id: z.string().min(1, 'Please select a client'),
-  service_type_id: z.string().min(1, 'Please select a service type'),
+  sessionTypeSelection: z.enum(["onceOff", "fromPack"]),
+  service_type_id: z.string().optional(),
+  session_pack_id: z.string().optional().nullable(),
+  paymentStatus: z.enum(["paid", "pending", "cancelled"]).optional(),
   session_date: z.date({
     message: 'Please select a session date',
   }),
   session_time: z.string().min(1, 'Please select a session time'),
   status: z.enum(['scheduled', 'completed', 'cancelled_late', 'cancelled_early']),
-  session_pack_id: z.string().uuid('Please select a session pack').optional().nullable(),
   notes: z.string().optional(),
+}).refine((data) => {
+  // If 'onceOff' selected, service_type_id should be present
+  if (data.sessionTypeSelection === 'onceOff' && !data.service_type_id) {
+    return false;
+  }
+  // If 'fromPack' selected, session_pack_id should be present
+  if (data.sessionTypeSelection === 'fromPack' && !data.session_pack_id) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Service type or Pack is required based on session type selection.",
+  path: ["service_type_id", "session_pack_id"],
 });
 
 type SessionFormData = z.infer<typeof sessionFormSchema>;
@@ -60,6 +75,7 @@ export default function ScheduleSession() {
     resolver: zodResolver(sessionFormSchema),
     defaultValues: {
       client_id: initialClientId || '',
+      sessionTypeSelection: 'fromPack',
       status: 'scheduled',
       notes: '',
     },
@@ -151,6 +167,8 @@ export default function ScheduleSession() {
 
   const onSubmit = async (data: SessionFormData) => {
     try {
+      console.log("DEBUG: Form submitted with values:", data);
+      
       // Combine date and time into a proper timestamp
       const [hours, minutes] = data.session_time.split(':').map(Number);
       const sessionDateTime = new Date(data.session_date);
@@ -159,10 +177,10 @@ export default function ScheduleSession() {
       const sessionData = {
         trainer_id: user?.id,
         client_id: data.client_id,
-        service_type_id: data.service_type_id,
+        service_type_id: data.sessionTypeSelection === 'onceOff' ? data.service_type_id || null : null,
         session_date: sessionDateTime.toISOString(),
         status: data.status,
-        session_pack_id: data.session_pack_id === "none" ? null : data.session_pack_id || null,
+        session_pack_id: data.sessionTypeSelection === 'fromPack' && data.session_pack_id !== "none" ? data.session_pack_id : null,
         notes: data.notes || null,
       };
 
@@ -285,26 +303,27 @@ export default function ScheduleSession() {
 
                 <FormField
                   control={form.control}
-                  name="service_type_id"
+                  name="sessionTypeSelection"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Service Type</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <FormLabel>Session Type Selection</FormLabel>
+                      <Select onValueChange={(value) => {
+                        field.onChange(value);
+                        if (value === 'onceOff') {
+                          form.setValue("session_pack_id", undefined);
+                        } else {
+                          form.setValue("service_type_id", undefined);
+                          form.setValue("paymentStatus", undefined);
+                        }
+                      }} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder={isLoadingServiceTypes ? "Loading service types..." : "Select a service type"} />
+                            <SelectValue placeholder="Select session type" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {serviceTypes.length === 0 && !isLoadingServiceTypes ? (
-                            <SelectItem value="no-service-types" disabled>No service types found</SelectItem>
-                          ) : (
-                            serviceTypes.map((serviceType) => (
-                              <SelectItem key={serviceType.id} value={serviceType.id}>
-                                {serviceType.name}
-                              </SelectItem>
-                            ))
-                          )}
+                          <SelectItem value="fromPack">Assign from Pack or Subscription</SelectItem>
+                          <SelectItem value="onceOff">Schedule a once-off service</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -312,17 +331,91 @@ export default function ScheduleSession() {
                   )}
                 />
 
-                {activeSessionPacks.length > 0 && (
+                <FormField
+                  control={form.control}
+                  name="service_type_id"
+                  render={({ field }) => {
+                    const sessionTypeSelection = form.watch("sessionTypeSelection");
+                    return (
+                      <FormItem>
+                        <FormLabel>Schedule a once-off service</FormLabel>
+                        <Select 
+                          onValueChange={field.onChange} 
+                          value={field.value || ''}
+                          disabled={sessionTypeSelection === 'fromPack'}
+                        >
+                          <FormControl>
+                            <SelectTrigger disabled={sessionTypeSelection === 'fromPack'}>
+                              <SelectValue placeholder={isLoadingServiceTypes ? "Loading service types..." : "Select a service type"} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {serviceTypes.length === 0 && !isLoadingServiceTypes ? (
+                              <SelectItem value="no-service-types" disabled>No service types found</SelectItem>
+                            ) : (
+                              serviceTypes.map((serviceType) => (
+                                <SelectItem key={serviceType.id} value={serviceType.id}>
+                                  {serviceType.name}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+
+                {form.watch("sessionTypeSelection") === 'onceOff' && (
                   <FormField
                     control={form.control}
-                    name="session_pack_id"
+                    name="paymentStatus"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Session Pack (Optional)</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || "none"}>
+                        <FormLabel>Payment Status</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={isLoadingPacks ? "Loading packs..." : "Select a session pack (Optional)"} />
+                              <SelectValue placeholder="Select payment status" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="paid">Paid</SelectItem>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                <FormField
+                  control={form.control}
+                  name="session_pack_id"
+                  render={({ field }) => {
+                    const sessionTypeSelection = form.watch("sessionTypeSelection");
+                    return (
+                      <FormItem>
+                        <FormLabel>Assign from Pack or Subscription</FormLabel>
+                        <Select 
+                          onValueChange={field.onChange} 
+                          value={field.value || "none"}
+                          disabled={sessionTypeSelection === 'onceOff' || activeSessionPacks.length === 0}
+                        >
+                          <FormControl>
+                            <SelectTrigger disabled={sessionTypeSelection === 'onceOff' || activeSessionPacks.length === 0}>
+                              <SelectValue placeholder={
+                                sessionTypeSelection === 'onceOff' 
+                                  ? "Not available for once-off sessions" 
+                                  : isLoadingPacks 
+                                    ? "Loading packs..." 
+                                    : activeSessionPacks.length === 0 
+                                      ? "No active packs available"
+                                      : "Select a session pack"
+                              } />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -336,9 +429,9 @@ export default function ScheduleSession() {
                         </Select>
                         <FormMessage />
                       </FormItem>
-                    )}
-                  />
-                )}
+                    );
+                  }}
+                />
 
                 <FormField
                   control={form.control}
