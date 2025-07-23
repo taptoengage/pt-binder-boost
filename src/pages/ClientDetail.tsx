@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -188,6 +189,41 @@ export default function ClientDetail() {
 
     fetchServiceTypes();
   }, [user?.id]);
+
+  // Fetch active client subscriptions
+  const { data: activeClientSubscriptions, isLoading: isLoadingActiveSubscriptions, error: activeSubscriptionsError } = useQuery({
+    queryKey: ['activeClientSubscriptions', clientId],
+    queryFn: async () => {
+      if (!clientId) return [];
+      const { data, error } = await supabase
+        .from('client_subscriptions')
+        .select(`
+          id,
+          start_date,
+          billing_cycle,
+          payment_frequency,
+          billing_amount,
+          status,
+          subscription_service_allocations!inner (
+            quantity_per_period,
+            period_type,
+            cost_per_session,
+            service_type_id
+          )
+        `)
+        .eq('client_id', clientId)
+        .eq('status', 'active')
+        .order('start_date', { ascending: false });
+
+      if (error) {
+        console.error("DEBUG: Error fetching active client subscriptions:", error.message);
+        throw error;
+      }
+      console.log("DEBUG: Fetched active client subscriptions:", data);
+      return data || [];
+    },
+    enabled: !!clientId,
+  });
 
   // Fetch all service types for filter dropdown
   useEffect(() => {
@@ -1204,17 +1240,18 @@ export default function ClientDetail() {
             </div>
           </CardHeader>
           <CardContent>
-            {isLoadingSessionPacks ? (
+            {(isLoadingSessionPacks || isLoadingActiveSubscriptions) ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                <span className="ml-2 text-muted-foreground">Loading session packs...</span>
+                <span className="ml-2 text-muted-foreground">Loading session packs and subscriptions...</span>
               </div>
-            ) : sessionPacks.length === 0 ? (
+            ) : (sessionPacks.length === 0 && activeClientSubscriptions?.length === 0) ? (
               <p className="text-muted-foreground text-center py-8">
                 No session packs or subscriptions for this client yet.
               </p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Display Active Packs */}
                 {sessionPacks.map((pack) => {
                   const progressPercentage = ((pack.total_sessions - pack.sessions_remaining) / pack.total_sessions) * 100;
                   
@@ -1260,6 +1297,49 @@ export default function ClientDetail() {
                     </Card>
                   );
                 })}
+
+                {/* Display Active Subscriptions */}
+                {isLoadingActiveSubscriptions && <p>Loading active subscriptions...</p>}
+                {activeSubscriptionsError && <p className="text-red-500">Error loading subscriptions: {activeSubscriptionsError.message}</p>}
+                
+                {activeClientSubscriptions?.length > 0 && (
+                  <>
+                    {activeClientSubscriptions.map((subscription) => (
+                      <Card key={subscription.id} className="cursor-pointer hover:shadow-md transition-shadow">
+                        <CardHeader>
+                          <CardTitle>
+                            Subscription - {subscription.billing_cycle.charAt(0).toUpperCase() + subscription.billing_cycle.slice(1)} ({format(new Date(subscription.start_date), 'MMM do, yyyy')})
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-lg font-bold">
+                            {new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(subscription.billing_amount)} per {subscription.billing_cycle}
+                          </p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Paid {subscription.payment_frequency.charAt(0).toUpperCase() + subscription.payment_frequency.slice(1)}
+                          </p>
+
+                          {subscription.subscription_service_allocations && subscription.subscription_service_allocations.length > 0 && (
+                            <div className="mt-3 text-sm">
+                              <p className="font-semibold">Includes:</p>
+                              <ul className="list-disc list-inside text-muted-foreground">
+                                {subscription.subscription_service_allocations.map((alloc, idx) => {
+                                  // Find service type name from coreServiceTypes
+                                  const serviceType = coreServiceTypes.find(st => st.id === alloc.service_type_id);
+                                  return (
+                                    <li key={idx}>
+                                      {alloc.quantity_per_period}x {serviceType?.name || 'Unknown Service'} ({alloc.period_type})
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </CardContent>
