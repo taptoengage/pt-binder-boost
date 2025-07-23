@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Progress } from '@/components/ui/progress';
 import { format } from 'date-fns';
 import { ArrowLeft, Loader2, User, Phone, Mail, DollarSign, Calendar, Target, Activity, Plus, Clock, Edit, Trash2, CalendarIcon, Package } from 'lucide-react';
 import { DashboardNavigation } from '@/components/Navigation';
@@ -21,6 +22,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import ClientPackDetailModal from '@/components/ClientPackDetailModal';
 
 interface Client {
   id: string;
@@ -62,6 +64,18 @@ interface ServiceType {
   description?: string;
 }
 
+interface SessionPack {
+  id: string;
+  total_sessions: number;
+  sessions_remaining: number;
+  service_type_id: string;
+  service_types: { name: string } | null;
+  amount_paid: number;
+  purchase_date: string;
+  expiry_date: string | null;
+  status: string;
+}
+
 const packSchema = z.object({
   service_type_id: z.string().min(1, 'Service type is required'),
   quantity: z.number().min(1, 'Quantity must be at least 1'),
@@ -100,6 +114,14 @@ export default function ClientDetail() {
   const [isSubmittingPack, setIsSubmittingPack] = useState(false);
   const [coreServiceTypes, setCoreServiceTypes] = useState<ServiceType[]>([]);
   const [isLoadingServiceTypes, setIsLoadingServiceTypes] = useState(false);
+  
+  // Session packs state
+  const [sessionPacks, setSessionPacks] = useState<SessionPack[]>([]);
+  const [isLoadingSessionPacks, setIsLoadingSessionPacks] = useState(true);
+  
+  // Pack detail modal state
+  const [isPackDetailModalOpen, setIsPackDetailModalOpen] = useState(false);
+  const [selectedPackForDetail, setSelectedPackForDetail] = useState<SessionPack | null>(null);
 
   const packForm = useForm<PackFormData>({
     resolver: zodResolver(packSchema),
@@ -146,6 +168,7 @@ export default function ClientDetail() {
         setIsLoading(false);
         setIsLoadingPayments(false);
         setIsLoadingSessions(false);
+        setIsLoadingSessionPacks(false);
         return;
       }
 
@@ -153,6 +176,7 @@ export default function ClientDetail() {
         setIsLoading(true);
         setIsLoadingPayments(true);
         setIsLoadingSessions(true);
+        setIsLoadingSessionPacks(true);
         
         // Fetch client details
         const { data: clientData, error: clientError } = await supabase
@@ -216,6 +240,36 @@ export default function ClientDetail() {
           setClientSessions(sessionsData || []);
         }
 
+        // Fetch client session packs with service types
+        const { data: sessionPacksData, error: sessionPacksError } = await supabase
+          .from('session_packs')
+          .select(`
+            id,
+            total_sessions,
+            sessions_remaining,
+            service_type_id,
+            amount_paid,
+            purchase_date,
+            expiry_date,
+            status,
+            service_types(name)
+          `)
+          .eq('client_id', clientId)
+          .eq('trainer_id', user.id)
+          .eq('status', 'active')
+          .order('purchase_date', { ascending: false });
+
+        if (sessionPacksError) {
+          console.error('Error fetching session packs:', sessionPacksError);
+          toast({
+            title: "Warning",
+            description: "Failed to load session packs. Client details loaded successfully.",
+            variant: "destructive",
+          });
+        } else {
+          setSessionPacks(sessionPacksData || []);
+        }
+
       } catch (error) {
         console.error('Error fetching client data:', error);
         toast({
@@ -228,6 +282,7 @@ export default function ClientDetail() {
         setIsLoading(false);
         setIsLoadingPayments(false);
         setIsLoadingSessions(false);
+        setIsLoadingSessionPacks(false);
       }
     };
 
@@ -380,6 +435,12 @@ export default function ClientDetail() {
     }
   };
 
+  const handleViewPackDetail = (pack: SessionPack) => {
+    setSelectedPackForDetail(pack);
+    setIsPackDetailModalOpen(true);
+    console.log("DEBUG: Opening pack detail modal for pack:", pack.id);
+  };
+
   const handleAddPackSubmit = async (data: PackFormData) => {
     if (!user?.id) {
       toast({ title: "Error", description: "You must be logged in to add a pack.", variant: "destructive" });
@@ -459,6 +520,29 @@ export default function ClientDetail() {
 
       if (!paymentsError) {
         setClientPayments(paymentsData || []);
+      }
+
+      // Refresh the session packs list to show the new pack
+      const { data: sessionPacksData, error: sessionPacksError } = await supabase
+        .from('session_packs')
+        .select(`
+          id,
+          total_sessions,
+          sessions_remaining,
+          service_type_id,
+          amount_paid,
+          purchase_date,
+          expiry_date,
+          status,
+          service_types(name)
+        `)
+        .eq('client_id', clientId)
+        .eq('trainer_id', user.id)
+        .eq('status', 'active')
+        .order('purchase_date', { ascending: false });
+
+      if (!sessionPacksError) {
+        setSessionPacks(sessionPacksData || []);
       }
       
     } catch (error) {
@@ -841,9 +925,64 @@ export default function ClientDetail() {
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground text-center py-8">
-              Session packs and subscriptions coming soon
-            </p>
+            {isLoadingSessionPacks ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <span className="ml-2 text-muted-foreground">Loading session packs...</span>
+              </div>
+            ) : sessionPacks.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">
+                No session packs or subscriptions for this client yet.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {sessionPacks.map((pack) => {
+                  const progressPercentage = ((pack.total_sessions - pack.sessions_remaining) / pack.total_sessions) * 100;
+                  
+                  return (
+                    <Card
+                      key={pack.id}
+                      className="cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => handleViewPackDetail(pack)}
+                    >
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-lg">
+                          {pack.service_types?.name || 'Unknown Service'} - {pack.total_sessions} Pack
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm text-muted-foreground">Sessions Progress</span>
+                            <span className="text-sm font-medium">
+                              {pack.sessions_remaining} / {pack.total_sessions} remaining
+                            </span>
+                          </div>
+                          <Progress value={progressPercentage} className="h-2" />
+                        </div>
+                        
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-muted-foreground">Used:</span>
+                          <span className="font-medium">{pack.total_sessions - pack.sessions_remaining} sessions</span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-muted-foreground">Value:</span>
+                          <span className="font-medium">${pack.amount_paid.toFixed(2)}</span>
+                        </div>
+                        
+                        {pack.expiry_date && (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-muted-foreground">Expires:</span>
+                            <span className="font-medium">{format(new Date(pack.expiry_date), 'dd/MM/yyyy')}</span>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1193,6 +1332,13 @@ export default function ClientDetail() {
             </Form>
           </DialogContent>
         </Dialog>
+
+        {/* Pack Detail Modal */}
+        <ClientPackDetailModal
+          isOpen={isPackDetailModalOpen}
+          onClose={() => setIsPackDetailModalOpen(false)}
+          pack={selectedPackForDetail}
+        />
       </div>
     </div>
   );
