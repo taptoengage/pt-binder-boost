@@ -725,7 +725,7 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                       />
                     )}
 
-                    {/* Credit Selection for Subscription Sessions */}
+                     {/* Credit Selection for Subscription Sessions */}
                     {form.watch("subscriptionId") && form.watch("serviceTypeIdForSubscription") && (
                       <FormField
                         control={form.control}
@@ -733,10 +733,24 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Use an Available Credit (Optional)</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
+                            <Select
+                              value={field.value || "no-credit"}
+                              onValueChange={(value) => {
+                                if (value === "no-credit") {
+                                  field.onChange(undefined);
+                                  console.log("DEBUG: Credit selection cleared.");
+                                } else {
+                                  field.onChange(value);
+                                  console.log("DEBUG: Credit selected:", value);
+                                }
+                              }}
+                            >
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder={isLoadingCredits ? "Loading credits..." : `Available: ${availableCredits?.length || 0}`} />
+                                  <SelectValue placeholder={
+                                    field.value ? `Using ${availableCredits?.find(c => c.id === field.value)?.credit_reason || 'a credit'}` :
+                                    (isLoadingCredits ? "Loading credits..." : `Available: ${availableCredits?.length || 0}`)
+                                  } />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
@@ -746,7 +760,7 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                                   <SelectItem value="no-credits" disabled>No available credits for this service</SelectItem>
                                 ) : (
                                   <>
-                                    <SelectItem value="">Do not use a credit</SelectItem>
+                                    <SelectItem value="no-credit">Do not use a credit</SelectItem>
                                     {availableCredits?.map((credit) => (
                                       <SelectItem key={credit.id} value={credit.id}>
                                         {`Credit: ${format(new Date(credit.created_at), 'MMM dd')} - ${credit.credit_reason || 'No reason'}`}
