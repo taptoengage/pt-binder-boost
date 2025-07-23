@@ -341,6 +341,7 @@ export type Database = {
           session_date: string
           session_pack_id: string | null
           status: string
+          subscription_id: string | null
           trainer_id: string
           updated_at: string
         }
@@ -353,6 +354,7 @@ export type Database = {
           session_date: string
           session_pack_id?: string | null
           status: string
+          subscription_id?: string | null
           trainer_id: string
           updated_at?: string
         }
@@ -365,6 +367,7 @@ export type Database = {
           session_date?: string
           session_pack_id?: string | null
           status?: string
+          subscription_id?: string | null
           trainer_id?: string
           updated_at?: string
         }
@@ -388,6 +391,13 @@ export type Database = {
             columns: ["session_pack_id"]
             isOneToOne: false
             referencedRelation: "session_packs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "client_subscriptions"
             referencedColumns: ["id"]
           },
           {

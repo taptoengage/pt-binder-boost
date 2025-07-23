@@ -56,6 +56,7 @@ interface ClientSession {
   status: string;
   notes: string | null;
   session_pack_id?: string | null;
+  subscription_id?: string | null;
   service_types: {
     name: string;
   } | null;
@@ -389,6 +390,7 @@ export default function ClientDetail() {
             session_date,
             status,
             session_pack_id,
+            subscription_id,
             notes,
             service_types(name)
             `,
@@ -1136,6 +1138,10 @@ export default function ClientDetail() {
                            {session.session_pack_id ? (
                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
                                From Pack
+                             </span>
+                           ) : session.subscription_id ? (
+                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                               From Subscription
                              </span>
                            ) : (
                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">

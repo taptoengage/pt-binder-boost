@@ -24,6 +24,7 @@ const sessionFormSchema = z.object({
   sessionTypeSelection: z.enum(["onceOff", "fromPack"]),
   service_type_id: z.string().optional(),
   session_pack_id: z.string().optional().nullable(),
+  subscription_id: z.string().optional(),
   paymentStatus: z.enum(["paid", "pending", "cancelled"]).optional(),
   session_date: z.date({
     message: 'Please select a session date',
@@ -32,18 +33,24 @@ const sessionFormSchema = z.object({
   status: z.enum(['scheduled', 'completed', 'cancelled_late', 'cancelled_early']),
   notes: z.string().optional(),
 }).refine((data) => {
-  // If 'onceOff' selected, service_type_id should be present
-  if (data.sessionTypeSelection === 'onceOff' && !data.service_type_id) {
-    return false;
+  if (data.sessionTypeSelection === 'onceOff') {
+    return data.service_type_id ? true : false;
   }
-  // If 'fromPack' selected, session_pack_id should be present
-  if (data.sessionTypeSelection === 'fromPack' && !data.session_pack_id) {
+  if (data.sessionTypeSelection === 'fromPack') {
+    return data.session_pack_id || data.subscription_id ? true : false;
+  }
+  return true;
+}, {
+  message: "Please select a service type, a pack, or a subscription.",
+  path: ["service_type_id", "session_pack_id", "subscription_id"],
+}).refine((data) => {
+  if (data.session_pack_id && data.subscription_id) {
     return false;
   }
   return true;
 }, {
-  message: "Service type or Pack is required based on session type selection.",
-  path: ["service_type_id", "session_pack_id"],
+  message: "A session cannot be linked to both a pack and a subscription.",
+  path: ["session_pack_id", "subscription_id"],
 });
 
 type SessionFormData = z.infer<typeof sessionFormSchema>;
@@ -67,9 +74,11 @@ export default function ScheduleSession() {
   const [clients, setClients] = useState<Client[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [activeSessionPacks, setActiveSessionPacks] = useState<any[]>([]);
+  const [activeClientSubscriptions, setActiveClientSubscriptions] = useState<any[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(true);
   const [isLoadingServiceTypes, setIsLoadingServiceTypes] = useState(true);
   const [isLoadingPacks, setIsLoadingPacks] = useState(true);
+  const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(true);
 
   const form = useForm<SessionFormData>({
     resolver: zodResolver(sessionFormSchema),
@@ -89,6 +98,44 @@ export default function ScheduleSession() {
       fetchServiceTypes();
     }
   }, [user?.id]);
+
+  const fetchActiveClientSubscriptions = async (clientId: string) => {
+    if (!clientId || !user?.id) return;
+    
+    try {
+      setIsLoadingSubscriptions(true);
+      const { data, error } = await supabase
+        .from('client_subscriptions')
+        .select(`
+          id,
+          billing_cycle,
+          start_date,
+          subscription_service_allocations (
+            service_type_id,
+            period_type,
+            quantity_per_period,
+            service_types (name)
+          )
+        `)
+        .eq('client_id', clientId)
+        .eq('status', 'active')
+        .order('start_date', { ascending: false });
+
+      console.log("DEBUG: Fetched active client subscriptions for scheduling:", data);
+
+      if (error) throw error;
+      setActiveClientSubscriptions(data || []);
+    } catch (error) {
+      console.error('DEBUG: Error fetching active client subscriptions for scheduling:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load subscriptions. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingSubscriptions(false);
+    }
+  };
 
   const fetchClients = async () => {
     try {
@@ -174,22 +221,30 @@ export default function ScheduleSession() {
       const sessionDateTime = new Date(data.session_date);
       sessionDateTime.setHours(hours, minutes, 0, 0);
 
-      let finalServiceTypeId: string | undefined = data.service_type_id; // Start with what's selected for once-off
+      let finalServiceTypeId: string | undefined = data.service_type_id;
 
-      // If a pack is selected, find its corresponding service_type_id
-      if (data.sessionTypeSelection === 'fromPack' && data.session_pack_id && data.session_pack_id !== "none") {
-        const selectedPack = activeSessionPacks?.find(pack => pack.id === data.session_pack_id);
-        if (selectedPack) {
-          finalServiceTypeId = selectedPack.service_type_id;
-          console.log("DEBUG: Service Type ID found from selected pack:", finalServiceTypeId);
-        } else {
-          console.error("DEBUG: Selected pack ID not found in activeSessionPacks data:", data.session_pack_id);
-          toast({
-            title: 'Error',
-            description: 'Could not find service type for selected pack. Please try again.',
-            variant: 'destructive',
-          });
-          return;
+      // If a pack or subscription is selected, derive serviceTypeId
+      if (data.sessionTypeSelection === 'fromPack') {
+        if (data.session_pack_id && data.session_pack_id !== "none") {
+          const selectedPack = activeSessionPacks?.find(pack => pack.id === data.session_pack_id);
+          if (selectedPack) {
+            finalServiceTypeId = selectedPack.service_type_id;
+            console.log("DEBUG: Service Type ID derived from selected pack:", finalServiceTypeId);
+          }
+        } else if (data.subscription_id) {
+          const selectedSub = activeClientSubscriptions?.find(sub => sub.id === data.subscription_id);
+          if (selectedSub && data.service_type_id) {
+            finalServiceTypeId = data.service_type_id;
+            console.log("DEBUG: Service Type ID derived from selected subscription and dropdown:", finalServiceTypeId);
+          } else {
+            console.error("DEBUG: Subscription selected but no service type selected or subscription not found.");
+            toast({
+              title: 'Error',
+              description: 'Please select a service type from the subscription options.',
+              variant: 'destructive',
+            });
+            return;
+          }
         }
       }
 
@@ -204,6 +259,27 @@ export default function ScheduleSession() {
         return;
       }
 
+      // Ensure only one of pack_id or subscription_id is set
+      if (data.session_pack_id && data.subscription_id) {
+        console.error("DEBUG: Attempting to link session to both pack and subscription.");
+        toast({
+          title: 'Error',
+          description: 'A session cannot be linked to both a pack and a subscription.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (!data.session_pack_id && !data.subscription_id && data.sessionTypeSelection === 'fromPack') {
+        console.error("DEBUG: Session type 'fromPack' selected but neither pack nor subscription ID found.");
+        toast({
+          title: 'Error',
+          description: 'Please select a valid pack or subscription.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       const sessionData = {
         trainer_id: user?.id,
         client_id: data.client_id,
@@ -211,6 +287,7 @@ export default function ScheduleSession() {
         session_date: sessionDateTime.toISOString(),
         status: data.status,
         session_pack_id: data.sessionTypeSelection === 'fromPack' && data.session_pack_id !== "none" ? data.session_pack_id : null,
+        subscription_id: data.sessionTypeSelection === 'fromPack' && data.subscription_id ? data.subscription_id : null,
         notes: data.notes || null,
       };
 
@@ -246,14 +323,17 @@ export default function ScheduleSession() {
     }
   }, [initialClientId, clients, form]);
 
-  // Watch for client changes to fetch session packs
+  // Watch for client changes to fetch session packs and subscriptions
   useEffect(() => {
     const clientId = form.watch('client_id');
     if (clientId) {
       fetchActiveSessionPacks(clientId);
+      fetchActiveClientSubscriptions(clientId);
     } else {
       setActiveSessionPacks([]);
+      setActiveClientSubscriptions([]);
       setIsLoadingPacks(false);
+      setIsLoadingSubscriptions(false);
     }
   }, [form.watch('client_id')]);
 
@@ -368,28 +448,39 @@ export default function ScheduleSession() {
                   name="service_type_id"
                   render={({ field }) => {
                     const sessionTypeSelection = form.watch("sessionTypeSelection");
+                    const selectedSubscriptionId = form.watch("subscription_id");
+                    const selectedSubscription = activeClientSubscriptions?.find(sub => sub.id === selectedSubscriptionId);
+                    
                     return (
                       <FormItem>
                         <FormLabel>Schedule a once-off service</FormLabel>
                         <Select 
                           onValueChange={field.onChange} 
                           value={field.value || ''}
-                          disabled={sessionTypeSelection === 'fromPack'}
+                          disabled={sessionTypeSelection === 'fromPack' && !selectedSubscriptionId}
                         >
                           <FormControl>
-                            <SelectTrigger disabled={sessionTypeSelection === 'fromPack'}>
+                            <SelectTrigger disabled={sessionTypeSelection === 'fromPack' && !selectedSubscriptionId}>
                               <SelectValue placeholder={isLoadingServiceTypes ? "Loading service types..." : "Select a service type"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {serviceTypes.length === 0 && !isLoadingServiceTypes ? (
-                              <SelectItem value="no-service-types" disabled>No service types found</SelectItem>
+                            {isLoadingServiceTypes ? (
+                              <SelectItem value="loading" disabled>Loading services...</SelectItem>
                             ) : (
-                              serviceTypes.map((serviceType) => (
-                                <SelectItem key={serviceType.id} value={serviceType.id}>
-                                  {serviceType.name}
-                                </SelectItem>
-                              ))
+                              serviceTypes
+                                .filter(st => {
+                                  if (selectedSubscriptionId && selectedSubscription) {
+                                    const serviceTypeIdsInSubscription = selectedSubscription.subscription_service_allocations?.map(alloc => alloc.service_type_id) || [];
+                                    return serviceTypeIdsInSubscription.includes(st.id);
+                                  }
+                                  return true;
+                                })
+                                .map((serviceType) => (
+                                  <SelectItem key={serviceType.id} value={serviceType.id}>
+                                    {serviceType.name}
+                                  </SelectItem>
+                                ))
                             )}
                           </SelectContent>
                         </Select>
@@ -429,32 +520,59 @@ export default function ScheduleSession() {
                   name="session_pack_id"
                   render={({ field }) => {
                     const sessionTypeSelection = form.watch("sessionTypeSelection");
+                    const combinedPacksAndSubscriptions = [
+                      ...(activeSessionPacks || []).map(pack => ({
+                        type: 'pack',
+                        id: pack.id,
+                        label: `Pack: ${pack.service_types?.name} (${pack.sessions_remaining} remaining)`,
+                      })),
+                      ...(activeClientSubscriptions || []).map(sub => ({
+                        type: 'subscription',
+                        id: sub.id,
+                        label: `Subscription: ${sub.billing_cycle.charAt(0).toUpperCase() + sub.billing_cycle.slice(1)} - (${format(new Date(sub.start_date), 'MMM yy')})`,
+                      })),
+                    ];
+                    
                     return (
                       <FormItem>
                         <FormLabel>Assign from Pack or Subscription</FormLabel>
                         <Select 
-                          onValueChange={field.onChange} 
-                          value={field.value || "none"}
-                          disabled={sessionTypeSelection === 'onceOff' || activeSessionPacks.length === 0}
+                          onValueChange={(value) => {
+                            const selectedItem = combinedPacksAndSubscriptions.find(item => item.id === value);
+                            if (selectedItem?.type === 'pack') {
+                              form.setValue("session_pack_id", value);
+                              form.setValue("subscription_id", undefined);
+                            } else if (selectedItem?.type === 'subscription') {
+                              form.setValue("subscription_id", value);
+                              form.setValue("session_pack_id", undefined);
+                              form.setValue("service_type_id", undefined);
+                            } else {
+                              form.setValue("session_pack_id", undefined);
+                              form.setValue("subscription_id", undefined);
+                            }
+                            console.log("DEBUG: Selected Pack/Subscription ID:", value, "Type:", selectedItem?.type);
+                          }}
+                          value={field.value || form.watch("subscription_id") || "none"}
+                          disabled={sessionTypeSelection === 'onceOff' || (activeSessionPacks.length === 0 && activeClientSubscriptions.length === 0)}
                         >
                           <FormControl>
-                            <SelectTrigger disabled={sessionTypeSelection === 'onceOff' || activeSessionPacks.length === 0}>
+                            <SelectTrigger disabled={sessionTypeSelection === 'onceOff' || (activeSessionPacks.length === 0 && activeClientSubscriptions.length === 0)}>
                               <SelectValue placeholder={
                                 sessionTypeSelection === 'onceOff' 
                                   ? "Not available for once-off sessions" 
-                                  : isLoadingPacks 
-                                    ? "Loading packs..." 
-                                    : activeSessionPacks.length === 0 
-                                      ? "No active packs available"
-                                      : "Select a session pack"
+                                  : (isLoadingPacks || isLoadingSubscriptions)
+                                    ? "Loading packs and subscriptions..." 
+                                    : combinedPacksAndSubscriptions.length === 0 
+                                      ? "No active packs or subscriptions available"
+                                      : "Select a pack or subscription"
                               } />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="none">Do not assign to pack</SelectItem>
-                            {activeSessionPacks.map((pack) => (
-                              <SelectItem key={pack.id} value={pack.id}>
-                                {pack.service_types?.name || 'Untitled Pack'} ({pack.sessions_remaining} remaining)
+                            <SelectItem value="none">Do not assign to pack/subscription</SelectItem>
+                            {combinedPacksAndSubscriptions.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>
+                                {item.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
