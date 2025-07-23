@@ -99,7 +99,7 @@ export default function ScheduleSession() {
     }
   }, [user?.id]);
 
-  const fetchActiveClientSubscriptions = async (clientId: string) => {
+const fetchActiveClientSubscriptions = async (clientId: string) => {
     if (!clientId || !user?.id) return;
     
     try {
@@ -121,10 +121,16 @@ export default function ScheduleSession() {
         .eq('status', 'active')
         .order('start_date', { ascending: false });
 
-      console.log("DEBUG: Fetched active client subscriptions for scheduling:", data);
-
       if (error) throw error;
-      setActiveClientSubscriptions(data || []);
+      
+      // Ensure that nested arrays are not null if not present
+      const processedData = data?.map(sub => ({
+        ...sub,
+        subscription_service_allocations: sub.subscription_service_allocations || []
+      })) || [];
+
+      console.log("DEBUG: Fetched active client subscriptions for scheduling (processed):", processedData);
+      setActiveClientSubscriptions(processedData);
     } catch (error) {
       console.error('DEBUG: Error fetching active client subscriptions for scheduling:', error);
       toast({
@@ -245,6 +251,14 @@ export default function ScheduleSession() {
             });
             return;
           }
+        } else {
+          console.error("DEBUG: Session type 'fromPack' selected but neither pack nor subscription ID found.");
+          toast({
+            title: 'Error',
+            description: 'Please select a valid pack or subscription.',
+            variant: 'destructive',
+          });
+          return;
         }
       }
 
@@ -453,14 +467,14 @@ export default function ScheduleSession() {
                     
                     return (
                       <FormItem>
-                        <FormLabel>Schedule a once-off service</FormLabel>
+                        <FormLabel>Schedule a service type</FormLabel>
                         <Select 
                           onValueChange={field.onChange} 
                           value={field.value || ''}
                           disabled={sessionTypeSelection === 'fromPack' && !selectedSubscriptionId}
                         >
                           <FormControl>
-                            <SelectTrigger disabled={sessionTypeSelection === 'fromPack' && !selectedSubscriptionId}>
+                            <SelectTrigger>
                               <SelectValue placeholder={isLoadingServiceTypes ? "Loading service types..." : "Select a service type"} />
                             </SelectTrigger>
                           </FormControl>
@@ -524,7 +538,8 @@ export default function ScheduleSession() {
                       ...(activeSessionPacks || []).map(pack => ({
                         type: 'pack',
                         id: pack.id,
-                        label: `Pack: ${pack.service_types?.name} (${pack.sessions_remaining} remaining)`,
+                        label: `Pack: ${pack.service_types?.name || 'Unknown Pack'} (${pack.sessions_remaining} remaining)`,
+                        service_type_id: pack.service_type_id
                       })),
                       ...(activeClientSubscriptions || []).map(sub => ({
                         type: 'subscription',
@@ -532,31 +547,32 @@ export default function ScheduleSession() {
                         label: `Subscription: ${sub.billing_cycle.charAt(0).toUpperCase() + sub.billing_cycle.slice(1)} - (${format(new Date(sub.start_date), 'MMM yy')})`,
                       })),
                     ];
+                    console.log("DEBUG: Generated combinedPacksAndSubscriptions:", combinedPacksAndSubscriptions);
                     
                     return (
                       <FormItem>
                         <FormLabel>Assign from Pack or Subscription</FormLabel>
                         <Select 
                           onValueChange={(value) => {
+                            // Reset both packId and subscriptionId first
+                            form.setValue("session_pack_id", undefined, { shouldValidate: true });
+                            form.setValue("subscription_id", undefined, { shouldValidate: true });
+                            form.setValue("service_type_id", undefined, { shouldValidate: true });
+
                             const selectedItem = combinedPacksAndSubscriptions.find(item => item.id === value);
+
                             if (selectedItem?.type === 'pack') {
-                              form.setValue("session_pack_id", value);
-                              form.setValue("subscription_id", undefined);
+                              form.setValue("session_pack_id", value, { shouldValidate: true });
                             } else if (selectedItem?.type === 'subscription') {
-                              form.setValue("subscription_id", value);
-                              form.setValue("session_pack_id", undefined);
-                              form.setValue("service_type_id", undefined);
-                            } else {
-                              form.setValue("session_pack_id", undefined);
-                              form.setValue("subscription_id", undefined);
+                              form.setValue("subscription_id", value, { shouldValidate: true });
                             }
                             console.log("DEBUG: Selected Pack/Subscription ID:", value, "Type:", selectedItem?.type);
                           }}
-                          value={field.value || form.watch("subscription_id") || "none"}
-                          disabled={sessionTypeSelection === 'onceOff' || (activeSessionPacks.length === 0 && activeClientSubscriptions.length === 0)}
+                          value={field.value || form.watch("subscription_id") || ""}
+                          disabled={sessionTypeSelection === 'onceOff' || isLoadingPacks || isLoadingSubscriptions}
                         >
                           <FormControl>
-                            <SelectTrigger disabled={sessionTypeSelection === 'onceOff' || (activeSessionPacks.length === 0 && activeClientSubscriptions.length === 0)}>
+                            <SelectTrigger>
                               <SelectValue placeholder={
                                 sessionTypeSelection === 'onceOff' 
                                   ? "Not available for once-off sessions" 
@@ -564,17 +580,22 @@ export default function ScheduleSession() {
                                     ? "Loading packs and subscriptions..." 
                                     : combinedPacksAndSubscriptions.length === 0 
                                       ? "No active packs or subscriptions available"
-                                      : "Select a pack or subscription"
+                                      : "Do not assign to pack/subscription"
                               } />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="none">Do not assign to pack/subscription</SelectItem>
-                            {combinedPacksAndSubscriptions.map((item) => (
-                              <SelectItem key={item.id} value={item.id}>
-                                {item.label}
-                              </SelectItem>
-                            ))}
+                            {isLoadingPacks || isLoadingSubscriptions ? (
+                              <SelectItem value="loading" disabled>Loading packs and subscriptions...</SelectItem>
+                            ) : combinedPacksAndSubscriptions.length === 0 ? (
+                              <SelectItem value="no-options" disabled>No active packs or subscriptions</SelectItem>
+                            ) : (
+                              combinedPacksAndSubscriptions.map((item) => (
+                                <SelectItem key={item.id} value={item.id}>
+                                  {item.label}
+                                </SelectItem>
+                              ))
+                            )}
                           </SelectContent>
                         </Select>
                         <FormMessage />
