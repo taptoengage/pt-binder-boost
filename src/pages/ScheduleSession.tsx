@@ -12,12 +12,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, CalendarIcon, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const sessionFormSchema = z.object({
   client_id: z.string().min(1, 'Please select a client'),
@@ -35,6 +36,7 @@ const sessionFormSchema = z.object({
   notes: z.string().optional(),
   isFromCredit: z.boolean().optional(),
   creditIdConsumed: z.string().optional(),
+  selectedCreditId: z.string().optional(),
 }).superRefine((data, ctx) => {
   // Conditional validation based on scheduleType
   if (data.scheduleType === 'oneOff') {
@@ -115,6 +117,7 @@ export default function ScheduleSession() {
   const [isLoadingServiceTypes, setIsLoadingServiceTypes] = useState(true);
   const [isLoadingPacks, setIsLoadingPacks] = useState(true);
   const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(true);
+  const queryClient = useQueryClient();
 
   const form = useForm<SessionFormData>({
     resolver: zodResolver(sessionFormSchema),
@@ -128,6 +131,40 @@ export default function ScheduleSession() {
   });
 
   const { handleSubmit, formState: { isSubmitting }, reset } = form;
+
+  // Fetch available credits for subscription sessions
+  const { data: availableCredits, isLoading: isLoadingCredits } = useQuery({
+    queryKey: ['availableCredits', form.watch('client_id'), form.watch('subscriptionId'), form.watch('serviceTypeIdForSubscription')],
+    queryFn: async () => {
+      const currentServiceTypeId = form.getValues('serviceTypeIdForSubscription');
+      const currentSubscriptionId = form.getValues('subscriptionId');
+      const currentClientId = form.getValues('client_id');
+      
+      if (!currentClientId || !currentSubscriptionId || !currentServiceTypeId) return [];
+
+      const { data, error } = await supabase
+        .from('subscription_session_credits')
+        .select(`
+          id,
+          credit_value,
+          credit_reason,
+          created_at,
+          status
+        `)
+        .eq('subscription_id', currentSubscriptionId)
+        .eq('service_type_id', currentServiceTypeId)
+        .eq('status', 'available')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error("DEBUG: Error fetching available credits:", error.message);
+        throw error;
+      }
+      console.log(`DEBUG: Fetched available credits for sub ${currentSubscriptionId}, service ${currentServiceTypeId}:`, data);
+      return data || [];
+    },
+    enabled: !!form.watch('client_id') && !!form.watch('subscriptionId') && !!form.watch('serviceTypeIdForSubscription'),
+  });
 
   useEffect(() => {
     if (user?.id) {
@@ -268,9 +305,15 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
       let finalPackId: string | null = null;
       let finalSubscriptionId: string | null = null;
 
-      // Handle credit flags (for this prompt, mostly defaults or simulation)
-      const simulatedIsFromCredit = false; // For now, default to false
-      const simulatedCreditIdConsumed = null; // For now, default to null
+      // Handle credit usage flags
+      let finalIsFromCredit = false;
+      let finalCreditIdConsumed: string | null = null;
+
+      if (data.scheduleType === 'fromSubscription' && data.selectedCreditId) {
+        finalIsFromCredit = true;
+        finalCreditIdConsumed = data.selectedCreditId;
+        console.log("DEBUG: Session will consume credit ID:", finalCreditIdConsumed);
+      }
 
       if (data.scheduleType === 'oneOff') {
         finalServiceTypeId = data.serviceTypeId;
@@ -314,22 +357,60 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         session_pack_id: finalPackId,
         subscription_id: finalSubscriptionId,
         notes: data.notes || null,
-        is_from_credit: simulatedIsFromCredit,
-        credit_id_consumed: simulatedCreditIdConsumed,
+        is_from_credit: finalIsFromCredit,
+        credit_id_consumed: finalCreditIdConsumed,
       };
 
       console.log("DEBUG: Final payload for Supabase insertion:", sessionData);
 
-      const { error } = await supabase
+      // Step 1: Insert the session
+      const { data: sessionInsertData, error: sessionInsertError } = await supabase
         .from('sessions')
-        .insert([sessionData]);
+        .insert([sessionData])
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (sessionInsertError) {
+        throw new Error(`Failed to schedule session: ${sessionInsertError.message}`);
+      }
 
-      toast({
-        title: 'Success',
-        description: 'Session scheduled successfully!',
-      });
+      console.log("DEBUG: Session scheduled:", sessionInsertData);
+
+      // Step 2: If a credit was used, update its status
+      if (finalIsFromCredit && finalCreditIdConsumed) {
+        console.log("DEBUG: Updating status of used credit:", finalCreditIdConsumed);
+        const { error: creditUpdateError } = await supabase
+          .from('subscription_session_credits')
+          .update({ 
+            status: 'used_for_session', 
+            used_at: new Date().toISOString() 
+          })
+          .eq('id', finalCreditIdConsumed);
+
+        if (creditUpdateError) {
+          console.error("DEBUG: Failed to update used credit status:", creditUpdateError);
+          toast({
+            title: 'Warning',
+            description: `Session scheduled, but failed to mark credit as used: ${creditUpdateError.message}`,
+            variant: 'destructive',
+          });
+        } else {
+          console.log("DEBUG: Credit successfully marked as used.");
+          toast({
+            title: 'Success',
+            description: 'Session scheduled and credit applied successfully!',
+          });
+        }
+      } else {
+        toast({
+          title: 'Success',
+          description: 'Session scheduled successfully!',
+        });
+      }
+
+      // Step 3: Invalidate queries to refresh UI
+      queryClient.invalidateQueries({ queryKey: ['sessionsForClient'] });
+      queryClient.invalidateQueries({ queryKey: ['availableCredits'] });
 
       reset();
     } catch (error) {
@@ -641,6 +722,48 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                             </FormItem>
                           );
                         }}
+                      />
+                    )}
+
+                    {/* Credit Selection for Subscription Sessions */}
+                    {form.watch("subscriptionId") && form.watch("serviceTypeIdForSubscription") && (
+                      <FormField
+                        control={form.control}
+                        name="selectedCreditId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Use an Available Credit (Optional)</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder={isLoadingCredits ? "Loading credits..." : `Available: ${availableCredits?.length || 0}`} />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {isLoadingCredits ? (
+                                  <SelectItem value="loading" disabled>Loading credits...</SelectItem>
+                                ) : availableCredits?.length === 0 ? (
+                                  <SelectItem value="no-credits" disabled>No available credits for this service</SelectItem>
+                                ) : (
+                                  <>
+                                    <SelectItem value="">Do not use a credit</SelectItem>
+                                    {availableCredits?.map((credit) => (
+                                      <SelectItem key={credit.id} value={credit.id}>
+                                        {`Credit: ${format(new Date(credit.created_at), 'MMM dd')} - ${credit.credit_reason || 'No reason'}`}
+                                      </SelectItem>
+                                    ))}
+                                  </>
+                                )}
+                              </SelectContent>
+                            </Select>
+                            <FormDescription>
+                              {availableCredits?.length > 0
+                                ? `You have ${availableCredits.length} available credits for this service.`
+                                : "No credits available for this service type within the selected subscription."}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
                       />
                     )}
                   </>
