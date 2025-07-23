@@ -1093,7 +1093,15 @@ export default function ClientDetail() {
                           </span>
                         </TableCell>
                          <TableCell>
-                           {session.session_pack_id ? 'Pack' : 'N/A'}
+                           {session.session_pack_id ? (
+                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
+                               From Pack
+                             </span>
+                           ) : (
+                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                               One-Off
+                             </span>
+                           )}
                          </TableCell>
                          <TableCell>
                            {session.notes || 'N/A'}
