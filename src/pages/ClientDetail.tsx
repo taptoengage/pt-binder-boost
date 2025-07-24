@@ -135,7 +135,7 @@ export default function ClientDetail() {
 
   // Pagination state for session history
   const [currentPage, setCurrentPage] = useState(1);
-  const sessionsPerPage = 10;
+  const sessionsPerPage = 5;
   const [totalSessions, setTotalSessions] = useState(0);
   const totalPages = Math.ceil(totalSessions / sessionsPerPage);
 
@@ -736,7 +736,9 @@ export default function ClientDetail() {
       console.error("DEBUG: Error during session cancellation/credit generation:", error);
     } finally {
       // Always invalidate queries to ensure UI is updated regardless of credit generation success
+      console.log("DEBUG: Invalidate queries for sessions triggered.");
       queryClient.invalidateQueries({ queryKey: ['sessionsForClient', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['clientAvailableCredits', clientId] });
       queryClient.invalidateQueries({ queryKey: ['activeClientSubscriptions', clientId] });
     }
   };
@@ -1315,7 +1317,7 @@ export default function ClientDetail() {
                               >
                                 <Edit className="w-4 h-4" />
                               </Button>
-                              {session.status !== 'cancelled' && session.subscription_id && (
+                              {session.status !== 'cancelled' && session.status !== 'completed' && session.subscription_id && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
