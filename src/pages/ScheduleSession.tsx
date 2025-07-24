@@ -91,43 +91,60 @@ const createSessionFormSchema = (activeClientSubscriptions: any[], scheduledSess
         });
       }
 
-      // NEW: Allocation Limit Validation for From Subscription
-      if (data.scheduleType === 'fromSubscription' && data.subscriptionId && data.serviceTypeIdForSubscription && data.session_date) {
-        // Find the selected subscription and its allocation
-        const subscription = activeClientSubscriptions?.find(sub => sub.id === data.subscriptionId);
-        const allocation = subscription?.subscription_service_allocations?.find(
-          alloc => alloc.service_type_id === data.serviceTypeIdForSubscription
-        );
+    // Allocation Limit Validation for From Subscription
+    if (data.scheduleType === 'fromSubscription' && data.subscriptionId && data.serviceTypeIdForSubscription && data.session_date) {
+      const subscription = activeClientSubscriptions?.find(sub => sub.id === data.subscriptionId);
+      const allocation = subscription?.subscription_service_allocations?.find(
+        alloc => alloc.service_type_id === data.serviceTypeIdForSubscription
+      );
 
-        // If data or query results are still loading, skip this validation for now
-        if (isLoadingPeriodSessions || !subscription || !allocation) {
-          // Skip validation while loading
-          return;
-        }
-
-        if (scheduledSessionsInPeriod !== undefined) {
-          const allowedQuantity = allocation.quantity_per_period;
-          const currentScheduledCount = scheduledSessionsInPeriod;
-
-          console.log(`DEBUG: Validation check - Allowed: ${allowedQuantity}, Current Scheduled: ${currentScheduledCount}`);
-
-          // Only count if this session is NOT from credit
-          const isThisSessionFromCredit = data.selectedCreditId ? true : false;
-          if (!isThisSessionFromCredit && (currentScheduledCount + 1) > allowedQuantity) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: `You can only schedule ${allowedQuantity} ${allocation.period_type} session(s) of this type. ${currentScheduledCount} already scheduled.`,
-              path: ['session_date'],
-            });
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: `Limit exceeded for ${allocation.period_type} allocation.`,
-              path: ['serviceTypeIdForSubscription'],
-            });
-            console.warn(`DEBUG: Allocation limit exceeded for ${allocation.service_types?.name} (${allocation.period_type}).`);
-          }
-        }
+      if (!subscription || !allocation) {
+        // This case should ideally be caught by previous validation for missing sub/service type
+        return;
       }
+
+      // 1. Handle Loading State of the `scheduledSessionsInPeriod` query
+      if (isLoadingPeriodSessions) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Checking allocation limits...",
+          path: ['session_date'],
+        });
+        // Do NOT add other allocation-related errors while loading
+        return;
+      }
+
+      // 2. Perform the actual validation once data is loaded
+      if (scheduledSessionsInPeriod !== undefined) {
+        const allowedQuantity = allocation.quantity_per_period;
+        const currentScheduledCount = scheduledSessionsInPeriod;
+
+        console.log(`DEBUG: Validation check - Allowed: ${allowedQuantity}, Current Scheduled: ${currentScheduledCount}`);
+
+        const isThisSessionFromCredit = data.selectedCreditId ? true : false;
+        if (!isThisSessionFromCredit && (currentScheduledCount + 1) > allowedQuantity) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `You can only schedule ${allowedQuantity} ${allocation.period_type} session(s) of this type. ${currentScheduledCount} already scheduled.`,
+            path: ['session_date'],
+          });
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Limit exceeded for ${allocation.period_type} allocation.`,
+            path: ['serviceTypeIdForSubscription'],
+          });
+          console.warn(`DEBUG: Allocation limit exceeded for ${allocation.service_types?.name} (${allocation.period_type}).`);
+        }
+      } else {
+        // This case should ideally not be hit if isLoadingPeriodSessions is handled
+        console.error("DEBUG: scheduledSessionsInPeriod is undefined after loading.");
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Error checking allocation limits. Please try again.",
+          path: ['session_date'],
+        });
+      }
+    }
     });
 };
 
@@ -273,6 +290,15 @@ export default function ScheduleSession() {
     // but the validation will trigger on form changes with the updated dependencies
   }, [activeClientSubscriptions, scheduledSessionsInPeriod, isLoadingPeriodSessions]);
 
+  // Trigger validation when scheduledSessionsInPeriod changes
+  useEffect(() => {
+    if (form.getValues('scheduleType') === 'fromSubscription') {
+      form.trigger('session_date');
+      form.trigger('serviceTypeIdForSubscription');
+      console.log("DEBUG: Triggering form validation after scheduledSessionsInPeriod update.");
+    }
+  }, [isLoadingPeriodSessions, scheduledSessionsInPeriod, form]);
+
   useEffect(() => {
     if (user?.id) {
       fetchClients();
@@ -400,6 +426,17 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
   };
 
   const onSubmit = async (data: SessionFormData) => {
+    // Check for loading state of allocation count, if applicable
+    if (data.scheduleType === 'fromSubscription' && isLoadingPeriodSessions) {
+      toast({
+        title: 'Please wait',
+        description: 'Allocation limits are still being checked. Please wait.',
+        variant: 'destructive',
+      });
+      console.warn("DEBUG: Attempted submission while allocation limits were loading.");
+      return;
+    }
+
     try {
       console.log("DEBUG: Form submitted with values BEFORE processing for DB insert:", data);
       
