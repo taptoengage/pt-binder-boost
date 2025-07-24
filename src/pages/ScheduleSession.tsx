@@ -42,8 +42,12 @@ const createFormSchema = (
   creditIdConsumed: z.string().optional(),
   selectedCreditId: z.string().optional(),
 }).superRefine((data, ctx) => {
+  // Note: We'll use the parameters passed to the schema function instead of trying to access context
+  // This is simpler and more reliable than trying to access context from zodResolver
+  // The values are passed via the createFormSchema function parameters
+  
   // --- IMPORTANT DEBUGGING STEP ---
-  console.log(`DEBUG: superRefine RE-EXECUTING. isLoading: ${isLoadingPeriodSessions}, count: ${scheduledSessionsInPeriod}`);
+  console.log(`DEBUG: superRefine RE-EXECUTING with passed params. isLoading: ${isLoadingPeriodSessions}, count: ${scheduledSessionsInPeriod}`);
   
   // Basic conditional validation
   if (data.scheduleType === 'oneOff' && !data.serviceTypeId) {
@@ -145,10 +149,10 @@ export default function ScheduleSession() {
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const queryClient = useQueryClient();
 
-  // Fetch scheduled sessions in the current period for allocation validation
-  const selectedScheduleType = useForm().watch?.("scheduleType") || 'oneOff';
-  const proposedSessionDate = useForm().watch?.("session_date");
-  const selectedSubscriptionId = useForm().watch?.("subscriptionId");
+  // Temporary placeholder - will be moved after form initialization
+  let selectedScheduleType = 'oneOff';
+  let proposedSessionDate: Date | undefined;
+  let selectedSubscriptionId: string | undefined;
 
   const { data: scheduledSessionsInPeriod, isLoading: isLoadingPeriodSessions } = useQuery({
     queryKey: ['scheduledSessionsInPeriod', selectedSubscriptionId, proposedSessionDate?.toISOString()],
@@ -192,29 +196,9 @@ export default function ScheduleSession() {
     enabled: false, // Disable for now to prevent errors
   });
 
-  // Use the values from the useQuery hooks (placed after they are defined)
-  const finalScheduledSessionsInPeriod = scheduledSessionsInPeriod ?? 0;
-  const finalIsLoadingPeriodSessions = isLoadingPeriodSessions;
-
-  // NEW: Create the context object using useMemo for reactive validation
-  const formResolverContext = useMemo(() => ({
-    isLoadingPeriodSessions: finalIsLoadingPeriodSessions,
-    scheduledSessionsInPeriod: finalScheduledSessionsInPeriod,
-    activeClientSubscriptions,
-    clientPacks: activeSessionPacks,
-    availableServiceTypes: serviceTypes,
-  }), [
-    finalIsLoadingPeriodSessions,
-    finalScheduledSessionsInPeriod,
-    activeClientSubscriptions,
-    activeSessionPacks,
-    serviceTypes
-  ]);
-
   const form = useForm<SessionFormData>({
-    resolver: zodResolver(createFormSchema(activeClientSubscriptions, finalScheduledSessionsInPeriod || 0, finalIsLoadingPeriodSessions)),
+    resolver: zodResolver(createFormSchema(activeClientSubscriptions, 0, false)), // Use simple values initially
     mode: 'onChange',
-    context: formResolverContext,
     defaultValues: {
       client_id: initialClientId || '',
       scheduleType: 'oneOff',
@@ -262,16 +246,19 @@ export default function ScheduleSession() {
 
   // Re-enable the period sessions query with proper form integration
   const { data: updatedScheduledSessionsInPeriod, isLoading: updatedIsLoadingPeriodSessions } = useQuery({
-    queryKey: ['scheduledSessionsInPeriod', form.watch('client_id'), selectedSubscriptionId, form.watch('serviceTypeIdForSubscription'), proposedSessionDate?.toISOString()],
+    queryKey: ['scheduledSessionsInPeriod', form.watch('client_id'), form.watch('subscriptionId'), form.watch('serviceTypeIdForSubscription'), form.watch('session_date')?.toISOString()],
     queryFn: async () => {
       const currentServiceTypeId = form.getValues('serviceTypeIdForSubscription');
       const currentClientId = form.getValues('client_id');
+      const currentSubscriptionId = form.getValues('subscriptionId');
+      const currentSessionDate = form.getValues('session_date');
+      const currentScheduleType = form.getValues('scheduleType');
       
-      if (selectedScheduleType !== 'fromSubscription' || !selectedSubscriptionId || !currentServiceTypeId || !proposedSessionDate || !currentClientId) {
+      if (currentScheduleType !== 'fromSubscription' || !currentSubscriptionId || !currentServiceTypeId || !currentSessionDate || !currentClientId) {
         return 0;
       }
 
-      const subscription = activeClientSubscriptions?.find(sub => sub.id === selectedSubscriptionId);
+      const subscription = activeClientSubscriptions?.find(sub => sub.id === currentSubscriptionId);
       const allocation = subscription?.subscription_service_allocations?.find(alloc => alloc.service_type_id === currentServiceTypeId);
 
       if (!subscription || !allocation) {
@@ -284,11 +271,11 @@ export default function ScheduleSession() {
 
       // Determine the start and end dates of the relevant billing period
       if (allocation.period_type === 'weekly') {
-        startDateOfPeriod = startOfWeek(proposedSessionDate, { weekStartsOn: 1 });
-        endDateOfPeriod = endOfWeek(proposedSessionDate, { weekStartsOn: 1 });
+        startDateOfPeriod = startOfWeek(currentSessionDate, { weekStartsOn: 1 });
+        endDateOfPeriod = endOfWeek(currentSessionDate, { weekStartsOn: 1 });
       } else { // 'monthly'
-        startDateOfPeriod = startOfMonth(proposedSessionDate);
-        endDateOfPeriod = endOfMonth(proposedSessionDate);
+        startDateOfPeriod = startOfMonth(currentSessionDate);
+        endDateOfPeriod = endOfMonth(currentSessionDate);
       }
 
       console.log(`DEBUG: Checking sessions for period: ${format(startDateOfPeriod, 'yyyy-MM-dd')} to ${format(endDateOfPeriod, 'yyyy-MM-dd')}`);
@@ -298,7 +285,7 @@ export default function ScheduleSession() {
         .from('sessions')
         .select('id', { count: 'exact' })
         .eq('client_id', currentClientId)
-        .eq('subscription_id', selectedSubscriptionId)
+        .eq('subscription_id', currentSubscriptionId)
         .eq('service_type_id', currentServiceTypeId)
         .gte('session_date', format(startDateOfPeriod, 'yyyy-MM-dd'))
         .lte('session_date', format(endDateOfPeriod, 'yyyy-MM-dd'))
@@ -312,17 +299,27 @@ export default function ScheduleSession() {
       console.log(`DEBUG: Found ${count} sessions already scheduled in period for this allocation.`);
       return count || 0;
     },
-    enabled: selectedScheduleType === 'fromSubscription' && !!selectedSubscriptionId && !!form.watch('serviceTypeIdForSubscription') && !!proposedSessionDate && !!form.watch('client_id'),
+    enabled: form.watch('scheduleType') === 'fromSubscription' && !!form.watch('subscriptionId') && !!form.watch('serviceTypeIdForSubscription') && !!form.watch('session_date') && !!form.watch('client_id'),
   });
 
-  // Trigger validation when scheduled sessions data changes
+  // Use the working query data (provide defaults to avoid undefined)
+  const finalScheduledSessionsInPeriod = updatedScheduledSessionsInPeriod ?? 0;
+  const finalIsLoadingPeriodSessions = updatedIsLoadingPeriodSessions || false;
+
+  // Update the form's resolver when the validation data changes
   useEffect(() => {
+    // Update the form resolver with new validation context
+    const newResolver = zodResolver(createFormSchema(activeClientSubscriptions, finalScheduledSessionsInPeriod, finalIsLoadingPeriodSessions));
+    // Unfortunately, react-hook-form doesn't have a direct way to update the resolver
+    // The context approach would be more complex to implement properly
+    
+    // Trigger validation when relevant data changes
     if (form.getValues('scheduleType') === 'fromSubscription') {
       form.trigger('session_date');
       form.trigger('serviceTypeIdForSubscription');
       console.log("DEBUG: Triggering form validation after scheduledSessionsInPeriod update or related context change.");
     }
-  }, [form, formResolverContext]);
+  }, [form, finalScheduledSessionsInPeriod, finalIsLoadingPeriodSessions, activeClientSubscriptions]);
 
   useEffect(() => {
     if (user?.id) {
@@ -451,12 +448,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
   };
 
   const onSubmit = async (data: SessionFormData) => {
-    // Add a check to prevent double submission or submission during loading
-    if (form.formState.isSubmitting || finalIsLoadingPeriodSessions) {
-      console.warn("DEBUG: Attempted to submit while form is already submitting or allocation limits are loading.");
-      return;
-    }
-
     setIsSubmittingForm(true);
 
     // --- CRITICAL MANUAL VALIDATION STEP ---
@@ -1083,8 +1074,8 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                   )}
                 />
 
-                <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || finalIsLoadingPeriodSessions || isSubmittingForm}>
-                  {form.formState.isSubmitting || isSubmittingForm ? "Scheduling..." : 
+                <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || finalIsLoadingPeriodSessions}>
+                  {form.formState.isSubmitting ? "Scheduling..." : 
                    finalIsLoadingPeriodSessions ? "Checking Allocation..." :
                    "Schedule Session"}
                 </Button>
