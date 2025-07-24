@@ -427,6 +427,7 @@ export type Database = {
           cost_per_session: number
           created_at: string
           id: string
+          max_sessions_per_period: number
           period_type: string
           quantity_per_period: number
           service_type_id: string
@@ -437,6 +438,7 @@ export type Database = {
           cost_per_session: number
           created_at?: string
           id?: string
+          max_sessions_per_period?: number
           period_type: string
           quantity_per_period: number
           service_type_id: string
@@ -447,6 +449,7 @@ export type Database = {
           cost_per_session?: number
           created_at?: string
           id?: string
+          max_sessions_per_period?: number
           period_type?: string
           quantity_per_period?: number
           service_type_id?: string
@@ -478,6 +481,7 @@ export type Database = {
           credit_value: number
           expires_at: string | null
           id: string
+          originating_session_id: string | null
           service_type_id: string
           status: string
           subscription_id: string
@@ -490,6 +494,7 @@ export type Database = {
           credit_value: number
           expires_at?: string | null
           id?: string
+          originating_session_id?: string | null
           service_type_id: string
           status?: string
           subscription_id: string
@@ -502,12 +507,20 @@ export type Database = {
           credit_value?: number
           expires_at?: string | null
           id?: string
+          originating_session_id?: string | null
           service_type_id?: string
           status?: string
           subscription_id?: string
           used_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "subscription_session_credits_originating_session_id_fkey"
+            columns: ["originating_session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "subscription_session_credits_service_type_id_fkey"
             columns: ["service_type_id"]
@@ -556,7 +569,11 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      session_status_enum:
+        | "scheduled"
+        | "completed"
+        | "cancelled_early"
+        | "cancelled_late"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -683,6 +700,13 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      session_status_enum: [
+        "scheduled",
+        "completed",
+        "cancelled_early",
+        "cancelled_late",
+      ],
+    },
   },
 } as const
