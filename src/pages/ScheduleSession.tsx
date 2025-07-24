@@ -20,125 +20,100 @@ import { ArrowLeft, CalendarIcon, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-const createSessionFormSchema = (activeClientSubscriptions: any[], scheduledSessionsInPeriod: number | undefined, isLoadingPeriodSessions: boolean) => {
-  return z.object({
-    client_id: z.string().min(1, 'Please select a client'),
-    scheduleType: z.enum(["oneOff", "fromPack", "fromSubscription"]),
-    serviceTypeId: z.string().optional(), // Used for 'oneOff'
-    packId: z.string().optional(), // Used for 'fromPack'
-    subscriptionId: z.string().optional(), // Used for 'fromSubscription'
-    serviceTypeIdForSubscription: z.string().optional(), // Used for service selection within 'fromSubscription'
-    paymentStatus: z.enum(["paid", "pending", "cancelled"]).optional(),
-    session_date: z.date({
-      message: 'Please select a session date',
-    }),
-    session_time: z.string().min(1, 'Please select a session time'),
-    status: z.enum(['scheduled', 'completed', 'cancelled_late', 'cancelled_early']),
-    notes: z.string().optional(),
-    isFromCredit: z.boolean().optional(),
-    creditIdConsumed: z.string().optional(),
-    selectedCreditId: z.string().optional(),
-  }).superRefine((data, ctx) => {
-    // Conditional validation based on scheduleType
-    if (data.scheduleType === 'oneOff') {
-      if (!data.serviceTypeId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Service type is required for a one-off session.",
-          path: ['serviceTypeId'],
-        });
-      }
-    } else if (data.scheduleType === 'fromPack') {
-      if (!data.packId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "A pack must be selected.",
-          path: ['packId'],
-        });
-      }
-    } else if (data.scheduleType === 'fromSubscription') {
-      if (!data.subscriptionId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "A subscription must be selected.",
-          path: ['subscriptionId'],
-        });
-      }
-      if (data.subscriptionId && !data.serviceTypeIdForSubscription) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "A specific service must be selected from the subscription.",
-          path: ['serviceTypeIdForSubscription'],
-        });
-      }
-    }
-
-    // Ensure mutual exclusivity (packId, subscriptionId)
-      if (data.packId && data.subscriptionId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Session cannot be linked to both a pack and a subscription.",
-          path: ['packId', 'subscriptionId'],
-        });
-      }
-
-      // Add validation if both are set, creditIdConsumed must be present if isFromCredit is true
-      if (data.isFromCredit && !data.creditIdConsumed) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Credit ID must be provided if session is from credit.",
-          path: ['creditIdConsumed'],
-        });
-      }
-
-    // Allocation Limit Validation for From Subscription
-    if (data.scheduleType === 'fromSubscription' && data.subscriptionId && data.serviceTypeIdForSubscription && data.session_date) {
-      const subscription = activeClientSubscriptions?.find(sub => sub.id === data.subscriptionId);
-      const allocation = subscription?.subscription_service_allocations?.find(
-        alloc => alloc.service_type_id === data.serviceTypeIdForSubscription
-      );
-
-      if (!subscription || !allocation) {
-        return;
-      }
-
-      // CRITICAL REFINEMENT: Handle the loading state and initial undefined/null values from useQuery
-      // If the data is still loading, or if the data fetch resulted in an error (and data is undefined)
-      // then we can't perform the check yet. Display a waiting message.
-      if (isLoadingPeriodSessions || scheduledSessionsInPeriod === undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Checking allocation limits...",
-          path: ['session_date'],
-        });
-        return; // IMPORTANT: Exit here if data is not ready
-      }
-
-      // Now we are sure scheduledSessionsInPeriod has a loaded value (could be 0 or more)
-      const allowedQuantity = allocation.quantity_per_period;
-      const currentScheduledCount = scheduledSessionsInPeriod; // Use the loaded value
-
-      console.log(`DEBUG: Validation check - Allowed: ${allowedQuantity}, Current Scheduled: ${currentScheduledCount}`);
-
-      const isThisSessionFromCredit = data.selectedCreditId ? true : false;
-      if (!isThisSessionFromCredit && (currentScheduledCount + 1) > allowedQuantity) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `You can only schedule ${allowedQuantity} ${allocation.period_type} session(s) of this type. ${currentScheduledCount} already scheduled.`,
-          path: ['session_date'],
-        });
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Limit exceeded for ${allocation.period_type} allocation.`,
-          path: ['serviceTypeIdForSubscription'],
-        });
-        console.warn(`DEBUG: Allocation limit exceeded for ${allocation.service_types?.name} (${allocation.period_type}).`);
-      }
-    }
+const createFormSchema = (
+  activeClientSubscriptions: any[],
+  scheduledSessionsInPeriod: number | undefined,
+  isLoadingPeriodSessions: boolean
+) => z.object({
+  client_id: z.string().min(1, 'Please select a client'),
+  scheduleType: z.enum(["oneOff", "fromPack", "fromSubscription"]),
+  serviceTypeId: z.string().optional(),
+  packId: z.string().optional(),
+  subscriptionId: z.string().optional(),
+  serviceTypeIdForSubscription: z.string().optional(),
+  paymentStatus: z.enum(["paid", "pending", "cancelled"]).optional(),
+  session_date: z.date({
+    message: 'Please select a session date',
+  }),
+  session_time: z.string().min(1, 'Please select a session time'),
+  status: z.enum(['scheduled', 'completed', 'cancelled_late', 'cancelled_early']),
+  notes: z.string().optional(),
+  isFromCredit: z.boolean().optional(),
+  creditIdConsumed: z.string().optional(),
+  selectedCreditId: z.string().optional(),
+}).superRefine((data, ctx) => {
+  // Basic conditional validation
+  if (data.scheduleType === 'oneOff' && !data.serviceTypeId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Service type is required for a one-off session.",
+      path: ['serviceTypeId'],
     });
-};
+  }
+  
+  if (data.scheduleType === 'fromPack' && !data.packId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "A pack must be selected.",
+      path: ['packId'],
+    });
+  }
+  
+  if (data.scheduleType === 'fromSubscription') {
+    if (!data.subscriptionId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A subscription must be selected.",
+        path: ['subscriptionId'],
+      });
+    }
+    if (data.subscriptionId && !data.serviceTypeIdForSubscription) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A specific service must be selected from the subscription.",
+        path: ['serviceTypeIdForSubscription'],
+      });
+    }
+  }
 
-type SessionFormData = z.infer<ReturnType<typeof createSessionFormSchema>>;
+  // Allocation limit validation for subscriptions
+  if (data.scheduleType === 'fromSubscription' && data.subscriptionId && data.serviceTypeIdForSubscription && data.session_date) {
+    const subscription = activeClientSubscriptions?.find(sub => sub.id === data.subscriptionId);
+    const allocation = subscription?.subscription_service_allocations?.find(
+      alloc => alloc.service_type_id === data.serviceTypeIdForSubscription
+    );
+
+    if (!subscription || !allocation) return;
+
+    if (isLoadingPeriodSessions || scheduledSessionsInPeriod === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Fetching allocation status...",
+        path: ['session_date'],
+      });
+      return;
+    }
+
+    const allowedQuantity = allocation.quantity_per_period;
+    const currentScheduledCount = scheduledSessionsInPeriod;
+    const isThisSessionFromCredit = data.selectedCreditId ? true : false;
+
+    if (!isThisSessionFromCredit && (currentScheduledCount + 1) > allowedQuantity) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `You can only schedule ${allowedQuantity} ${allocation.period_type} session(s) of this type. ${currentScheduledCount} already scheduled.`,
+        path: ['session_date'],
+      });
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Limit exceeded for ${allocation.period_type} allocation.`,
+        path: ['serviceTypeIdForSubscription'],
+      });
+    }
+  }
+});
+
+type SessionFormData = z.infer<ReturnType<typeof createFormSchema>>;
 
 interface Client {
   id: string;
@@ -164,11 +139,58 @@ export default function ScheduleSession() {
   const [isLoadingServiceTypes, setIsLoadingServiceTypes] = useState(true);
   const [isLoadingPacks, setIsLoadingPacks] = useState(true);
   const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(true);
-  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const queryClient = useQueryClient();
 
+  // Fetch scheduled sessions in the current period for allocation validation
+  const selectedScheduleType = useForm().watch?.("scheduleType") || 'oneOff';
+  const proposedSessionDate = useForm().watch?.("session_date");
+  const selectedSubscriptionId = useForm().watch?.("subscriptionId");
+
+  const { data: scheduledSessionsInPeriod, isLoading: isLoadingPeriodSessions } = useQuery({
+    queryKey: ['scheduledSessionsInPeriod', selectedSubscriptionId, proposedSessionDate?.toISOString()],
+    queryFn: async () => {
+      if (selectedScheduleType !== 'fromSubscription' || !selectedSubscriptionId || !proposedSessionDate) {
+        return 0;
+      }
+
+      const subscription = activeClientSubscriptions?.find(sub => sub.id === selectedSubscriptionId);
+      if (!subscription) {
+        console.warn("DEBUG: No valid subscription found for period count.");
+        return 0;
+      }
+
+      let startDateOfPeriod: Date;
+      let endDateOfPeriod: Date;
+
+      // For now, use monthly periods (can be refined based on allocation.period_type)
+      startDateOfPeriod = startOfMonth(proposedSessionDate);
+      endDateOfPeriod = endOfMonth(proposedSessionDate);
+
+      console.log(`DEBUG: Checking sessions for period: ${format(startDateOfPeriod, 'yyyy-MM-dd')} to ${format(endDateOfPeriod, 'yyyy-MM-dd')}`);
+
+      // Count sessions already scheduled within this period for this subscription
+      const { count, error } = await supabase
+        .from('sessions')
+        .select('id', { count: 'exact' })
+        .eq('subscription_id', selectedSubscriptionId)
+        .gte('session_date', format(startDateOfPeriod, 'yyyy-MM-dd'))
+        .lte('session_date', format(endDateOfPeriod, 'yyyy-MM-dd'))
+        .neq('status', 'cancelled')
+        .eq('is_from_credit', false);
+
+      if (error) {
+        console.error("DEBUG: Error fetching scheduled sessions in period:", error.message);
+        throw error;
+      }
+      console.log(`DEBUG: Found ${count} sessions already scheduled in period.`);
+      return count || 0;
+    },
+    enabled: false, // Disable for now to prevent errors
+  });
+
   const form = useForm<SessionFormData>({
-    resolver: zodResolver(createSessionFormSchema([], 0, false)), // Initial resolver, will be updated
+    resolver: zodResolver(createFormSchema(activeClientSubscriptions, 0, false)),
+    mode: 'onChange',
     defaultValues: {
       client_id: initialClientId || '',
       scheduleType: 'oneOff',
@@ -214,12 +236,8 @@ export default function ScheduleSession() {
     enabled: !!form.watch('client_id') && !!form.watch('subscriptionId') && !!form.watch('serviceTypeIdForSubscription'),
   });
 
-  // Fetch scheduled sessions in the current period for allocation validation
-  const selectedScheduleType = form.watch("scheduleType");
-  const proposedSessionDate = form.watch("session_date");
-  const selectedSubscriptionId = form.watch("subscriptionId");
-
-  const { data: scheduledSessionsInPeriod, isLoading: isLoadingPeriodSessions } = useQuery({
+  // Re-enable the period sessions query with proper form integration
+  const { data: updatedScheduledSessionsInPeriod, isLoading: updatedIsLoadingPeriodSessions } = useQuery({
     queryKey: ['scheduledSessionsInPeriod', form.watch('client_id'), selectedSubscriptionId, form.watch('serviceTypeIdForSubscription'), proposedSessionDate?.toISOString()],
     queryFn: async () => {
       const currentServiceTypeId = form.getValues('serviceTypeIdForSubscription');
@@ -273,22 +291,18 @@ export default function ScheduleSession() {
     enabled: selectedScheduleType === 'fromSubscription' && !!selectedSubscriptionId && !!form.watch('serviceTypeIdForSubscription') && !!proposedSessionDate && !!form.watch('client_id'),
   });
 
-  // Update form resolver with current data when it changes
-  useEffect(() => {
-    const newSchema = createSessionFormSchema(activeClientSubscriptions, scheduledSessionsInPeriod, isLoadingPeriodSessions);
-    form.clearErrors(); // Clear any existing errors
-    // Note: react-hook-form doesn't have a direct way to update resolver, 
-    // but the validation will trigger on form changes with the updated dependencies
-  }, [activeClientSubscriptions, scheduledSessionsInPeriod, isLoadingPeriodSessions]);
+  // Use the updated values
+  const finalScheduledSessionsInPeriod = updatedScheduledSessionsInPeriod ?? scheduledSessionsInPeriod;
+  const finalIsLoadingPeriodSessions = updatedIsLoadingPeriodSessions || isLoadingPeriodSessions;
 
-  // Trigger validation when scheduledSessionsInPeriod changes
+  // Trigger validation when scheduled sessions data changes
   useEffect(() => {
-    if (form.getValues('scheduleType') === 'fromSubscription' && !isLoadingPeriodSessions) {
+    if (form.getValues('scheduleType') === 'fromSubscription' && !finalIsLoadingPeriodSessions) {
       form.trigger('session_date');
       form.trigger('serviceTypeIdForSubscription');
       console.log("DEBUG: Triggering form validation after scheduledSessionsInPeriod update.");
     }
-  }, [isLoadingPeriodSessions, scheduledSessionsInPeriod, form]);
+  }, [finalIsLoadingPeriodSessions, finalScheduledSessionsInPeriod, form]);
 
   useEffect(() => {
     if (user?.id) {
@@ -418,12 +432,10 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
 
   const onSubmit = async (data: SessionFormData) => {
     // Add a check to prevent double submission or submission during loading
-    if (isSubmittingForm || isLoadingPeriodSessions) {
-      console.warn("DEBUG: Attempted to submit while form is already submitting or allocation limits are loading.");
+    if (finalIsLoadingPeriodSessions) {
+      console.warn("DEBUG: Attempted to submit while allocation limits are loading.");
       return;
     }
-
-    setIsSubmittingForm(true); // Set submitting state
 
     try {
       console.log("DEBUG: Form submitted with values BEFORE processing for DB insert:", data);
@@ -553,7 +565,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
       });
       console.error("DEBUG: Error scheduling session or applying credit:", error);
     } finally {
-      setIsSubmittingForm(false); // Reset submitting state regardless of success/failure
       // Invalidate and refetch queries
       queryClient.invalidateQueries({ queryKey: ['sessionsForClient'] });
       queryClient.invalidateQueries({ queryKey: ['availableCredits'] });
@@ -1028,8 +1039,10 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                   )}
                 />
 
-                <Button type="submit" className="w-full" disabled={isSubmitting || isLoadingPeriodSessions || isSubmittingForm}>
-                  {isSubmitting || isSubmittingForm ? 'Scheduling...' : 'Schedule Session'}
+                <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || finalIsLoadingPeriodSessions || !form.formState.isValid}>
+                  {form.formState.isSubmitting ? "Scheduling..." : 
+                   finalIsLoadingPeriodSessions ? "Checking Allocation..." :
+                   "Schedule Session"}
                 </Button>
               </form>
             </Form>
