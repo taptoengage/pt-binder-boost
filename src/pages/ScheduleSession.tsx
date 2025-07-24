@@ -1,6 +1,6 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
@@ -139,6 +139,7 @@ export default function ScheduleSession() {
   const [isLoadingServiceTypes, setIsLoadingServiceTypes] = useState(true);
   const [isLoadingPacks, setIsLoadingPacks] = useState(true);
   const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(true);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const queryClient = useQueryClient();
 
   // Fetch scheduled sessions in the current period for allocation validation
@@ -297,10 +298,14 @@ export default function ScheduleSession() {
 
   // Trigger validation when scheduled sessions data changes
   useEffect(() => {
-    if (form.getValues('scheduleType') === 'fromSubscription' && !finalIsLoadingPeriodSessions) {
-      form.trigger('session_date');
-      form.trigger('serviceTypeIdForSubscription');
-      console.log("DEBUG: Triggering form validation after scheduledSessionsInPeriod update.");
+    if (form.getValues('scheduleType') === 'fromSubscription') {
+      // Use a slight delay to ensure the DOM has updated and the context is fully propagated
+      const timeoutId = setTimeout(() => {
+        form.trigger('session_date');
+        form.trigger('serviceTypeIdForSubscription');
+        console.log("DEBUG: Triggering form validation after scheduledSessionsInPeriod update.");
+      }, 50);
+      return () => clearTimeout(timeoutId);
     }
   }, [finalIsLoadingPeriodSessions, finalScheduledSessionsInPeriod, form]);
 
@@ -432,10 +437,33 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
 
   const onSubmit = async (data: SessionFormData) => {
     // Add a check to prevent double submission or submission during loading
-    if (finalIsLoadingPeriodSessions) {
-      console.warn("DEBUG: Attempted to submit while allocation limits are loading.");
+    if (form.formState.isSubmitting || finalIsLoadingPeriodSessions) {
+      console.warn("DEBUG: Attempted to submit while form is already submitting or allocation limits are loading.");
       return;
     }
+
+    setIsSubmittingForm(true);
+
+    // --- CRITICAL MANUAL VALIDATION STEP ---
+    // Trigger validation for the fields relevant to the allocation check
+    const isValid = await form.trigger(['session_date', 'serviceTypeIdForSubscription']);
+    // After triggering, check if the form is valid based on the latest state
+    if (!isValid) {
+      console.warn("DEBUG: Form validation failed on submit. Preventing submission.");
+      toast({
+        title: 'Validation Error',
+        description: 'Please correct the errors in the form before scheduling.',
+        variant: 'destructive',
+      });
+      // Optional: Set focus to the first error field
+      const firstError = Object.keys(form.formState.errors).find(key => form.formState.errors[key]);
+      if (firstError) {
+        form.setFocus(firstError as Path<SessionFormData>);
+      }
+      setIsSubmittingForm(false);
+      return;
+    }
+    // --- END CRITICAL MANUAL VALIDATION STEP ---
 
     try {
       console.log("DEBUG: Form submitted with values BEFORE processing for DB insert:", data);
@@ -565,6 +593,7 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
       });
       console.error("DEBUG: Error scheduling session or applying credit:", error);
     } finally {
+      setIsSubmittingForm(false);
       // Invalidate and refetch queries
       queryClient.invalidateQueries({ queryKey: ['sessionsForClient'] });
       queryClient.invalidateQueries({ queryKey: ['availableCredits'] });
@@ -1039,8 +1068,8 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                   )}
                 />
 
-                <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || finalIsLoadingPeriodSessions || !form.formState.isValid}>
-                  {form.formState.isSubmitting ? "Scheduling..." : 
+                <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || finalIsLoadingPeriodSessions || isSubmittingForm}>
+                  {form.formState.isSubmitting || isSubmittingForm ? "Scheduling..." : 
                    finalIsLoadingPeriodSessions ? "Checking Allocation..." :
                    "Schedule Session"}
                 </Button>
