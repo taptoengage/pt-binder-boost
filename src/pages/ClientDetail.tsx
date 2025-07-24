@@ -229,6 +229,58 @@ export default function ClientDetail() {
     enabled: !!clientId,
   });
 
+  // Fetch available session credits for the client
+  const { data: clientAvailableCredits, isLoading: isLoadingClientCredits, error: clientCreditsError } = useQuery({
+    queryKey: ['clientAvailableCredits', clientId],
+    queryFn: async () => {
+      if (!clientId) return [];
+      
+      // First, get all subscription IDs for the client
+      const { data: subscriptions, error: subError } = await supabase
+        .from('client_subscriptions')
+        .select('id')
+        .eq('client_id', clientId);
+      
+      if (subError) {
+        console.error("DEBUG: Error fetching subscription IDs:", subError.message);
+        throw subError;
+      }
+      
+      const subscriptionIds = subscriptions?.map(sub => sub.id) || [];
+      if (subscriptionIds.length === 0) return [];
+
+      // Then fetch credits for those subscriptions
+      const { data, error } = await supabase
+        .from('subscription_session_credits')
+        .select(`
+          id,
+          subscription_id,
+          service_type_id,
+          credit_amount,
+          credit_value,
+          credit_reason,
+          status,
+          created_at,
+          service_types (name),
+          client_subscriptions (
+            billing_cycle,
+            start_date
+          )
+        `)
+        .in('subscription_id', subscriptionIds)
+        .eq('status', 'available')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("DEBUG: Error fetching client available credits:", error.message);
+        throw error;
+      }
+      console.log("DEBUG: Fetched client available credits:", data);
+      return data || [];
+    },
+    enabled: !!clientId,
+  });
+
   // Fetch all service types for filter dropdown
   useEffect(() => {
     const fetchAllServiceTypes = async () => {
@@ -1458,6 +1510,60 @@ export default function ClientDetail() {
                     ))}
                   </>
                 )}
+              </div>
+            )}
+          </CardContent>
+         </Card>
+
+        {/* Available Credits Section */}
+        <Card className="mb-8">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-xl font-semibold flex items-center">
+              <Package className="w-5 h-5 mr-2" />
+              Available Credits
+            </CardTitle>
+            <span className="text-2xl font-bold text-blue-600">
+              {clientAvailableCredits?.length || 0}
+            </span>
+          </CardHeader>
+          <CardContent>
+            {isLoadingClientCredits && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <span className="ml-2 text-muted-foreground">Loading available credits...</span>
+              </div>
+            )}
+            {clientCreditsError && (
+              <p className="text-red-500 text-center py-8">
+                Error loading credits: {clientCreditsError.message}
+              </p>
+            )}
+            {clientAvailableCredits?.length === 0 && !isLoadingClientCredits && (
+              <p className="text-muted-foreground text-center py-8">
+                No available session credits for this client.
+              </p>
+            )}
+
+            {clientAvailableCredits && clientAvailableCredits.length > 0 && (
+              <div className="space-y-4">
+                {clientAvailableCredits.map((credit) => (
+                  <div key={credit.id} className="border-b pb-3 last:border-b-0 last:pb-0">
+                    <p className="font-semibold text-gray-800">
+                      {credit.credit_amount}x {credit.service_types?.name || 'Unknown Service'}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Value: {new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(credit.credit_value)}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Reason: {credit.credit_reason || 'N/A'} (Generated on: {format(new Date(credit.created_at), 'MMM dd, yyyy')})
+                    </p>
+                    {credit.client_subscriptions && (
+                      <p className="text-xs text-gray-500">
+                        From Sub: {credit.client_subscriptions.billing_cycle} (Started: {format(new Date(credit.client_subscriptions.start_date), 'MMM yy')})
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
