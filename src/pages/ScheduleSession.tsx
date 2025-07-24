@@ -39,14 +39,13 @@ const ScheduleSessionSchema = z.object({
   creditIdConsumed: z.string().optional(),
   selectedCreditId: z.string().optional(),
 }).superRefine((data, ctx) => {
-  // For now, we'll use external validation through manual triggering
-  // The dynamic validation will be handled through form.trigger() calls
-  console.log("DEBUG: superRefine executing basic validation only");
+  console.log("DEBUG: superRefine executing with context validation");
   
-  // Basic conditional validation only (dynamic validation handled externally)
-  const currentServiceAllocation = undefined; // Will be handled externally
-  const scheduledSessionsCount = undefined; // Will be handled externally  
-  const isLoadingSessionsCount = false; // Will be handled externally
+  // Context will be passed during validation, for now use a placeholder approach
+  // The actual validation will be handled through manual triggering and external checks
+  const currentServiceAllocation = undefined;
+  const scheduledSessionsCount = undefined;
+  const isLoadingSessionsCount = false;
   
   console.log("DEBUG: superRefine RE-EXECUTING with passed params. isLoading:", isLoadingSessionsCount, ", count:", scheduledSessionsCount, ", allocation:", currentServiceAllocation);
 
@@ -54,6 +53,14 @@ const ScheduleSessionSchema = z.object({
   if (isLoadingSessionsCount) {
     console.log("DEBUG: superRefine returning early due to loading state.");
     return;
+  }
+  
+  // ADD DEFENSIVE CHECKS:
+  if (currentServiceAllocation === undefined || scheduledSessionsCount === undefined) {
+    console.warn("DEBUG: superRefine WARNING: Context values (allocation or count) are undefined/stale. Skipping over-scheduling check.");
+    // Do NOT add an issue here unless you explicitly want to block submission
+    // just because data is still loading or not available yet. The button disabled state should handle loading.
+    return; // Exit superRefine if crucial data is missing
   }
   
   // Basic conditional validation
@@ -80,21 +87,11 @@ const ScheduleSessionSchema = z.object({
       return;
     }
 
-    if (!currentServiceAllocation) {
-      // This indicates a data mismatch or an allocation not found
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Selected subscription service allocation details could not be found.",
-        path: ['serviceTypeIdForSubscription'],
-      });
-      return;
-    }
-
-    // Core over-scheduling validation
-    // Check if scheduledSessionsCount is defined (after loading) and exceeds quantity
+    // Core over-scheduling validation (will only run if above checks pass AND data is available)
     const isThisSessionFromCredit = data.selectedCreditId ? true : false;
     
-    if (!isThisSessionFromCredit && scheduledSessionsCount !== undefined && scheduledSessionsCount >= currentServiceAllocation.quantity_per_period) {
+    // Use quantity_per_period from currentServiceAllocation
+    if (!isThisSessionFromCredit && scheduledSessionsCount >= currentServiceAllocation.quantity_per_period) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `You have exceeded the allocated sessions (${currentServiceAllocation.quantity_per_period}) for this subscription within the current ${currentServiceAllocation.period_type} period.`,
@@ -134,54 +131,7 @@ export default function ScheduleSession() {
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const queryClient = useQueryClient();
 
-  // Temporary placeholder - will be moved after form initialization
-  let selectedScheduleType = 'oneOff';
-  let proposedSessionDate: Date | undefined;
-  let selectedSubscriptionId: string | undefined;
-
-  const { data: scheduledSessionsInPeriod, isLoading: isLoadingPeriodSessions } = useQuery({
-    queryKey: ['scheduledSessionsInPeriod', selectedSubscriptionId, proposedSessionDate?.toISOString()],
-    queryFn: async () => {
-      if (selectedScheduleType !== 'fromSubscription' || !selectedSubscriptionId || !proposedSessionDate) {
-        return 0;
-      }
-
-      const subscription = activeClientSubscriptions?.find(sub => sub.id === selectedSubscriptionId);
-      if (!subscription) {
-        console.warn("DEBUG: No valid subscription found for period count.");
-        return 0;
-      }
-
-      let startDateOfPeriod: Date;
-      let endDateOfPeriod: Date;
-
-      // For now, use monthly periods (can be refined based on allocation.period_type)
-      startDateOfPeriod = startOfMonth(proposedSessionDate);
-      endDateOfPeriod = endOfMonth(proposedSessionDate);
-
-      console.log(`DEBUG: Checking sessions for period: ${format(startDateOfPeriod, 'yyyy-MM-dd')} to ${format(endDateOfPeriod, 'yyyy-MM-dd')}`);
-
-      // Count sessions already scheduled within this period for this subscription
-      const { count, error } = await supabase
-        .from('sessions')
-        .select('id', { count: 'exact' })
-        .eq('subscription_id', selectedSubscriptionId)
-        .gte('session_date', format(startDateOfPeriod, 'yyyy-MM-dd'))
-        .lte('session_date', format(endDateOfPeriod, 'yyyy-MM-dd'))
-        .neq('status', 'cancelled')
-        .eq('is_from_credit', false);
-
-      if (error) {
-        console.error("DEBUG: Error fetching scheduled sessions in period:", error.message);
-        throw error;
-      }
-      console.log(`DEBUG: Found ${count} sessions already scheduled in period.`);
-      return count || 0;
-    },
-    enabled: false, // Disable for now to prevent errors
-  });
-
-  // Initialize form with basic context first (will be updated via triggering)
+  // Initialize form - context will be handled through manual validation
   const form = useForm<SessionFormData>({
     resolver: zodResolver(ScheduleSessionSchema),
     mode: 'onChange',
@@ -367,20 +317,25 @@ export default function ScheduleSession() {
     ) as { service_type_id: string; quantity_per_period: number; period_type: 'weekly' | 'fortnightly' | 'monthly'; } | undefined;
   }, [activeClientSubscriptions, form.watch('subscriptionId'), form.watch('serviceTypeIdForSubscription')]);
 
-  // Define the formResolverContext using useMemo for reactive updates
-  const formResolverContext = useMemo(() => {
-    return {
-      currentServiceAllocation: currentServiceAllocation,
-      scheduledSessionsCount: finalScheduledSessionsInPeriod, // Pass the data, not the query object
-      isLoadingSessionsCount: finalIsLoadingPeriodSessions,
-    };
-  }, [currentServiceAllocation, finalScheduledSessionsInPeriod, finalIsLoadingPeriodSessions]); // Dependencies for useMemo
 
-  // Critical part: Trigger validation when relevant data changes
+  // Critical part: Perform custom validation logic
   useEffect(() => {
     if (finalScheduledSessionsInPeriod !== undefined && currentServiceAllocation !== undefined && !finalIsLoadingPeriodSessions) {
-      console.log("DEBUG: Triggering form validation after scheduledSessionsInPeriod update or related context change.");
-      form.trigger(); // Manually trigger validation
+      console.log("DEBUG: Triggering custom validation logic after scheduledSessionsInPeriod update or related context change.");
+      
+      // Perform the over-scheduling check manually
+      const formValues = form.getValues();
+      if (formValues.scheduleType === 'fromSubscription' && !formValues.selectedCreditId) {
+        if (finalScheduledSessionsInPeriod >= currentServiceAllocation.quantity_per_period) {
+          form.setError('session_date', {
+            type: 'custom',
+            message: `You have exceeded the allocated sessions (${currentServiceAllocation.quantity_per_period}) for this subscription within the current ${currentServiceAllocation.period_type} period.`,
+          });
+          console.log(`DEBUG: Over-scheduling detected! Count: ${finalScheduledSessionsInPeriod}, Max: ${currentServiceAllocation.quantity_per_period}`);
+        } else {
+          form.clearErrors('session_date');
+        }
+      }
     }
   }, [finalScheduledSessionsInPeriod, finalIsLoadingPeriodSessions, currentServiceAllocation, form]);
 
