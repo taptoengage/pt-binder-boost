@@ -99,50 +99,40 @@ const createSessionFormSchema = (activeClientSubscriptions: any[], scheduledSess
       );
 
       if (!subscription || !allocation) {
-        // This case should ideally be caught by previous validation for missing sub/service type
         return;
       }
 
-      // 1. Handle Loading State of the `scheduledSessionsInPeriod` query
-      if (isLoadingPeriodSessions) {
+      // CRITICAL REFINEMENT: Handle the loading state and initial undefined/null values from useQuery
+      // If the data is still loading, or if the data fetch resulted in an error (and data is undefined)
+      // then we can't perform the check yet. Display a waiting message.
+      if (isLoadingPeriodSessions || scheduledSessionsInPeriod === undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: "Checking allocation limits...",
           path: ['session_date'],
         });
-        // Do NOT add other allocation-related errors while loading
-        return;
+        return; // IMPORTANT: Exit here if data is not ready
       }
 
-      // 2. Perform the actual validation once data is loaded
-      if (scheduledSessionsInPeriod !== undefined) {
-        const allowedQuantity = allocation.quantity_per_period;
-        const currentScheduledCount = scheduledSessionsInPeriod;
+      // Now we are sure scheduledSessionsInPeriod has a loaded value (could be 0 or more)
+      const allowedQuantity = allocation.quantity_per_period;
+      const currentScheduledCount = scheduledSessionsInPeriod; // Use the loaded value
 
-        console.log(`DEBUG: Validation check - Allowed: ${allowedQuantity}, Current Scheduled: ${currentScheduledCount}`);
+      console.log(`DEBUG: Validation check - Allowed: ${allowedQuantity}, Current Scheduled: ${currentScheduledCount}`);
 
-        const isThisSessionFromCredit = data.selectedCreditId ? true : false;
-        if (!isThisSessionFromCredit && (currentScheduledCount + 1) > allowedQuantity) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `You can only schedule ${allowedQuantity} ${allocation.period_type} session(s) of this type. ${currentScheduledCount} already scheduled.`,
-            path: ['session_date'],
-          });
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Limit exceeded for ${allocation.period_type} allocation.`,
-            path: ['serviceTypeIdForSubscription'],
-          });
-          console.warn(`DEBUG: Allocation limit exceeded for ${allocation.service_types?.name} (${allocation.period_type}).`);
-        }
-      } else {
-        // This case should ideally not be hit if isLoadingPeriodSessions is handled
-        console.error("DEBUG: scheduledSessionsInPeriod is undefined after loading.");
+      const isThisSessionFromCredit = data.selectedCreditId ? true : false;
+      if (!isThisSessionFromCredit && (currentScheduledCount + 1) > allowedQuantity) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "Error checking allocation limits. Please try again.",
+          message: `You can only schedule ${allowedQuantity} ${allocation.period_type} session(s) of this type. ${currentScheduledCount} already scheduled.`,
           path: ['session_date'],
         });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Limit exceeded for ${allocation.period_type} allocation.`,
+          path: ['serviceTypeIdForSubscription'],
+        });
+        console.warn(`DEBUG: Allocation limit exceeded for ${allocation.service_types?.name} (${allocation.period_type}).`);
       }
     }
     });
@@ -174,6 +164,7 @@ export default function ScheduleSession() {
   const [isLoadingServiceTypes, setIsLoadingServiceTypes] = useState(true);
   const [isLoadingPacks, setIsLoadingPacks] = useState(true);
   const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(true);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const queryClient = useQueryClient();
 
   const form = useForm<SessionFormData>({
@@ -292,7 +283,7 @@ export default function ScheduleSession() {
 
   // Trigger validation when scheduledSessionsInPeriod changes
   useEffect(() => {
-    if (form.getValues('scheduleType') === 'fromSubscription') {
+    if (form.getValues('scheduleType') === 'fromSubscription' && !isLoadingPeriodSessions) {
       form.trigger('session_date');
       form.trigger('serviceTypeIdForSubscription');
       console.log("DEBUG: Triggering form validation after scheduledSessionsInPeriod update.");
@@ -426,16 +417,13 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
   };
 
   const onSubmit = async (data: SessionFormData) => {
-    // Check for loading state of allocation count, if applicable
-    if (data.scheduleType === 'fromSubscription' && isLoadingPeriodSessions) {
-      toast({
-        title: 'Please wait',
-        description: 'Allocation limits are still being checked. Please wait.',
-        variant: 'destructive',
-      });
-      console.warn("DEBUG: Attempted submission while allocation limits were loading.");
+    // Add a check to prevent double submission or submission during loading
+    if (isSubmittingForm || isLoadingPeriodSessions) {
+      console.warn("DEBUG: Attempted to submit while form is already submitting or allocation limits are loading.");
       return;
     }
+
+    setIsSubmittingForm(true); // Set submitting state
 
     try {
       console.log("DEBUG: Form submitted with values BEFORE processing for DB insert:", data);
@@ -557,13 +545,18 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
       queryClient.invalidateQueries({ queryKey: ['availableCredits'] });
 
       reset();
-    } catch (error) {
-      console.error('Error scheduling session:', error);
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'Failed to schedule session. Please try again.',
+        description: `Error scheduling session: ${error.message}`,
         variant: 'destructive',
       });
+      console.error("DEBUG: Error scheduling session or applying credit:", error);
+    } finally {
+      setIsSubmittingForm(false); // Reset submitting state regardless of success/failure
+      // Invalidate and refetch queries
+      queryClient.invalidateQueries({ queryKey: ['sessionsForClient'] });
+      queryClient.invalidateQueries({ queryKey: ['availableCredits'] });
     }
   };
 
@@ -1035,8 +1028,8 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                   )}
                 />
 
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
-                  {isSubmitting ? 'Scheduling...' : 'Schedule Session'}
+                <Button type="submit" className="w-full" disabled={isSubmitting || isLoadingPeriodSessions || isSubmittingForm}>
+                  {isSubmitting || isSubmittingForm ? 'Scheduling...' : 'Schedule Session'}
                 </Button>
               </form>
             </Form>
