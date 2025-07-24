@@ -1,5 +1,5 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useForm, Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -42,6 +42,9 @@ const createFormSchema = (
   creditIdConsumed: z.string().optional(),
   selectedCreditId: z.string().optional(),
 }).superRefine((data, ctx) => {
+  // --- IMPORTANT DEBUGGING STEP ---
+  console.log(`DEBUG: superRefine RE-EXECUTING. isLoading: ${isLoadingPeriodSessions}, count: ${scheduledSessionsInPeriod}`);
+  
   // Basic conditional validation
   if (data.scheduleType === 'oneOff' && !data.serviceTypeId) {
     ctx.addIssue({
@@ -189,9 +192,29 @@ export default function ScheduleSession() {
     enabled: false, // Disable for now to prevent errors
   });
 
+  // Use the values from the useQuery hooks (placed after they are defined)
+  const finalScheduledSessionsInPeriod = scheduledSessionsInPeriod ?? 0;
+  const finalIsLoadingPeriodSessions = isLoadingPeriodSessions;
+
+  // NEW: Create the context object using useMemo for reactive validation
+  const formResolverContext = useMemo(() => ({
+    isLoadingPeriodSessions: finalIsLoadingPeriodSessions,
+    scheduledSessionsInPeriod: finalScheduledSessionsInPeriod,
+    activeClientSubscriptions,
+    clientPacks: activeSessionPacks,
+    availableServiceTypes: serviceTypes,
+  }), [
+    finalIsLoadingPeriodSessions,
+    finalScheduledSessionsInPeriod,
+    activeClientSubscriptions,
+    activeSessionPacks,
+    serviceTypes
+  ]);
+
   const form = useForm<SessionFormData>({
-    resolver: zodResolver(createFormSchema(activeClientSubscriptions, 0, false)),
+    resolver: zodResolver(createFormSchema(activeClientSubscriptions, finalScheduledSessionsInPeriod || 0, finalIsLoadingPeriodSessions)),
     mode: 'onChange',
+    context: formResolverContext,
     defaultValues: {
       client_id: initialClientId || '',
       scheduleType: 'oneOff',
@@ -292,22 +315,14 @@ export default function ScheduleSession() {
     enabled: selectedScheduleType === 'fromSubscription' && !!selectedSubscriptionId && !!form.watch('serviceTypeIdForSubscription') && !!proposedSessionDate && !!form.watch('client_id'),
   });
 
-  // Use the updated values
-  const finalScheduledSessionsInPeriod = updatedScheduledSessionsInPeriod ?? scheduledSessionsInPeriod;
-  const finalIsLoadingPeriodSessions = updatedIsLoadingPeriodSessions || isLoadingPeriodSessions;
-
   // Trigger validation when scheduled sessions data changes
   useEffect(() => {
     if (form.getValues('scheduleType') === 'fromSubscription') {
-      // Use a slight delay to ensure the DOM has updated and the context is fully propagated
-      const timeoutId = setTimeout(() => {
-        form.trigger('session_date');
-        form.trigger('serviceTypeIdForSubscription');
-        console.log("DEBUG: Triggering form validation after scheduledSessionsInPeriod update.");
-      }, 50);
-      return () => clearTimeout(timeoutId);
+      form.trigger('session_date');
+      form.trigger('serviceTypeIdForSubscription');
+      console.log("DEBUG: Triggering form validation after scheduledSessionsInPeriod update or related context change.");
     }
-  }, [finalIsLoadingPeriodSessions, finalScheduledSessionsInPeriod, form]);
+  }, [form, formResolverContext]);
 
   useEffect(() => {
     if (user?.id) {
