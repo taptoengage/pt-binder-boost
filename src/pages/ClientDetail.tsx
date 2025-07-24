@@ -25,6 +25,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { cn } from '@/lib/utils';
 import ClientPackDetailModal from '@/components/ClientPackDetailModal';
 import ClientSubscriptionModal from '@/components/ClientSubscriptionModal';
+import SubscriptionDetailModal from '@/components/SubscriptionDetailModal';
 
 interface Client {
   id: string;
@@ -132,6 +133,10 @@ export default function ClientDetail() {
   // Subscription modal state
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
 
+  // Subscription detail modal state
+  const [isSubscriptionDetailModalOpen, setIsSubscriptionDetailModalOpen] = useState(false);
+  const [selectedSubscription, setSelectedSubscription] = useState<any | null>(null);
+
   // Pagination state for session history
   const [currentPage, setCurrentPage] = useState(1);
   const sessionsPerPage = 5;
@@ -200,6 +205,7 @@ export default function ClientDetail() {
         .select(`
           id,
           start_date,
+          end_date,
           billing_cycle,
           payment_frequency,
           billing_amount,
@@ -208,7 +214,8 @@ export default function ClientDetail() {
             quantity_per_period,
             period_type,
             cost_per_session,
-            service_type_id
+            service_type_id,
+            service_types (name)
           )
         `)
         .eq('client_id', clientId)
@@ -1445,7 +1452,14 @@ export default function ClientDetail() {
                 {activeClientSubscriptions?.length > 0 && (
                   <>
                     {activeClientSubscriptions.map((subscription) => (
-                      <Card key={subscription.id} className="cursor-pointer hover:shadow-md transition-shadow">
+                      <Card 
+                        key={subscription.id} 
+                        className="cursor-pointer hover:shadow-md transition-shadow"
+                        onClick={() => {
+                          setSelectedSubscription(subscription);
+                          setIsSubscriptionDetailModalOpen(true);
+                        }}
+                      >
                         <CardHeader>
                           <CardTitle>
                             Subscription - {subscription.billing_cycle.charAt(0).toUpperCase() + subscription.billing_cycle.slice(1)} ({format(new Date(subscription.start_date), 'MMM do, yyyy')})
@@ -1898,6 +1912,16 @@ export default function ClientDetail() {
           isOpen={isSubscriptionModalOpen}
           onClose={() => setIsSubscriptionModalOpen(false)}
           clientId={clientId || ''}
+        />
+
+        {/* Subscription Detail Modal */}
+        <SubscriptionDetailModal
+          isOpen={isSubscriptionDetailModalOpen}
+          onClose={() => {
+            setIsSubscriptionDetailModalOpen(false);
+            setSelectedSubscription(null);
+          }}
+          subscription={selectedSubscription}
         />
       </div>
     </div>
