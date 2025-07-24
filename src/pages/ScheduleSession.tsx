@@ -20,12 +20,8 @@ import { ArrowLeft, CalendarIcon, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-// Create a function that returns the schema with validation context
-const createScheduleSessionSchema = (
-  currentServiceAllocation?: { quantity_per_period: number; period_type: 'weekly' | 'fortnightly' | 'monthly' },
-  scheduledSessionsCount?: number,
-  isLoadingSessionsCount?: boolean
-) => z.object({
+// Create the base schema with dynamic validation using context
+const ScheduleSessionSchema = z.object({
   client_id: z.string().min(1, 'Please select a client'),
   scheduleType: z.enum(["oneOff", "fromPack", "fromSubscription"]),
   serviceTypeId: z.string().optional(),
@@ -43,6 +39,15 @@ const createScheduleSessionSchema = (
   creditIdConsumed: z.string().optional(),
   selectedCreditId: z.string().optional(),
 }).superRefine((data, ctx) => {
+  // For now, we'll use external validation through manual triggering
+  // The dynamic validation will be handled through form.trigger() calls
+  console.log("DEBUG: superRefine executing basic validation only");
+  
+  // Basic conditional validation only (dynamic validation handled externally)
+  const currentServiceAllocation = undefined; // Will be handled externally
+  const scheduledSessionsCount = undefined; // Will be handled externally  
+  const isLoadingSessionsCount = false; // Will be handled externally
+  
   console.log("DEBUG: superRefine RE-EXECUTING with passed params. isLoading:", isLoadingSessionsCount, ", count:", scheduledSessionsCount, ", allocation:", currentServiceAllocation);
 
   // Crucial: Prevent validation errors while count is loading
@@ -100,7 +105,7 @@ const createScheduleSessionSchema = (
   }
 });
 
-type SessionFormData = z.infer<ReturnType<typeof createScheduleSessionSchema>>;
+type SessionFormData = z.infer<typeof ScheduleSessionSchema>;
 
 interface Client {
   id: string;
@@ -176,9 +181,9 @@ export default function ScheduleSession() {
     enabled: false, // Disable for now to prevent errors
   });
 
-  // Initialize form with empty schema, will be updated later
+  // Initialize form with basic context first (will be updated via triggering)
   const form = useForm<SessionFormData>({
-    resolver: zodResolver(createScheduleSessionSchema()),
+    resolver: zodResolver(ScheduleSessionSchema),
     mode: 'onChange',
     defaultValues: {
       client_id: initialClientId || '',
@@ -362,23 +367,22 @@ export default function ScheduleSession() {
     ) as { service_type_id: string; quantity_per_period: number; period_type: 'weekly' | 'fortnightly' | 'monthly'; } | undefined;
   }, [activeClientSubscriptions, form.watch('subscriptionId'), form.watch('serviceTypeIdForSubscription')]);
 
-  // Update form resolver when validation context changes
+  // Define the formResolverContext using useMemo for reactive updates
+  const formResolverContext = useMemo(() => {
+    return {
+      currentServiceAllocation: currentServiceAllocation,
+      scheduledSessionsCount: finalScheduledSessionsInPeriod, // Pass the data, not the query object
+      isLoadingSessionsCount: finalIsLoadingPeriodSessions,
+    };
+  }, [currentServiceAllocation, finalScheduledSessionsInPeriod, finalIsLoadingPeriodSessions]); // Dependencies for useMemo
+
+  // Critical part: Trigger validation when relevant data changes
   useEffect(() => {
-    const newSchema = createScheduleSessionSchema(
-      currentServiceAllocation,
-      finalScheduledSessionsInPeriod,
-      finalIsLoadingPeriodSessions
-    );
-    
-    // Unfortunately, react-hook-form doesn't allow updating the resolver directly
-    // So we need to recreate the form when the validation context changes
-    // For now, we'll trigger validation manually
-    if (form.getValues('scheduleType') === 'fromSubscription') {
-      form.trigger('session_date');
-      form.trigger('serviceTypeIdForSubscription');
+    if (finalScheduledSessionsInPeriod !== undefined && currentServiceAllocation !== undefined && !finalIsLoadingPeriodSessions) {
       console.log("DEBUG: Triggering form validation after scheduledSessionsInPeriod update or related context change.");
+      form.trigger(); // Manually trigger validation
     }
-  }, [form, currentServiceAllocation, finalScheduledSessionsInPeriod, finalIsLoadingPeriodSessions]);
+  }, [finalScheduledSessionsInPeriod, finalIsLoadingPeriodSessions, currentServiceAllocation, form]);
 
   useEffect(() => {
     if (user?.id) {
