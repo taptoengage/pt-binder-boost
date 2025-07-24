@@ -39,25 +39,19 @@ const ScheduleSessionSchema = z.object({
   creditIdConsumed: z.string().optional(),
   selectedCreditId: z.string().optional(),
 }).superRefine((data, ctx) => {
-  console.log("DEBUG: superRefine executing with context validation");
-  
   // Context will be passed during validation, for now use a placeholder approach
   // The actual validation will be handled through manual triggering and external checks
   const currentServiceAllocation = undefined;
   const scheduledSessionsCount = undefined;
   const isLoadingSessionsCount = false;
-  
-  console.log("DEBUG: superRefine RE-EXECUTING with passed params. isLoading:", isLoadingSessionsCount, ", count:", scheduledSessionsCount, ", allocation:", currentServiceAllocation);
 
   // Crucial: Prevent validation errors while count is loading
   if (isLoadingSessionsCount) {
-    console.log("DEBUG: superRefine returning early due to loading state.");
     return;
   }
   
   // ADD DEFENSIVE CHECKS:
   if (currentServiceAllocation === undefined || scheduledSessionsCount === undefined) {
-    console.warn("DEBUG: superRefine WARNING: Context values (allocation or count) are undefined/stale. Skipping over-scheduling check.");
     // Do NOT add an issue here unless you explicitly want to block submission
     // just because data is still loading or not available yet. The button disabled state should handle loading.
     return; // Exit superRefine if crucial data is missing
@@ -97,7 +91,6 @@ const ScheduleSessionSchema = z.object({
         message: `You have exceeded the allocated sessions (${currentServiceAllocation.quantity_per_period}) for this subscription within the current ${currentServiceAllocation.period_type} period.`,
         path: ['session_date'],
       });
-      console.log(`DEBUG: Over-scheduling detected! Count: ${scheduledSessionsCount}, Max: ${currentServiceAllocation.quantity_per_period}`);
     }
   }
 });
@@ -171,10 +164,8 @@ export default function ScheduleSession() {
         .order('created_at', { ascending: true });
 
       if (error) {
-        console.error("DEBUG: Error fetching available credits:", error.message);
         throw error;
       }
-      console.log(`DEBUG: Fetched available credits for sub ${currentSubscriptionId}, service ${currentServiceTypeId}:`, data);
       return data || [];
     },
     enabled: !!form.watch('client_id') && !!form.watch('subscriptionId') && !!form.watch('serviceTypeIdForSubscription'),
@@ -221,11 +212,9 @@ export default function ScheduleSession() {
       periodEnd = addMonths(periodStart, 1);
     } else {
       // Fallback for unexpected period types
-      console.warn("DEBUG: Unknown period type:", periodType);
       return { periodStartDate: null, periodEndDate: null };
     }
 
-    console.log(`DEBUG: Calculated period for ${periodType}: ${periodStart.toISOString().split('T')[0]} to ${periodEnd.toISOString().split('T')[0]}`);
     return { periodStartDate: periodStart, periodEndDate: periodEnd };
   }, []);
 
@@ -265,8 +254,6 @@ export default function ScheduleSession() {
         return 0;
       }
 
-      console.log(`DEBUG: Checking sessions for period: ${periodStartDate.toISOString().split('T')[0]} to ${periodEndDate.toISOString().split('T')[0]}`);
-
       // Count sessions already scheduled within this period for this subscription and service type
       const { count, error } = await supabase
         .from('sessions')
@@ -280,10 +267,8 @@ export default function ScheduleSession() {
         .in('status', ['scheduled', 'completed', 'cancelled_late', 'cancelled_early']); // Include these statuses in count
 
       if (error) {
-        console.error("DEBUG: Error fetching scheduled sessions in period:", error.message);
         throw error;
       }
-      console.log(`DEBUG: Found ${count} sessions already scheduled in period for this allocation (excluding credits).`);
       return count ?? 0;
     },
     enabled: form.watch('scheduleType') === 'fromSubscription' && !!form.watch('subscriptionId') && !!form.watch('serviceTypeIdForSubscription') && !!periodStartDate && !!periodEndDate && !!form.watch('client_id'),
@@ -321,8 +306,6 @@ export default function ScheduleSession() {
   // Critical part: Perform custom validation logic
   useEffect(() => {
     if (finalScheduledSessionsInPeriod !== undefined && currentServiceAllocation !== undefined && !finalIsLoadingPeriodSessions) {
-      console.log("DEBUG: Triggering custom validation logic after scheduledSessionsInPeriod update or related context change.");
-      
       // Perform the over-scheduling check manually
       const formValues = form.getValues();
       if (formValues.scheduleType === 'fromSubscription' && !formValues.selectedCreditId) {
@@ -331,7 +314,6 @@ export default function ScheduleSession() {
             type: 'custom',
             message: `You have exceeded the allocated sessions (${currentServiceAllocation.quantity_per_period}) for this subscription within the current ${currentServiceAllocation.period_type} period.`,
           });
-          console.log(`DEBUG: Over-scheduling detected! Count: ${finalScheduledSessionsInPeriod}, Max: ${currentServiceAllocation.quantity_per_period}`);
         } else {
           form.clearErrors('session_date');
         }
@@ -376,10 +358,8 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         subscription_service_allocations: sub.subscription_service_allocations || []
       })) || [];
 
-      console.log("DEBUG: Fetched active client subscriptions for scheduling (processed):", processedData);
       setActiveClientSubscriptions(processedData);
     } catch (error) {
-      console.error('DEBUG: Error fetching active client subscriptions for scheduling:', error);
       toast({
         title: 'Error',
         description: 'Failed to load subscriptions. Please try again.',
@@ -448,12 +428,9 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         .gt('sessions_remaining', 0)
         .order('sessions_remaining', { ascending: true });
 
-      console.log("DEBUG: Fetched activeSessionPacks data (within fetchActiveSessionPacks):", data);
-
       if (error) throw error;
       setActiveSessionPacks(data || []);
     } catch (error) {
-      console.error('DEBUG: Error fetching active session packs (from fetchActiveSessionPacks):', error);
       console.error('Error fetching session packs:', error);
       toast({
         title: 'Error',
@@ -473,7 +450,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
     const isValid = await form.trigger(['session_date', 'serviceTypeIdForSubscription']);
     // After triggering, check if the form is valid based on the latest state
     if (!isValid) {
-      console.warn("DEBUG: Form validation failed on submit. Preventing submission.");
       toast({
         title: 'Validation Error',
         description: 'Please correct the errors in the form before scheduling.',
@@ -490,8 +466,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
     // --- END CRITICAL MANUAL VALIDATION STEP ---
 
     try {
-      console.log("DEBUG: Form submitted with values BEFORE processing for DB insert:", data);
-      
       // Combine date and time into a proper timestamp
       const [hours, minutes] = data.session_time.split(':').map(Number);
       const sessionDateTime = new Date(data.session_date);
@@ -508,7 +482,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
       if (data.scheduleType === 'fromSubscription' && data.selectedCreditId) {
         finalIsFromCredit = true;
         finalCreditIdConsumed = data.selectedCreditId;
-        console.log("DEBUG: Session will consume credit ID:", finalCreditIdConsumed);
       }
 
       if (data.scheduleType === 'oneOff') {
@@ -520,7 +493,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         if (selectedPack) {
           finalServiceTypeId = selectedPack.service_type_id;
         } else {
-          console.error("DEBUG: Selected pack not found or invalid.");
           toast({
             title: 'Error',
             description: 'Selected pack is invalid. Please try again.',
@@ -535,7 +507,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
 
       // Final check for serviceTypeId before proceeding
       if (!finalServiceTypeId) {
-        console.error("DEBUG: Attempting to submit session without a service_type_id derived from selection.");
         toast({
           title: 'Error',
           description: 'A service type must be associated with the session. Please complete all required selections.',
@@ -557,8 +528,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         credit_id_consumed: finalCreditIdConsumed,
       };
 
-      console.log("DEBUG: Final payload for Supabase insertion:", sessionData);
-
       // Step 1: Insert the session
       const { data: sessionInsertData, error: sessionInsertError } = await supabase
         .from('sessions')
@@ -570,11 +539,8 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         throw new Error(`Failed to schedule session: ${sessionInsertError.message}`);
       }
 
-      console.log("DEBUG: Session scheduled:", sessionInsertData);
-
       // Step 2: If a credit was used, update its status
       if (finalIsFromCredit && finalCreditIdConsumed) {
-        console.log("DEBUG: Updating status of used credit:", finalCreditIdConsumed);
         const { error: creditUpdateError } = await supabase
           .from('subscription_session_credits')
           .update({ 
@@ -584,14 +550,12 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
           .eq('id', finalCreditIdConsumed);
 
         if (creditUpdateError) {
-          console.error("DEBUG: Failed to update used credit status:", creditUpdateError);
           toast({
             title: 'Warning',
             description: `Session scheduled, but failed to mark credit as used: ${creditUpdateError.message}`,
             variant: 'destructive',
           });
         } else {
-          console.log("DEBUG: Credit successfully marked as used.");
           toast({
             title: 'Success',
             description: 'Session scheduled and credit applied successfully!',
@@ -615,7 +579,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         description: `Error scheduling session: ${error.message}`,
         variant: 'destructive',
       });
-      console.error("DEBUG: Error scheduling session or applying credit:", error);
     } finally {
       setIsSubmittingForm(false);
       // Invalidate and refetch queries
@@ -663,10 +626,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
   };
 
   const timeOptions = generateTimeOptions();
-
-  // Debug logs for conditional rendering
-  console.log("DEBUG: Render Check: activeSessionPacks.length:", activeSessionPacks.length);
-  console.log("DEBUG: Render Check: isLoadingPacks:", isLoadingPacks);
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
@@ -737,7 +696,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                         form.setValue("subscriptionId", undefined);
                         form.setValue("serviceTypeIdForSubscription", undefined);
                         form.setValue("paymentStatus", undefined);
-                        console.log("DEBUG: Schedule Type changed to:", value);
                       }} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -859,7 +817,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                           <Select onValueChange={(value) => {
                             field.onChange(value);
                             form.setValue("serviceTypeIdForSubscription", undefined);
-                            console.log("DEBUG: Selected subscription ID:", value);
                           }} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
@@ -939,10 +896,8 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                               onValueChange={(value) => {
                                 if (value === "no-credit") {
                                   field.onChange(undefined);
-                                  console.log("DEBUG: Credit selection cleared.");
                                 } else {
                                   field.onChange(value);
-                                  console.log("DEBUG: Credit selected:", value);
                                 }
                               }}
                             >
