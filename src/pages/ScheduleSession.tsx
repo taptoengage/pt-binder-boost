@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useForm, Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks, addMonths, isBefore, isAfter } from 'date-fns';
 import { DashboardNavigation } from '@/components/Navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -244,62 +244,114 @@ export default function ScheduleSession() {
     enabled: !!form.watch('client_id') && !!form.watch('subscriptionId') && !!form.watch('serviceTypeIdForSubscription'),
   });
 
-  // Re-enable the period sessions query with proper form integration
+  // Function to calculate the period start/end dates based on subscription start date and period type
+  const calculatePeriodDates = React.useCallback((
+    subscriptionStartDate: string | Date,
+    proposedSessionDate: Date,
+    periodType: 'weekly' | 'fortnightly' | 'monthly'
+  ) => {
+    const subStartDate = new Date(subscriptionStartDate);
+    let periodStart: Date;
+    let periodEnd: Date;
+
+    if (periodType === 'weekly') {
+      // Find the start of the week containing proposedSessionDate, aligned with subStartDate's weekday
+      let currentWeekStart = startOfWeek(proposedSessionDate, { weekStartsOn: subStartDate.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6 });
+      // Adjust to align with the subscription's start week
+      while (isBefore(currentWeekStart, subStartDate)) {
+        currentWeekStart = addWeeks(currentWeekStart, 1);
+      }
+      while (isAfter(currentWeekStart, proposedSessionDate)) {
+        currentWeekStart = addWeeks(currentWeekStart, -1);
+      }
+      periodStart = currentWeekStart;
+      periodEnd = addWeeks(periodStart, 1);
+    } else if (periodType === 'fortnightly') {
+      // Find the start of the fortnight containing proposedSessionDate, aligned with subStartDate
+      const totalDaysSinceSubStart = Math.floor((proposedSessionDate.getTime() - subStartDate.getTime()) / (1000 * 60 * 60 * 24));
+      const fortnightsPassed = Math.floor(totalDaysSinceSubStart / 14);
+      periodStart = addWeeks(subStartDate, fortnightsPassed * 2);
+      periodEnd = addWeeks(periodStart, 2);
+    } else if (periodType === 'monthly') {
+      // Find the start of the month containing proposedSessionDate, aligned with subStartDate's day
+      // For monthly periods starting on the subscription start date
+      periodStart = startOfMonth(proposedSessionDate);
+      while (isBefore(periodStart, subStartDate) && isBefore(addMonths(periodStart, 1), proposedSessionDate)) {
+        periodStart = addMonths(periodStart, 1);
+      }
+      if (isAfter(periodStart, proposedSessionDate)) {
+        periodStart = addMonths(periodStart, -1);
+      }
+      periodEnd = addMonths(periodStart, 1);
+    } else {
+      // Fallback for unexpected period types
+      console.warn("DEBUG: Unknown period type:", periodType);
+      return { periodStartDate: null, periodEndDate: null };
+    }
+
+    console.log(`DEBUG: Calculated period for ${periodType}: ${periodStart.toISOString().split('T')[0]} to ${periodEnd.toISOString().split('T')[0]}`);
+    return { periodStartDate: periodStart, periodEndDate: periodEnd };
+  }, []);
+
+  // Calculate current period dates based on form values
+  const { periodStartDate, periodEndDate } = React.useMemo(() => {
+    const currentSubscriptionId = form.watch('subscriptionId');
+    const currentServiceTypeId = form.watch('serviceTypeIdForSubscription');
+    const currentSessionDate = form.watch('session_date');
+    
+    if (currentSubscriptionId && currentServiceTypeId && currentSessionDate) {
+      const selectedSubscription = activeClientSubscriptions?.find(s => s.id === currentSubscriptionId);
+      const allocation = selectedSubscription?.subscription_service_allocations?.find(
+        alloc => alloc.service_type_id === currentServiceTypeId
+      );
+      
+      if (selectedSubscription && selectedSubscription.start_date && allocation) {
+        return calculatePeriodDates(
+          selectedSubscription.start_date,
+          currentSessionDate,
+          allocation.period_type as 'weekly' | 'fortnightly' | 'monthly'
+        );
+      }
+    }
+    return { periodStartDate: null, periodEndDate: null };
+  }, [form.watch('subscriptionId'), form.watch('serviceTypeIdForSubscription'), form.watch('session_date'), activeClientSubscriptions, calculatePeriodDates]);
+
+  // Enhanced period sessions query with dynamic period calculation and credit exclusion
   const { data: updatedScheduledSessionsInPeriod, isLoading: updatedIsLoadingPeriodSessions } = useQuery({
-    queryKey: ['scheduledSessionsInPeriod', form.watch('client_id'), form.watch('subscriptionId'), form.watch('serviceTypeIdForSubscription'), form.watch('session_date')?.toISOString()],
+    queryKey: ['scheduledSessionsInPeriod', form.watch('client_id'), form.watch('subscriptionId'), form.watch('serviceTypeIdForSubscription'), periodStartDate?.toISOString(), periodEndDate?.toISOString()],
     queryFn: async () => {
       const currentServiceTypeId = form.getValues('serviceTypeIdForSubscription');
       const currentClientId = form.getValues('client_id');
       const currentSubscriptionId = form.getValues('subscriptionId');
-      const currentSessionDate = form.getValues('session_date');
       const currentScheduleType = form.getValues('scheduleType');
       
-      if (currentScheduleType !== 'fromSubscription' || !currentSubscriptionId || !currentServiceTypeId || !currentSessionDate || !currentClientId) {
+      if (currentScheduleType !== 'fromSubscription' || !currentSubscriptionId || !currentServiceTypeId || !periodStartDate || !periodEndDate || !currentClientId) {
         return 0;
       }
 
-      const subscription = activeClientSubscriptions?.find(sub => sub.id === currentSubscriptionId);
-      const allocation = subscription?.subscription_service_allocations?.find(alloc => alloc.service_type_id === currentServiceTypeId);
-
-      if (!subscription || !allocation) {
-        console.warn("DEBUG: No valid subscription or allocation found for period count.");
-        return 0;
-      }
-
-      let startDateOfPeriod: Date;
-      let endDateOfPeriod: Date;
-
-      // Determine the start and end dates of the relevant billing period
-      if (allocation.period_type === 'weekly') {
-        startDateOfPeriod = startOfWeek(currentSessionDate, { weekStartsOn: 1 });
-        endDateOfPeriod = endOfWeek(currentSessionDate, { weekStartsOn: 1 });
-      } else { // 'monthly'
-        startDateOfPeriod = startOfMonth(currentSessionDate);
-        endDateOfPeriod = endOfMonth(currentSessionDate);
-      }
-
-      console.log(`DEBUG: Checking sessions for period: ${format(startDateOfPeriod, 'yyyy-MM-dd')} to ${format(endDateOfPeriod, 'yyyy-MM-dd')}`);
+      console.log(`DEBUG: Checking sessions for period: ${periodStartDate.toISOString().split('T')[0]} to ${periodEndDate.toISOString().split('T')[0]}`);
 
       // Count sessions already scheduled within this period for this subscription and service type
       const { count, error } = await supabase
         .from('sessions')
-        .select('id', { count: 'exact' })
+        .select('id', { count: 'exact', head: true }) // Using head: true for count only
         .eq('client_id', currentClientId)
         .eq('subscription_id', currentSubscriptionId)
         .eq('service_type_id', currentServiceTypeId)
-        .gte('session_date', format(startDateOfPeriod, 'yyyy-MM-dd'))
-        .lte('session_date', format(endDateOfPeriod, 'yyyy-MM-dd'))
-        .neq('status', 'cancelled')
-        .eq('is_from_credit', false);
+        .gte('session_date', periodStartDate.toISOString())
+        .lt('session_date', periodEndDate.toISOString())
+        .eq('is_from_credit', false) // Exclude sessions booked from credits
+        .in('status', ['scheduled', 'completed', 'cancelled_late', 'cancelled_early']); // Include these statuses in count
 
       if (error) {
         console.error("DEBUG: Error fetching scheduled sessions in period:", error.message);
         throw error;
       }
-      console.log(`DEBUG: Found ${count} sessions already scheduled in period for this allocation.`);
-      return count || 0;
+      console.log(`DEBUG: Found ${count} sessions already scheduled in period for this allocation (excluding credits).`);
+      return count ?? 0;
     },
-    enabled: form.watch('scheduleType') === 'fromSubscription' && !!form.watch('subscriptionId') && !!form.watch('serviceTypeIdForSubscription') && !!form.watch('session_date') && !!form.watch('client_id'),
+    enabled: form.watch('scheduleType') === 'fromSubscription' && !!form.watch('subscriptionId') && !!form.watch('serviceTypeIdForSubscription') && !!periodStartDate && !!periodEndDate && !!form.watch('client_id'),
+    staleTime: 5 * 1000, // Short cache for rapid updates during scheduling
   });
 
   // Use the working query data (provide defaults to avoid undefined)
