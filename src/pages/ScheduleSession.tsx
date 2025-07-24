@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { format } from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { DashboardNavigation } from '@/components/Navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,78 +20,118 @@ import { ArrowLeft, CalendarIcon, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-const sessionFormSchema = z.object({
-  client_id: z.string().min(1, 'Please select a client'),
-  scheduleType: z.enum(["oneOff", "fromPack", "fromSubscription"]),
-  serviceTypeId: z.string().optional(), // Used for 'oneOff'
-  packId: z.string().optional(), // Used for 'fromPack'
-  subscriptionId: z.string().optional(), // Used for 'fromSubscription'
-  serviceTypeIdForSubscription: z.string().optional(), // Used for service selection within 'fromSubscription'
-  paymentStatus: z.enum(["paid", "pending", "cancelled"]).optional(),
-  session_date: z.date({
-    message: 'Please select a session date',
-  }),
-  session_time: z.string().min(1, 'Please select a session time'),
-  status: z.enum(['scheduled', 'completed', 'cancelled_late', 'cancelled_early']),
-  notes: z.string().optional(),
-  isFromCredit: z.boolean().optional(),
-  creditIdConsumed: z.string().optional(),
-  selectedCreditId: z.string().optional(),
-}).superRefine((data, ctx) => {
-  // Conditional validation based on scheduleType
-  if (data.scheduleType === 'oneOff') {
-    if (!data.serviceTypeId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Service type is required for a one-off session.",
-        path: ['serviceTypeId'],
-      });
-    }
-  } else if (data.scheduleType === 'fromPack') {
-    if (!data.packId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "A pack must be selected.",
-        path: ['packId'],
-      });
-    }
-  } else if (data.scheduleType === 'fromSubscription') {
-    if (!data.subscriptionId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "A subscription must be selected.",
-        path: ['subscriptionId'],
-      });
-    }
-    if (data.subscriptionId && !data.serviceTypeIdForSubscription) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "A specific service must be selected from the subscription.",
-        path: ['serviceTypeIdForSubscription'],
-      });
-    }
-  }
-
-  // Ensure mutual exclusivity (packId, subscriptionId)
-    if (data.packId && data.subscriptionId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Session cannot be linked to both a pack and a subscription.",
-        path: ['packId', 'subscriptionId'],
-      });
+const createSessionFormSchema = (activeClientSubscriptions: any[], scheduledSessionsInPeriod: number | undefined, isLoadingPeriodSessions: boolean) => {
+  return z.object({
+    client_id: z.string().min(1, 'Please select a client'),
+    scheduleType: z.enum(["oneOff", "fromPack", "fromSubscription"]),
+    serviceTypeId: z.string().optional(), // Used for 'oneOff'
+    packId: z.string().optional(), // Used for 'fromPack'
+    subscriptionId: z.string().optional(), // Used for 'fromSubscription'
+    serviceTypeIdForSubscription: z.string().optional(), // Used for service selection within 'fromSubscription'
+    paymentStatus: z.enum(["paid", "pending", "cancelled"]).optional(),
+    session_date: z.date({
+      message: 'Please select a session date',
+    }),
+    session_time: z.string().min(1, 'Please select a session time'),
+    status: z.enum(['scheduled', 'completed', 'cancelled_late', 'cancelled_early']),
+    notes: z.string().optional(),
+    isFromCredit: z.boolean().optional(),
+    creditIdConsumed: z.string().optional(),
+    selectedCreditId: z.string().optional(),
+  }).superRefine((data, ctx) => {
+    // Conditional validation based on scheduleType
+    if (data.scheduleType === 'oneOff') {
+      if (!data.serviceTypeId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Service type is required for a one-off session.",
+          path: ['serviceTypeId'],
+        });
+      }
+    } else if (data.scheduleType === 'fromPack') {
+      if (!data.packId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "A pack must be selected.",
+          path: ['packId'],
+        });
+      }
+    } else if (data.scheduleType === 'fromSubscription') {
+      if (!data.subscriptionId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "A subscription must be selected.",
+          path: ['subscriptionId'],
+        });
+      }
+      if (data.subscriptionId && !data.serviceTypeIdForSubscription) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "A specific service must be selected from the subscription.",
+          path: ['serviceTypeIdForSubscription'],
+        });
+      }
     }
 
-    // Add validation if both are set, creditIdConsumed must be present if isFromCredit is true
-    if (data.isFromCredit && !data.creditIdConsumed) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Credit ID must be provided if session is from credit.",
-        path: ['creditIdConsumed'],
-      });
-    }
-  });
+    // Ensure mutual exclusivity (packId, subscriptionId)
+      if (data.packId && data.subscriptionId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Session cannot be linked to both a pack and a subscription.",
+          path: ['packId', 'subscriptionId'],
+        });
+      }
 
-type SessionFormData = z.infer<typeof sessionFormSchema>;
+      // Add validation if both are set, creditIdConsumed must be present if isFromCredit is true
+      if (data.isFromCredit && !data.creditIdConsumed) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Credit ID must be provided if session is from credit.",
+          path: ['creditIdConsumed'],
+        });
+      }
+
+      // NEW: Allocation Limit Validation for From Subscription
+      if (data.scheduleType === 'fromSubscription' && data.subscriptionId && data.serviceTypeIdForSubscription && data.session_date) {
+        // Find the selected subscription and its allocation
+        const subscription = activeClientSubscriptions?.find(sub => sub.id === data.subscriptionId);
+        const allocation = subscription?.subscription_service_allocations?.find(
+          alloc => alloc.service_type_id === data.serviceTypeIdForSubscription
+        );
+
+        // If data or query results are still loading, skip this validation for now
+        if (isLoadingPeriodSessions || !subscription || !allocation) {
+          // Skip validation while loading
+          return;
+        }
+
+        if (scheduledSessionsInPeriod !== undefined) {
+          const allowedQuantity = allocation.quantity_per_period;
+          const currentScheduledCount = scheduledSessionsInPeriod;
+
+          console.log(`DEBUG: Validation check - Allowed: ${allowedQuantity}, Current Scheduled: ${currentScheduledCount}`);
+
+          // Only count if this session is NOT from credit
+          const isThisSessionFromCredit = data.selectedCreditId ? true : false;
+          if (!isThisSessionFromCredit && (currentScheduledCount + 1) > allowedQuantity) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `You can only schedule ${allowedQuantity} ${allocation.period_type} session(s) of this type. ${currentScheduledCount} already scheduled.`,
+              path: ['session_date'],
+            });
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Limit exceeded for ${allocation.period_type} allocation.`,
+              path: ['serviceTypeIdForSubscription'],
+            });
+            console.warn(`DEBUG: Allocation limit exceeded for ${allocation.service_types?.name} (${allocation.period_type}).`);
+          }
+        }
+      }
+    });
+};
+
+type SessionFormData = z.infer<ReturnType<typeof createSessionFormSchema>>;
 
 interface Client {
   id: string;
@@ -120,7 +160,7 @@ export default function ScheduleSession() {
   const queryClient = useQueryClient();
 
   const form = useForm<SessionFormData>({
-    resolver: zodResolver(sessionFormSchema),
+    resolver: zodResolver(createSessionFormSchema([], 0, false)), // Initial resolver, will be updated
     defaultValues: {
       client_id: initialClientId || '',
       scheduleType: 'oneOff',
@@ -165,6 +205,73 @@ export default function ScheduleSession() {
     },
     enabled: !!form.watch('client_id') && !!form.watch('subscriptionId') && !!form.watch('serviceTypeIdForSubscription'),
   });
+
+  // Fetch scheduled sessions in the current period for allocation validation
+  const selectedScheduleType = form.watch("scheduleType");
+  const proposedSessionDate = form.watch("session_date");
+  const selectedSubscriptionId = form.watch("subscriptionId");
+
+  const { data: scheduledSessionsInPeriod, isLoading: isLoadingPeriodSessions } = useQuery({
+    queryKey: ['scheduledSessionsInPeriod', form.watch('client_id'), selectedSubscriptionId, form.watch('serviceTypeIdForSubscription'), proposedSessionDate?.toISOString()],
+    queryFn: async () => {
+      const currentServiceTypeId = form.getValues('serviceTypeIdForSubscription');
+      const currentClientId = form.getValues('client_id');
+      
+      if (selectedScheduleType !== 'fromSubscription' || !selectedSubscriptionId || !currentServiceTypeId || !proposedSessionDate || !currentClientId) {
+        return 0;
+      }
+
+      const subscription = activeClientSubscriptions?.find(sub => sub.id === selectedSubscriptionId);
+      const allocation = subscription?.subscription_service_allocations?.find(alloc => alloc.service_type_id === currentServiceTypeId);
+
+      if (!subscription || !allocation) {
+        console.warn("DEBUG: No valid subscription or allocation found for period count.");
+        return 0;
+      }
+
+      let startDateOfPeriod: Date;
+      let endDateOfPeriod: Date;
+
+      // Determine the start and end dates of the relevant billing period
+      if (allocation.period_type === 'weekly') {
+        startDateOfPeriod = startOfWeek(proposedSessionDate, { weekStartsOn: 1 });
+        endDateOfPeriod = endOfWeek(proposedSessionDate, { weekStartsOn: 1 });
+      } else { // 'monthly'
+        startDateOfPeriod = startOfMonth(proposedSessionDate);
+        endDateOfPeriod = endOfMonth(proposedSessionDate);
+      }
+
+      console.log(`DEBUG: Checking sessions for period: ${format(startDateOfPeriod, 'yyyy-MM-dd')} to ${format(endDateOfPeriod, 'yyyy-MM-dd')}`);
+
+      // Count sessions already scheduled within this period for this subscription and service type
+      const { count, error } = await supabase
+        .from('sessions')
+        .select('id', { count: 'exact' })
+        .eq('client_id', currentClientId)
+        .eq('subscription_id', selectedSubscriptionId)
+        .eq('service_type_id', currentServiceTypeId)
+        .gte('session_date', format(startDateOfPeriod, 'yyyy-MM-dd'))
+        .lte('session_date', format(endDateOfPeriod, 'yyyy-MM-dd'))
+        .neq('status', 'cancelled')
+        .eq('is_from_credit', false);
+
+      if (error) {
+        console.error("DEBUG: Error fetching scheduled sessions in period:", error.message);
+        throw error;
+      }
+      console.log(`DEBUG: Found ${count} sessions already scheduled in period for this allocation.`);
+      return count || 0;
+    },
+    enabled: selectedScheduleType === 'fromSubscription' && !!selectedSubscriptionId && !!form.watch('serviceTypeIdForSubscription') && !!proposedSessionDate && !!form.watch('client_id'),
+  });
+
+  // Update form resolver with current data when it changes
+  useEffect(() => {
+    const newSchema = createSessionFormSchema(activeClientSubscriptions, scheduledSessionsInPeriod, isLoadingPeriodSessions);
+    form.clearErrors(); // Clear any existing errors
+    // Note: react-hook-form doesn't have a direct way to update resolver, 
+    // but the validation will trigger on form changes with the updated dependencies
+  }, [activeClientSubscriptions, scheduledSessionsInPeriod, isLoadingPeriodSessions]);
 
   useEffect(() => {
     if (user?.id) {
