@@ -140,12 +140,10 @@ export default function ClientDetail() {
   // Pagination handlers
   const handlePreviousPage = () => {
     setCurrentPage((prev) => Math.max(prev - 1, 1));
-    console.log(`DEBUG: Navigating to previous page. New page: ${Math.max(currentPage - 1, 1)}`);
   };
 
   const handleNextPage = () => {
     setCurrentPage((prev) => Math.min(prev + 1, totalPages));
-    console.log(`DEBUG: Navigating to next page. New page: ${Math.min(currentPage + 1, totalPages)}`);
   };
 
   // Filter state variables
@@ -218,10 +216,8 @@ export default function ClientDetail() {
         .order('start_date', { ascending: false });
 
       if (error) {
-        console.error("DEBUG: Error fetching active client subscriptions:", error.message);
         throw error;
       }
-      console.log("DEBUG: Fetched active client subscriptions:", data);
       return data || [];
     },
     enabled: !!clientId,
@@ -240,7 +236,6 @@ export default function ClientDetail() {
         .eq('client_id', clientId);
       
       if (subError) {
-        console.error("DEBUG: Error fetching subscription IDs:", subError.message);
         throw subError;
       }
       
@@ -270,10 +265,8 @@ export default function ClientDetail() {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error("DEBUG: Error fetching client available credits:", error.message);
         throw error;
       }
-      console.log("DEBUG: Fetched client available credits:", data);
       return data || [];
     },
     enabled: !!clientId,
@@ -422,8 +415,6 @@ export default function ClientDetail() {
       const from = (currentPage - 1) * sessionsPerPage;
       const to = from + sessionsPerPage - 1;
 
-      console.log(`DEBUG: Fetching sessions with filters - Page: ${currentPage}, Date: ${filterDate?.toDateString()}, ServiceType: ${filterServiceTypeId}, Status: ${filterStatus}`);
-
       let query = supabase
         .from('sessions')
         .select(
@@ -459,15 +450,12 @@ export default function ClientDetail() {
         const formattedDate = format(filterDate, 'yyyy-MM-dd');
         query = query.gte('session_date', `${formattedDate}T00:00:00`)
                     .lt('session_date', `${formattedDate}T23:59:59`);
-        console.log("DEBUG: Applying date filter:", formattedDate);
       }
       if (filterServiceTypeId) {
         query = query.eq('service_type_id', filterServiceTypeId);
-        console.log("DEBUG: Applying service type filter:", filterServiceTypeId);
       }
       if (filterStatus) {
         query = query.eq('status', filterStatus);
-        console.log("DEBUG: Applying status filter:", filterStatus);
       }
 
       query = query
@@ -477,12 +465,8 @@ export default function ClientDetail() {
       const { data, error, count } = await query;
 
       if (error) {
-        console.error("DEBUG: Error fetching filtered sessions:", error.message);
         throw error;
       }
-      
-      console.log(`DEBUG: Fetched filtered sessions:`, data);
-      console.log(`DEBUG: Total filtered session count:`, count);
       
       return { sessions: data || [], totalCount: count || 0 };
     },
@@ -648,7 +632,7 @@ export default function ClientDetail() {
       return;
     }
 
-    console.log("DEBUG: Attempting to cancel session:", sessionToCancel.id);
+    
 
     try {
       // Step 1: Update session status to 'cancelled'
@@ -664,11 +648,9 @@ export default function ClientDetail() {
         title: "Success",
         description: "Session cancelled successfully!",
       });
-      console.log("DEBUG: Session status updated to cancelled for session ID:", sessionToCancel.id);
 
       // Step 2: If session was linked to a subscription, create a credit
       if (sessionToCancel.subscription_id && sessionToCancel.service_type_id) {
-        console.log("DEBUG: Session linked to subscription, attempting to generate credit.");
 
         // Find the cost_per_session directly from the joined data in the session object
         const subscriptionDetails = sessionToCancel.client_subscriptions;
@@ -678,7 +660,6 @@ export default function ClientDetail() {
 
         if (allocation && typeof allocation.cost_per_session === 'number') {
           const creditValue = allocation.cost_per_session;
-          console.log("DEBUG: Derived credit value:", creditValue, "for service_type_id:", sessionToCancel.service_type_id);
 
           // Create the new credit entry
           const { error: creditCreateError } = await supabase
@@ -699,9 +680,7 @@ export default function ClientDetail() {
             title: "Success",
             description: "Subscription credit generated!",
           });
-          console.log("DEBUG: Subscription credit successfully generated for session ID:", sessionToCancel.id);
         } else {
-          console.warn("DEBUG: Could not find matching service allocation or valid cost_per_session for credit generation. Session ID:", sessionToCancel.id, "Sub ID:", sessionToCancel.subscription_id, "Service Type ID:", sessionToCancel.service_type_id, "Allocation Found:", allocation);
           toast({
             title: "Warning",
             description: "Could not generate credit: Service allocation details incomplete.",
@@ -715,16 +694,13 @@ export default function ClientDetail() {
         description: `Operation failed: ${error.message}`,
         variant: "destructive",
       });
-      console.error("DEBUG: Error during session cancellation/credit generation:", error);
     } finally {
       // Always invalidate queries to ensure UI is updated regardless of credit generation success
-      console.log("DEBUG: Invalidate queries for sessions triggered.");
       queryClient.invalidateQueries({ queryKey: ['sessionsForClient', clientId] });
       queryClient.invalidateQueries({ queryKey: ['clientAvailableCredits', clientId] });
       queryClient.invalidateQueries({ queryKey: ['activeClientSubscriptions', clientId] });
       
       // Explicitly refetch the data immediately after invalidation
-      console.log("DEBUG: Explicitly refetching sessions data.");
       refetchSessions();
     }
   };
@@ -732,7 +708,6 @@ export default function ClientDetail() {
   const handleViewPackDetail = (pack: SessionPack) => {
     setSelectedPackForDetail(pack);
     setIsPackDetailModalOpen(true);
-    console.log("DEBUG: Opening pack detail modal for pack:", pack.id);
   };
 
   const handleAddPackSubmit = async (data: PackFormData) => {
@@ -1142,7 +1117,6 @@ export default function ClientDetail() {
                       onSelect={(date) => {
                         setFilterDate(date);
                         setCurrentPage(1);
-                        console.log("DEBUG: Date filter set to:", date);
                       }}
                       initialFocus
                       className={cn("p-3 pointer-events-auto")}
@@ -1159,7 +1133,6 @@ export default function ClientDetail() {
                   onValueChange={(value) => {
                     setFilterServiceTypeId(value === "all" ? undefined : value);
                     setCurrentPage(1);
-                    console.log("DEBUG: Service Type filter set to:", value);
                   }}
                 >
                   <SelectTrigger className="w-[180px]">
@@ -1188,7 +1161,6 @@ export default function ClientDetail() {
                   onValueChange={(value) => {
                     setFilterStatus(value === "all" ? undefined : value);
                     setCurrentPage(1);
-                    console.log("DEBUG: Status filter set to:", value);
                   }}
                 >
                   <SelectTrigger className="w-[180px]">
@@ -1211,7 +1183,6 @@ export default function ClientDetail() {
                     setFilterServiceTypeId(undefined);
                     setFilterStatus(undefined);
                     setCurrentPage(1);
-                    console.log("DEBUG: Filters cleared.");
                   }}
                   variant="secondary"
                 >
