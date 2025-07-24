@@ -105,8 +105,7 @@ export default function ClientDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [clientPayments, setClientPayments] = useState<ClientPayment[]>([]);
   const [isLoadingPayments, setIsLoadingPayments] = useState(true);
-  const [clientSessions, setClientSessions] = useState<ClientSession[]>([]);
-  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  // clientSessions and isLoadingSessions now come from React Query
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPaymentConfirmModalOpen, setIsPaymentConfirmModalOpen] = useState(false);
@@ -136,8 +135,7 @@ export default function ClientDetail() {
   // Pagination state for session history
   const [currentPage, setCurrentPage] = useState(1);
   const sessionsPerPage = 5;
-  const [totalSessions, setTotalSessions] = useState(0);
-  const totalPages = Math.ceil(totalSessions / sessionsPerPage);
+  // totalSessions now comes from React Query
 
   // Pagination handlers
   const handlePreviousPage = () => {
@@ -313,7 +311,6 @@ export default function ClientDetail() {
       if (!user || !clientId) {
         setIsLoading(false);
         setIsLoadingPayments(false);
-        setIsLoadingSessions(false);
         setIsLoadingSessionPacks(false);
         return;
       }
@@ -321,7 +318,6 @@ export default function ClientDetail() {
       try {
         setIsLoading(true);
         setIsLoadingPayments(true);
-        setIsLoadingSessions(true);
         setIsLoadingSessionPacks(true);
         
         // Fetch client details
@@ -410,7 +406,6 @@ export default function ClientDetail() {
       } finally {
         setIsLoading(false);
         setIsLoadingPayments(false);
-        setIsLoadingSessions(false);
         setIsLoadingSessionPacks(false);
       }
     };
@@ -418,99 +413,86 @@ export default function ClientDetail() {
     fetchClientData();
   }, [clientId, user?.id, toast, navigate]);
 
-  // Fetch sessions with pagination and filters
-  useEffect(() => {
-    const fetchSessionsWithPagination = async () => {
-      if (!user || !clientId) {
-        setIsLoadingSessions(false);
-        return;
-      }
+  // Fetch sessions with pagination and filters using React Query
+  const { data: sessionsResponse, isLoading: isLoadingSessions, error: sessionsError, refetch: refetchSessions } = useQuery({
+    queryKey: ['sessionsForClient', clientId, currentPage, filterDate, filterServiceTypeId, filterStatus],
+    queryFn: async () => {
+      if (!user || !clientId) return { sessions: [], totalCount: 0 };
 
-      try {
-        setIsLoadingSessions(true);
-        
-        const from = (currentPage - 1) * sessionsPerPage;
-        const to = from + sessionsPerPage - 1;
+      const from = (currentPage - 1) * sessionsPerPage;
+      const to = from + sessionsPerPage - 1;
 
-        console.log(`DEBUG: Fetching sessions with filters - Page: ${currentPage}, Date: ${filterDate?.toDateString()}, ServiceType: ${filterServiceTypeId}, Status: ${filterStatus}`);
+      console.log(`DEBUG: Fetching sessions with filters - Page: ${currentPage}, Date: ${filterDate?.toDateString()}, ServiceType: ${filterServiceTypeId}, Status: ${filterStatus}`);
 
-        let query = supabase
-          .from('sessions')
-          .select(
-            `
+      let query = supabase
+        .from('sessions')
+        .select(
+          `
+          id,
+          trainer_id,
+          client_id,
+          service_type_id,
+          session_date,
+          status,
+          session_pack_id,
+          subscription_id,
+          is_from_credit,
+          credit_id_consumed,
+          notes,
+          service_types(name),
+          client_subscriptions!left(
             id,
-            trainer_id,
-            client_id,
-            service_type_id,
-            session_date,
-            status,
-            session_pack_id,
-            subscription_id,
-            is_from_credit,
-            credit_id_consumed,
-            notes,
-            service_types(name),
-            client_subscriptions!left(
-              id,
-              subscription_service_allocations!left(
-                service_type_id,
-                cost_per_session
-              )
+            subscription_service_allocations!left(
+              service_type_id,
+              cost_per_session
             )
-            `,
-            { count: 'exact' }
           )
-          .eq('client_id', clientId)
-          .eq('trainer_id', user.id);
+          `,
+          { count: 'exact' }
+        )
+        .eq('client_id', clientId)
+        .eq('trainer_id', user.id);
 
-        // Apply filters conditionally
-        if (filterDate) {
-          // Format date to 'YYYY-MM-DD' for Supabase date column filtering
-          const formattedDate = format(filterDate, 'yyyy-MM-dd');
-          query = query.gte('session_date', `${formattedDate}T00:00:00`)
-                      .lt('session_date', `${formattedDate}T23:59:59`);
-          console.log("DEBUG: Applying date filter:", formattedDate);
-        }
-        if (filterServiceTypeId) {
-          query = query.eq('service_type_id', filterServiceTypeId);
-          console.log("DEBUG: Applying service type filter:", filterServiceTypeId);
-        }
-        if (filterStatus) {
-          query = query.eq('status', filterStatus);
-          console.log("DEBUG: Applying status filter:", filterStatus);
-        }
-
-        query = query
-          .order('session_date', { ascending: true })
-          .range(from, to);
-
-        const { data, error, count } = await query;
-
-        if (error) {
-          console.error("DEBUG: Error fetching filtered sessions:", error.message);
-          throw error;
-        }
-        
-        console.log(`DEBUG: Fetched filtered sessions:`, data);
-        console.log(`DEBUG: Total filtered session count:`, count);
-        
-        setClientSessions(data || []);
-        setTotalSessions(count || 0);
-
-      } catch (error) {
-        console.error('Error fetching sessions:', error);
-        toast({
-          title: "Warning",
-          description: "Failed to load session history.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoadingSessions(false);
+      // Apply filters conditionally
+      if (filterDate) {
+        // Format date to 'YYYY-MM-DD' for Supabase date column filtering
+        const formattedDate = format(filterDate, 'yyyy-MM-dd');
+        query = query.gte('session_date', `${formattedDate}T00:00:00`)
+                    .lt('session_date', `${formattedDate}T23:59:59`);
+        console.log("DEBUG: Applying date filter:", formattedDate);
       }
-    };
+      if (filterServiceTypeId) {
+        query = query.eq('service_type_id', filterServiceTypeId);
+        console.log("DEBUG: Applying service type filter:", filterServiceTypeId);
+      }
+      if (filterStatus) {
+        query = query.eq('status', filterStatus);
+        console.log("DEBUG: Applying status filter:", filterStatus);
+      }
 
-    fetchSessionsWithPagination();
-  }, [clientId, user?.id, currentPage, filterDate, filterServiceTypeId, filterStatus, toast]);
+      query = query
+        .order('session_date', { ascending: true })
+        .range(from, to);
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        console.error("DEBUG: Error fetching filtered sessions:", error.message);
+        throw error;
+      }
+      
+      console.log(`DEBUG: Fetched filtered sessions:`, data);
+      console.log(`DEBUG: Total filtered session count:`, count);
+      
+      return { sessions: data || [], totalCount: count || 0 };
+    },
+    enabled: !!user && !!clientId,
+  });
+
+  // Extract sessions data from the response
+  const clientSessions = sessionsResponse?.sessions || [];
+  const totalSessions = sessionsResponse?.totalCount || 0;
+  const totalPages = Math.ceil(totalSessions / sessionsPerPage);
 
   // Calculate total pack value
   const totalPackValue = useMemo(() => {
@@ -740,6 +722,10 @@ export default function ClientDetail() {
       queryClient.invalidateQueries({ queryKey: ['sessionsForClient', clientId] });
       queryClient.invalidateQueries({ queryKey: ['clientAvailableCredits', clientId] });
       queryClient.invalidateQueries({ queryKey: ['activeClientSubscriptions', clientId] });
+      
+      // Explicitly refetch the data immediately after invalidation
+      console.log("DEBUG: Explicitly refetching sessions data.");
+      refetchSessions();
     }
   };
 
@@ -1244,8 +1230,18 @@ export default function ClientDetail() {
                 No session history for this client yet.
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
+              <div className="relative">
+                {isLoadingSessions && (
+                  <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10">
+                    <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="sr-only">Loading...</span>
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <Table>
                    <TableHeader>
                      <TableRow>
                        <TableHead>Date</TableHead>
@@ -1343,11 +1339,12 @@ export default function ClientDetail() {
                           </TableCell>
                       </TableRow>
                     ))}
-                  </TableBody>
-                </Table>
-               </div>
-             )}
-             {totalPages > 1 && (
+                   </TableBody>
+                 </Table>
+                </div>
+              </div>
+            )}
+            {totalPages > 1 && (
                <div className="flex justify-end items-center space-x-2 mt-4">
                  <Button
                    onClick={handlePreviousPage}
