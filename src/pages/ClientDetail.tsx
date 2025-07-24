@@ -1922,6 +1922,9 @@ export default function ClientDetail() {
             setSelectedSubscription(null);
           }}
           subscription={selectedSubscription}
+          onUpdate={() => {
+            queryClient.invalidateQueries({ queryKey: ['activeClientSubscriptions', clientId] });
+          }}
         />
       </div>
     </div>
