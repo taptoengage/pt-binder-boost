@@ -13,6 +13,17 @@ import { CalendarIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 // Define Zod Schema for editing
 const EditSubscriptionSchema = z.object({
@@ -33,6 +44,7 @@ interface SubscriptionDetailModalProps {
 
 export default function SubscriptionDetailModal({ isOpen, onClose, subscription, onUpdate }: SubscriptionDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<EditSubscriptionFormData>({
@@ -82,6 +94,45 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
         description: `Failed to update subscription: ${error.message || 'Unknown error'}`,
         variant: 'destructive',
       });
+    }
+  };
+
+  const onConfirmCancel = async () => {
+    if (!subscription?.id) {
+      toast({
+        title: 'Error',
+        description: 'Subscription ID is missing for cancellation.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('client_subscriptions')
+        .update({
+          status: 'cancelled',
+          end_date: new Date().toISOString().split('T')[0], // Set end_date to current date (YYYY-MM-DD format)
+        })
+        .eq('id', subscription.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'Subscription cancelled successfully!',
+      });
+      onUpdate(); // Trigger parent refresh
+      onClose(); // Close the main modal
+    } catch (error: any) {
+      console.error("Error cancelling subscription:", error);
+      toast({
+        title: 'Error',
+        description: `Failed to cancel subscription: ${error.message || 'Unknown error'}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setShowCancelConfirm(false); // Close the confirmation dialog
     }
   };
 
@@ -213,9 +264,28 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
                   <Button type="button" variant="outline" onClick={() => setIsEditing(true)} className="mb-2 sm:mb-0">
                     Edit Subscription
                   </Button>
-                  <Button type="button" variant="destructive" className="mb-2 sm:mb-0" disabled>
-                    Cancel Subscription (Next Step)
-                  </Button>
+                  
+                  {/* Cancel Subscription Button with Confirmation */}
+                  <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+                    <AlertDialogTrigger asChild>
+                      <Button type="button" variant="destructive" className="mb-2 sm:mb-0">
+                        Cancel Subscription
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This action cannot be undone. This will cancel the subscription immediately and set its end date to today.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={onConfirmCancel}>Continue</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+
                   <Button type="button" onClick={onClose} className="mb-2 sm:mb-0">Close</Button>
                 </>
               )}
