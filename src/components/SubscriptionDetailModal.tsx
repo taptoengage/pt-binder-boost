@@ -13,6 +13,7 @@ import { CalendarIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import CreditDecisionModal from './CreditDecisionModal';
 
 // Define Zod Schema for editing
 const EditSubscriptionSchema = z.object({
@@ -45,6 +47,7 @@ interface SubscriptionDetailModalProps {
 export default function SubscriptionDetailModal({ isOpen, onClose, subscription, onUpdate }: SubscriptionDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showCreditDecision, setShowCreditDecision] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<EditSubscriptionFormData>({
@@ -55,6 +58,26 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
     },
     mode: 'onChange'
   });
+
+  // Fetch available credits for this subscription
+  const { data: availableCredits, isLoading: isLoadingAvailableCredits } = useQuery({
+      queryKey: ['availableCreditsForSubscription', subscription?.id],
+      queryFn: async () => {
+          if (!subscription?.id) return [];
+          const { data, error } = await supabase
+              .from('subscription_session_credits')
+              .select('id') // Just need IDs to count
+              .eq('subscription_id', subscription.id)
+              .eq('status', 'available'); // Only count available credits
+
+          if (error) throw error;
+          return data || [];
+      },
+      enabled: !!subscription?.id && !isEditing && isOpen, // Only fetch when modal is open and not editing
+      staleTime: 0, // Always get fresh count
+  });
+
+  const availableCreditsCount = availableCredits?.length || 0;
 
   // Reset form when modal opens or subscription changes
   useEffect(() => {
@@ -67,7 +90,46 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
     }
   }, [isOpen, subscription, form]);
 
+  // Helper function to proceed with subscription update after credit decision
+  const proceedWithSubscriptionUpdate = async (status: 'ended' | 'cancelled') => {
+    try {
+      const payload = {
+        status: status,
+        end_date: new Date().toISOString().split('T')[0],
+      };
+
+      const { error } = await supabase
+        .from('client_subscriptions')
+        .update(payload)
+        .eq('id', subscription.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: `Subscription ${status} successfully!`,
+      });
+      onUpdate();
+      onClose();
+    } catch (error: any) {
+      console.error("Error updating subscription status:", error);
+      toast({
+        title: 'Error',
+        description: `Failed to update subscription status: ${error.message || 'Unknown error'}`,
+        variant: 'destructive',
+      });
+    }
+  };
+
   const onSubmit = async (data: EditSubscriptionFormData) => {
+    if (data.status === 'ended' || data.status === 'cancelled') {
+      if (availableCreditsCount > 0) {
+        setShowCreditDecision(true);
+        return; // STOP HERE, decision modal will handle next step
+      }
+    }
+    
+    // If no credits, or status is not ended/cancelled, proceed normally
     try {
       const payload = {
         status: data.status,
@@ -98,6 +160,7 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
   };
 
   const onConfirmCancel = async () => {
+    setShowCancelConfirm(false); // Close confirmation dialog immediately
     if (!subscription?.id) {
       toast({
         title: 'Error',
@@ -107,33 +170,26 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
       return;
     }
 
-    try {
-      const { error } = await supabase
-        .from('client_subscriptions')
-        .update({
-          status: 'cancelled',
-          end_date: new Date().toISOString().split('T')[0], // Set end_date to current date (YYYY-MM-DD format)
-        })
-        .eq('id', subscription.id);
-
-      if (error) throw error;
-
-      toast({
-        title: 'Success',
-        description: 'Subscription cancelled successfully!',
-      });
-      onUpdate(); // Trigger parent refresh
-      onClose(); // Close the main modal
-    } catch (error: any) {
-      console.error("Error cancelling subscription:", error);
-      toast({
-        title: 'Error',
-        description: `Failed to cancel subscription: ${error.message || 'Unknown error'}`,
-        variant: 'destructive',
-      });
-    } finally {
-      setShowCancelConfirm(false); // Close the confirmation dialog
+    if (availableCreditsCount > 0) {
+      setShowCreditDecision(true);
+      return; // STOP HERE, decision modal will handle next step
     }
+
+    // If no credits, proceed with cancellation
+    await proceedWithSubscriptionUpdate('cancelled');
+  };
+
+  // Placeholder functions for CreditDecisionModal actions
+  const handleForfeitPlaceholder = () => {
+    console.log("DEBUG: Forfeit Credits button clicked. (Logic to be implemented in next prompt)");
+    setShowCreditDecision(false);
+    // In a real scenario, after forfeit, you'd then proceedWithSubscriptionUpdate('ended' or 'cancelled')
+  };
+
+  const handleRefundPlaceholder = () => {
+    console.log("DEBUG: Refund Credits button clicked. (Placeholder for Finance module)");
+    setShowCreditDecision(false);
+    // After refund placeholder acknowledged, you'd then proceedWithSubscriptionUpdate('ended' or 'cancelled')
   };
 
   if (!subscription) return null;
@@ -266,12 +322,12 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
                   </Button>
                   
                   {/* Cancel Subscription Button with Confirmation */}
-                  <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
-                    <AlertDialogTrigger asChild>
-                      <Button type="button" variant="destructive" className="mb-2 sm:mb-0">
-                        Cancel Subscription
-                      </Button>
-                    </AlertDialogTrigger>
+                   <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+                     <AlertDialogTrigger asChild>
+                       <Button type="button" variant="destructive" className="mb-2 sm:mb-0" disabled={isLoadingAvailableCredits}>
+                         Cancel Subscription
+                       </Button>
+                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
@@ -292,6 +348,15 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
             </DialogFooter>
           </form>
         </Form>
+
+        {/* CreditDecisionModal */}
+        <CreditDecisionModal
+          isOpen={showCreditDecision}
+          onClose={() => setShowCreditDecision(false)}
+          availableCreditsCount={availableCreditsCount}
+          onForfeit={handleForfeitPlaceholder}
+          onRefundPlaceholder={handleRefundPlaceholder}
+        />
       </DialogContent>
     </Dialog>
   );
