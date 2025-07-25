@@ -15,6 +15,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { ArrowLeft, Loader2, User, Phone, Mail, DollarSign, Calendar, Target, Activity, Plus, Clock, Edit, Trash2, CalendarIcon, Package } from 'lucide-react';
 import { DashboardNavigation } from '@/components/Navigation';
@@ -219,7 +220,7 @@ export default function ClientDetail() {
           )
         `)
         .eq('client_id', clientId)
-        .eq('status', 'active')
+        .in('status', ['active', 'paused', 'ended', 'cancelled'])
         .order('start_date', { ascending: false });
 
       if (error) {
@@ -1451,20 +1452,30 @@ export default function ClientDetail() {
                 
                 {activeClientSubscriptions?.length > 0 && (
                   <>
-                    {activeClientSubscriptions.map((subscription) => (
-                      <Card 
-                        key={subscription.id} 
-                        className="cursor-pointer hover:shadow-md transition-shadow"
-                        onClick={() => {
-                          setSelectedSubscription(subscription);
-                          setIsSubscriptionDetailModalOpen(true);
-                        }}
-                      >
-                        <CardHeader>
-                          <CardTitle>
-                            Subscription - {subscription.billing_cycle.charAt(0).toUpperCase() + subscription.billing_cycle.slice(1)} ({format(new Date(subscription.start_date), 'MMM do, yyyy')})
-                          </CardTitle>
-                        </CardHeader>
+                     {activeClientSubscriptions.map((subscription) => (
+                       <Card 
+                         key={subscription.id} 
+                         className="cursor-pointer hover:shadow-md transition-shadow"
+                         onClick={() => {
+                           setSelectedSubscription(subscription);
+                           setIsSubscriptionDetailModalOpen(true);
+                         }}
+                       >
+                         <CardHeader className="flex flex-row items-center justify-between space-x-4">
+                           <CardTitle>
+                             Subscription - {subscription.billing_cycle.charAt(0).toUpperCase() + subscription.billing_cycle.slice(1)} ({format(new Date(subscription.start_date), 'MMM do, yyyy')})
+                           </CardTitle>
+                           {subscription.status && (
+                             <Badge variant={
+                               subscription.status === 'active' ? 'default' :
+                               subscription.status === 'paused' ? 'secondary' :
+                               subscription.status === 'ended' ? 'outline' :
+                               'destructive'
+                             }>
+                               {subscription.status.charAt(0).toUpperCase() + subscription.status.slice(1)}
+                             </Badge>
+                           )}
+                         </CardHeader>
                         <CardContent>
                           <p className="text-lg font-bold">
                             {new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(subscription.billing_amount)} per {subscription.billing_cycle}
