@@ -20,7 +20,7 @@ import ScheduleSession from "./pages/ScheduleSession";
 import RecordPayment from "./pages/RecordPayment";
 import ServiceTypes from "./pages/ServiceTypes";
 import FinanceTransactions from "./pages/FinanceTransactions";
-import ScheduleOverview from "./pages/ScheduleOverview";
+import ViewSchedule from "./pages/ViewSchedule";
 import ClientDashboard from "./pages/ClientDashboard";
 import NotFound from "./pages/NotFound";
 import ClientHistory from "./pages/ClientHistory";
@@ -79,7 +79,7 @@ function AppRoutes() {
       <Route path="/clients/:clientId/edit" element={<EditClient />} />
       <Route path="/clients/:clientId/payments/:paymentId/edit" element={<EditPayment />} />
       <Route path="/clients/:clientId/sessions/:sessionId/edit" element={<EditSession />} />
-      <Route path="/schedule" element={<ScheduleOverview />} />
+      <Route path="/schedule" element={<ViewSchedule />} />
       <Route path="/schedule/new" element={<ScheduleSession />} />
       <Route path="/payments/new" element={<RecordPayment />} />
       <Route path="/finance" element={<FinanceTransactions />} />
