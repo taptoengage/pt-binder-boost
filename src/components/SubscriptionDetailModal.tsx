@@ -225,23 +225,45 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
     }
   };
 
-  // Handle Refund Credits Placeholder
+  // Handle Refund Credits
   const handleRefundCreditsPlaceholder = async () => {
     setShowCreditDecision(false); // Close CreditDecisionModal immediately
 
-    toast({
-      title: 'Refund Process',
-      description: 'Initiating refund for outstanding credits. This feature will be integrated with the Finance module.',
-      variant: 'default',
-    });
+    if (!subscription?.id) {
+      toast({ title: 'Error', description: 'Subscription ID is missing for credit refund.', variant: 'destructive' });
+      return;
+    }
 
-    // After acknowledging refund (for now), proceed with subscription update
-    if (intendedSubscriptionStatus) {
-      await proceedWithSubscriptionUpdate(intendedSubscriptionStatus);
-      setIntendedSubscriptionStatus(null);
-    } else {
-      toast({ title: 'Error', description: 'Could not determine intended subscription status after credit decision.', variant: 'destructive' });
-      onClose();
+    try {
+      // Get all available credit IDs for this subscription
+      const creditIdsToRefund = availableCredits?.map(credit => credit.id) || [];
+
+      if (creditIdsToRefund.length === 0) {
+        toast({ title: 'Info', description: 'No available credits to refund.', variant: 'default' });
+      } else {
+        // Update status of all these credits to 'refunded'
+        const { error } = await supabase
+          .from('subscription_session_credits')
+          .update({ status: 'refunded' })
+          .in('id', creditIdsToRefund);
+
+        if (error) throw error;
+
+        toast({ title: 'Success', description: `Successfully marked ${creditIdsToRefund.length} session credit(s) as refunded.` });
+        queryClient.invalidateQueries({ queryKey: ['availableCreditsForSubscription', subscription.id] });
+      }
+    } catch (error: any) {
+      console.error("Error marking credits as refunded:", error);
+      toast({ title: 'Error', description: `Failed to mark credits as refunded: ${error.message || 'Unknown error'}`, variant: 'destructive' });
+    } finally {
+      // ALWAYS proceed with subscription update after credit decision
+      if (intendedSubscriptionStatus) {
+        await proceedWithSubscriptionUpdate(intendedSubscriptionStatus);
+        setIntendedSubscriptionStatus(null);
+      } else {
+        toast({ title: 'Error', description: 'Could not determine intended subscription status after credit decision.', variant: 'destructive' });
+        onClose();
+      }
     }
   };
 
