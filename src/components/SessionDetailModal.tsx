@@ -125,6 +125,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="py-4 space-y-4">
+            <p><strong>Session ID:</strong> {session.id}</p>
             <p><strong>Client:</strong> {session.clients?.name || 'N/A'}</p>
             <p><strong>Service:</strong> {session.service_types?.name || 'N/A'}</p>
 
