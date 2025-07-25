@@ -209,6 +209,10 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
 
         toast({ title: 'Success', description: `Successfully forfeited ${creditIdsToForfeit.length} session credit(s).` });
         queryClient.invalidateQueries({ queryKey: ['availableCreditsForSubscription', subscription.id] });
+        // Invalidate the general available credits query used by other components
+        if (subscription.client_id) {
+          queryClient.invalidateQueries({ queryKey: ['availableCredits', subscription.client_id] });
+        }
       }
     } catch (error: any) {
       console.error("Error forfeiting credits:", error);
@@ -251,6 +255,10 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
 
         toast({ title: 'Success', description: `Successfully marked ${creditIdsToRefund.length} session credit(s) as refunded.` });
         queryClient.invalidateQueries({ queryKey: ['availableCreditsForSubscription', subscription.id] });
+        // Invalidate the general available credits query used by other components
+        if (subscription.client_id) {
+          queryClient.invalidateQueries({ queryKey: ['availableCredits', subscription.client_id] });
+        }
       }
     } catch (error: any) {
       console.error("Error marking credits as refunded:", error);
