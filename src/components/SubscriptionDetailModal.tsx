@@ -13,7 +13,7 @@ import { CalendarIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,7 +48,9 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
   const [isEditing, setIsEditing] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showCreditDecision, setShowCreditDecision] = useState(false);
+  const [intendedSubscriptionStatus, setIntendedSubscriptionStatus] = useState<'ended' | 'cancelled' | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const form = useForm<EditSubscriptionFormData>({
     resolver: zodResolver(EditSubscriptionSchema),
@@ -124,6 +126,7 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
   const onSubmit = async (data: EditSubscriptionFormData) => {
     if (data.status === 'ended' || data.status === 'cancelled') {
       if (availableCreditsCount > 0) {
+        setIntendedSubscriptionStatus(data.status);
         setShowCreditDecision(true);
         return; // STOP HERE, decision modal will handle next step
       }
@@ -171,6 +174,7 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
     }
 
     if (availableCreditsCount > 0) {
+      setIntendedSubscriptionStatus('cancelled');
       setShowCreditDecision(true);
       return; // STOP HERE, decision modal will handle next step
     }
@@ -179,17 +183,66 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
     await proceedWithSubscriptionUpdate('cancelled');
   };
 
-  // Placeholder functions for CreditDecisionModal actions
-  const handleForfeitPlaceholder = () => {
-    console.log("DEBUG: Forfeit Credits button clicked. (Logic to be implemented in next prompt)");
-    setShowCreditDecision(false);
-    // In a real scenario, after forfeit, you'd then proceedWithSubscriptionUpdate('ended' or 'cancelled')
+  // Handle Forfeit Credits
+  const handleForfeitCredits = async () => {
+    setShowCreditDecision(false); // Close CreditDecisionModal immediately
+
+    if (!subscription?.id) {
+      toast({ title: 'Error', description: 'Subscription ID is missing for credit forfeiture.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      // Get all available credit IDs for this subscription
+      const creditIdsToForfeit = availableCredits?.map(credit => credit.id) || [];
+
+      if (creditIdsToForfeit.length === 0) {
+        toast({ title: 'Info', description: 'No available credits to forfeit.', variant: 'default' });
+      } else {
+        // Update status of all these credits to 'forfeited'
+        const { error } = await supabase
+          .from('subscription_session_credits')
+          .update({ status: 'forfeited' })
+          .in('id', creditIdsToForfeit);
+
+        if (error) throw error;
+
+        toast({ title: 'Success', description: `Successfully forfeited ${creditIdsToForfeit.length} session credit(s).` });
+        queryClient.invalidateQueries({ queryKey: ['availableCreditsForSubscription', subscription.id] });
+      }
+    } catch (error: any) {
+      console.error("Error forfeiting credits:", error);
+      toast({ title: 'Error', description: `Failed to forfeit credits: ${error.message || 'Unknown error'}`, variant: 'destructive' });
+    } finally {
+      // ALWAYS proceed with subscription update after credit decision
+      if (intendedSubscriptionStatus) {
+        await proceedWithSubscriptionUpdate(intendedSubscriptionStatus);
+        setIntendedSubscriptionStatus(null);
+      } else {
+        toast({ title: 'Error', description: 'Could not determine intended subscription status after credit decision.', variant: 'destructive' });
+        onClose();
+      }
+    }
   };
 
-  const handleRefundPlaceholder = () => {
-    console.log("DEBUG: Refund Credits button clicked. (Placeholder for Finance module)");
-    setShowCreditDecision(false);
-    // After refund placeholder acknowledged, you'd then proceedWithSubscriptionUpdate('ended' or 'cancelled')
+  // Handle Refund Credits Placeholder
+  const handleRefundCreditsPlaceholder = async () => {
+    setShowCreditDecision(false); // Close CreditDecisionModal immediately
+
+    toast({
+      title: 'Refund Process',
+      description: 'Initiating refund for outstanding credits. This feature will be integrated with the Finance module.',
+      variant: 'default',
+    });
+
+    // After acknowledging refund (for now), proceed with subscription update
+    if (intendedSubscriptionStatus) {
+      await proceedWithSubscriptionUpdate(intendedSubscriptionStatus);
+      setIntendedSubscriptionStatus(null);
+    } else {
+      toast({ title: 'Error', description: 'Could not determine intended subscription status after credit decision.', variant: 'destructive' });
+      onClose();
+    }
   };
 
   if (!subscription) return null;
@@ -352,10 +405,17 @@ export default function SubscriptionDetailModal({ isOpen, onClose, subscription,
         {/* CreditDecisionModal */}
         <CreditDecisionModal
           isOpen={showCreditDecision}
-          onClose={() => setShowCreditDecision(false)}
+          onClose={() => {
+            setShowCreditDecision(false);
+            if (intendedSubscriptionStatus) {
+              toast({ title: 'Warning', description: 'Subscription status change not confirmed without credit decision.', variant: 'destructive' });
+              onClose();
+              setIntendedSubscriptionStatus(null);
+            }
+          }}
           availableCreditsCount={availableCreditsCount}
-          onForfeit={handleForfeitPlaceholder}
-          onRefundPlaceholder={handleRefundPlaceholder}
+          onForfeit={handleForfeitCredits}
+          onRefundPlaceholder={handleRefundCreditsPlaceholder}
         />
       </DialogContent>
     </Dialog>
