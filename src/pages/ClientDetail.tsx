@@ -935,6 +935,30 @@ export default function ClientDetail() {
                 </div>
               </div>
               
+              {/* Contact Buttons */}
+              <div className="flex space-x-2 pt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  disabled={!client.phone_number}
+                >
+                  <a href={`tel:${client.phone_number}`}>
+                    <Phone className="w-4 h-4 mr-2" /> Call Client
+                  </a>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  disabled={!client.email}
+                >
+                  <a href={`mailto:${client.email}`}>
+                    <Mail className="w-4 h-4 mr-2" /> Email Client
+                  </a>
+                </Button>
+              </div>
+              
               <div className="pt-4 border-t">
                 <div className="flex items-start space-x-3">
                   <Target className="w-4 h-4 text-muted-foreground mt-1" />
