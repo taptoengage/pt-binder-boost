@@ -277,11 +277,18 @@ export default function ViewSchedule() {
                 const isCurrentDay = isSameDay(day, new Date());
 
                 return (
-                  <div key={dateKey} className={cn(
-                    "bg-white p-2 border-b border-r last:border-r-0",
-                    { 'text-gray-400 bg-gray-50': !isCurrentMonth }, // Mute days outside current month
-                    { 'bg-blue-50 border-blue-200': isCurrentDay } // Highlight today
-                  )}>
+                  <div
+                    key={dateKey}
+                    className={cn(
+                      "bg-white p-2 border-b border-r last:border-r-0 cursor-pointer hover:bg-gray-100 transition-colors",
+                      { 'text-gray-400 bg-gray-50': !isCurrentMonth }, // Mute days outside current month
+                      { 'bg-blue-50 border-blue-200': isCurrentDay } // Highlight today
+                    )}
+                    onClick={() => {
+                      setSelectedDate(day);
+                      setCurrentView('day');
+                    }}
+                  >
                     <div className="flex justify-between items-center text-xs font-semibold mb-1">
                       <span>{format(day, 'd')}</span> {/* Day number */}
                       {sessionsForDayCount > 0 && (
