@@ -220,7 +220,7 @@ export default function ClientDetail() {
           )
         `)
         .eq('client_id', clientId)
-        .in('status', ['active', 'paused', 'ended', 'cancelled'])
+        .in('status', ['active', 'paused'])
         .order('start_date', { ascending: false });
 
       if (error) {
@@ -1359,13 +1359,13 @@ export default function ClientDetail() {
               </CardTitle>
               <div className="flex space-x-2">
                 <Button 
-                  onClick={() => navigate(`/clients/${clientId}/pack-history`)}
+                  onClick={() => navigate(`/clients/${clientId}/history`)}
                   variant="outline"
                   size="sm"
                   className="flex items-center space-x-2"
                 >
                   <Clock className="w-4 h-4" />
-                  <span>See Pack History</span>
+                  <span>See History</span>
                 </Button>
                 <Button 
                   onClick={() => setIsSubscriptionModalOpen(true)}
