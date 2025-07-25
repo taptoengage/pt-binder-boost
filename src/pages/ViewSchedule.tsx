@@ -10,11 +10,14 @@ import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import SessionDetailModal from '@/components/SessionDetailModal';
 
 export default function ViewSchedule() {
   const { user } = useAuth();
   const [currentView, setCurrentView] = useState<'day' | 'week' | 'month'>('week');
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [isSessionDetailModalOpen, setIsSessionDetailModalOpen] = useState(false);
+  const [selectedSessionForModal, setSelectedSessionForModal] = useState<any | null>(null);
 
   // Fetch all trainer's sessions
   const { data: allTrainerSessions, isLoading: isLoadingSessions, error: sessionsError } = useQuery({
@@ -179,10 +182,17 @@ export default function ViewSchedule() {
             filteredSessions.length > 0 ? (
               <div className="space-y-4">
                 {filteredSessions.map((session: any) => (
-                  <Card key={session.id} className={cn(
-                    "flex items-center justify-between p-4",
-                    { 'bg-blue-50 border-blue-200': isToday(new Date(session.session_date)) && session.status === 'scheduled' }
-                  )}>
+                  <Card
+                    key={session.id}
+                    className={cn(
+                      "flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors",
+                      { 'bg-blue-50 border-blue-200': isToday(new Date(session.session_date)) && session.status === 'scheduled' }
+                    )}
+                    onClick={() => {
+                      setSelectedSessionForModal(session);
+                      setIsSessionDetailModalOpen(true);
+                    }}
+                  >
                     <div>
                       <CardTitle className="text-lg">{session.clients?.name || 'Unknown Client'}</CardTitle>
                       <p className="text-sm text-gray-600">{session.service_types?.name || 'Unknown Service'}</p>
@@ -227,12 +237,19 @@ export default function ViewSchedule() {
                     </h3>
                     <div className="space-y-1">
                       {sessionsForDay.length > 0 ? (
-                        sessionsForDay.map((session: any) => (
-                          <div key={session.id} className="text-xs p-1 bg-blue-100 rounded-sm hover:bg-blue-200 cursor-pointer">
-                            <p className="font-medium">{session.clients?.name}</p>
-                            <p>{format(new Date(session.session_date), 'p')} - {session.service_types?.name}</p>
-                          </div>
-                        ))
+                         sessionsForDay.map((session: any) => (
+                           <div
+                             key={session.id}
+                             className="text-xs p-1 bg-blue-100 rounded-sm hover:bg-blue-200 cursor-pointer"
+                             onClick={() => {
+                               setSelectedSessionForModal(session);
+                               setIsSessionDetailModalOpen(true);
+                             }}
+                           >
+                             <p className="font-medium">{session.clients?.name}</p>
+                             <p>{format(new Date(session.session_date), 'p')} - {session.service_types?.name}</p>
+                           </div>
+                         ))
                       ) : (
                         <p className="text-gray-400 text-center text-xs">No sessions</p>
                       )}
@@ -285,6 +302,16 @@ export default function ViewSchedule() {
             </div>
           )}
         </div>
+
+        {/* Render the session detail modal */}
+        <SessionDetailModal
+          isOpen={isSessionDetailModalOpen}
+          onClose={() => {
+            setIsSessionDetailModalOpen(false);
+            setSelectedSessionForModal(null);
+          }}
+          session={selectedSessionForModal}
+        />
       </main>
     </div>
   );
