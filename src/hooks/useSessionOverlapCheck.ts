@@ -41,7 +41,7 @@ export const useSessionOverlapCheck = ({
 
       let query = supabase
         .from('sessions')
-        .select('id, session_date, session_time')
+        .select('id, session_date')
         .eq('trainer_id', trainerId)
         // Only consider sessions that are 'scheduled' or 'completed' as potential overlaps
         .in('status', ['scheduled', 'completed']);
@@ -59,7 +59,7 @@ export const useSessionOverlapCheck = ({
 
       // Client-side filtering for actual time overlap
       const overlaps = data.filter((existingSession: any) => {
-        const existingStart = new Date(`${existingSession.session_date}T${existingSession.session_time}:00`);
+        const existingStart = new Date(existingSession.session_date);
         const existingEnd = addMinutes(existingStart, DEFAULT_SESSION_DURATION_MINUTES);
 
         // Check for overlap: [start1, end1) overlaps [start2, end2) if start1 < end2 AND end1 > start2
