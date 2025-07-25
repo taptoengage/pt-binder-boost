@@ -11,10 +11,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Phone, Mail } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useSessionOverlapCheck, validateOverlap } from '@/hooks/useSessionOverlapCheck';
 
@@ -51,6 +51,27 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  // Fetch client contact details
+  const { data: clientContact, isLoading: isLoadingContact, error: contactError } = useQuery({
+    queryKey: ['clientContact', session?.clients?.id],
+    queryFn: async () => {
+      if (!session?.clients?.id) return null;
+      const { data, error } = await supabase
+        .from('clients')
+        .select('phone_number, email')
+        .eq('id', session.clients.id)
+        .single();
+
+      if (error) {
+        console.error("Error fetching client contact:", error);
+        throw error;
+      }
+      return data;
+    },
+    enabled: !!session?.clients?.id && !isEditing, // Only fetch when ID exists and not in edit mode
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
 
   const form = useForm<EditSessionFormData>({
     resolver: zodResolver(EditSessionSchema),
@@ -161,6 +182,39 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
           <form onSubmit={form.handleSubmit(onSubmit)} className="py-4 space-y-4">
             <p><strong>Session ID:</strong> {session.id}</p>
             <p><strong>Client:</strong> {session.clients?.name || 'N/A'}</p>
+
+            {/* Contact Buttons */}
+            {!isEditing && clientContact && (
+              <div className="flex space-x-2 mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  disabled={isLoadingContact || !clientContact.phone_number}
+                >
+                  <a href={`tel:${clientContact.phone_number}`}>
+                    <Phone className="w-4 h-4 mr-2" /> Call Client
+                  </a>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  disabled={isLoadingContact || !clientContact.email}
+                >
+                  <a href={`mailto:${clientContact.email}`}>
+                    <Mail className="w-4 h-4 mr-2" /> Email Client
+                  </a>
+                </Button>
+              </div>
+            )}
+            {!isEditing && isLoadingContact && (
+              <p className="text-sm text-muted-foreground">Loading client contact...</p>
+            )}
+            {!isEditing && contactError && (
+              <p className="text-sm text-destructive">Could not load client contact.</p>
+            )}
+
             <p><strong>Service:</strong> {session.service_types?.name || 'N/A'}</p>
 
             {/* Status Field */}
