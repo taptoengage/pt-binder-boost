@@ -69,7 +69,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
         console.error("Error fetching client contact:", error);
         throw error;
       }
-      return data;
+      return data ? { phone: data.phone_number, email: data.email } : null;
     },
     enabled: !!session?.clients?.id && !isEditing, // Only fetch when ID exists and not in edit mode
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
@@ -205,7 +205,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
             .from('subscription_service_allocations')
             .select('cost_per_session')
             .eq('subscription_id', session.subscription_id)
-            .eq('service_type_id', session.service_type_id) // Use service_type_id directly from session
+            .eq('service_type_id', session.service_type_id)
             .single();
 
           if (allocationError) throw new Error(`Failed to fetch allocation for credit generation: ${allocationError.message}`);
@@ -227,7 +227,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
           if (creditInsertError) throw new Error(`Failed to generate session credit: ${creditInsertError.message}`);
           creditGenerated = true;
         } catch (creditGenError: any) {
-          console.error("DEBUG: Error during credit generation:", creditGenError); // Keep this debug for now
+          console.error("Error during credit generation:", creditGenError);
           toast({
             title: 'Warning',
             description: `Session cancelled, but failed to generate credit: ${creditGenError.message}`,
@@ -279,9 +279,9 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
                   variant="outline"
                   size="sm"
                   asChild
-                  disabled={isLoadingContact || !clientContact.phone_number}
+                  disabled={isLoadingContact || !clientContact.phone}
                 >
-                  <a href={`tel:${clientContact.phone_number}`}>
+                  <a href={`tel:${clientContact.phone}`}>
                     <Phone className="w-4 h-4 mr-2" /> Call Client
                   </a>
                 </Button>
