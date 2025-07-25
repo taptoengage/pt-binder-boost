@@ -205,7 +205,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
             .from('subscription_service_allocations')
             .select('cost_per_session')
             .eq('subscription_id', session.subscription_id)
-            .eq('service_type_id', session.service_type_id)
+            .eq('service_type_id', session.service_types?.id)
             .single();
 
           if (allocationError) throw new Error(`Failed to fetch allocation for credit generation: ${allocationError.message}`);
@@ -217,7 +217,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
             .from('subscription_session_credits')
             .insert({
               subscription_id: session.subscription_id,
-              service_type_id: session.service_type_id,
+              service_type_id: session.service_types?.id,
               credit_value: creditValue,
               credit_reason: `Session cancelled (${cancellationStatus})`,
               status: 'available',
