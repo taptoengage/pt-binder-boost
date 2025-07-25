@@ -5,7 +5,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
-import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, isWithinInterval, isToday } from 'date-fns';
+import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, isWithinInterval, isToday, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -71,6 +71,27 @@ export default function ViewSchedule() {
       return isWithinInterval(sessionDateTime, { start: periodStart, end: periodEnd });
     });
   }, [allTrainerSessions, periodStart, periodEnd]);
+
+  // Group filtered sessions by day for week/month views
+  const groupedSessionsByDay = useMemo(() => {
+    const groups: { [key: string]: any[] } = {};
+    filteredSessions.forEach((session: any) => {
+      const dateKey = format(new Date(session.session_date), 'yyyy-MM-dd');
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+      groups[dateKey].push(session);
+    });
+    // Sort sessions within each day by time
+    Object.keys(groups).forEach(dateKey => {
+      groups[dateKey].sort((a, b) => {
+        const timeA = new Date(a.session_date).getTime();
+        const timeB = new Date(b.session_date).getTime();
+        return timeA - timeB;
+      });
+    });
+    return groups;
+  }, [filteredSessions]);
 
   // Navigation handlers
   const handlePreviousPeriod = () => {
@@ -153,32 +174,112 @@ export default function ViewSchedule() {
         </div>
 
         <div className="calendar-grid-display border rounded-lg p-4 bg-white shadow-sm">
-          {filteredSessions.length > 0 ? (
-            <div className="space-y-4">
-              {filteredSessions.map((session: any) => (
-                <Card key={session.id} className={cn(
-                  "flex items-center justify-between p-4",
-                  { 'bg-blue-50 border-blue-200': isToday(new Date(session.session_date)) && session.status === 'scheduled' }
-                )}>
-                  <div>
-                    <CardTitle className="text-lg">{session.clients?.name || 'Unknown Client'}</CardTitle>
-                    <p className="text-sm text-gray-600">{session.service_types?.name || 'Unknown Service'}</p>
-                    <p className="text-sm text-gray-600">
-                      {format(new Date(session.session_date), 'PPP')} at {format(new Date(session.session_date), 'p')}
-                    </p>
-                  </div>
-                  <Badge className={cn(
-                    { 'bg-green-500': session.status === 'scheduled' },
-                    { 'bg-gray-500': session.status === 'completed' },
-                    { 'bg-red-500': session.status === 'cancelled' || session.status === 'cancelled_late' },
-                    { 'bg-orange-500': session.status === 'cancelled_early' }
+          {/* Conditional rendering based on currentView */}
+          {currentView === 'day' && (
+            filteredSessions.length > 0 ? (
+              <div className="space-y-4">
+                {filteredSessions.map((session: any) => (
+                  <Card key={session.id} className={cn(
+                    "flex items-center justify-between p-4",
+                    { 'bg-blue-50 border-blue-200': isToday(new Date(session.session_date)) && session.status === 'scheduled' }
                   )}>
-                    {session.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                  </Badge>
-                </Card>
-              ))}
+                    <div>
+                      <CardTitle className="text-lg">{session.clients?.name || 'Unknown Client'}</CardTitle>
+                      <p className="text-sm text-gray-600">{session.service_types?.name || 'Unknown Service'}</p>
+                      <p className="text-sm text-gray-600">
+                        {format(new Date(session.session_date), 'PPP')} at {format(new Date(session.session_date), 'p')}
+                      </p>
+                    </div>
+                    <Badge className={cn(
+                      { 'bg-green-500': session.status === 'scheduled' },
+                      { 'bg-gray-500': session.status === 'completed' },
+                      { 'bg-red-500': session.status === 'cancelled' || session.status === 'cancelled_late' },
+                      { 'bg-orange-500': session.status === 'cancelled_early' }
+                    )}>
+                      {session.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </Badge>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-500">
+                No sessions scheduled for this day.
+              </div>
+            )
+          )}
+
+          {currentView === 'week' && (
+            <div className="grid grid-cols-1 sm:grid-cols-7 gap-px border bg-gray-200 rounded-lg overflow-hidden min-h-[400px]">
+              {eachDayOfInterval({ start: periodStart, end: periodEnd }).map(day => {
+                const dateKey = format(day, 'yyyy-MM-dd');
+                const sessionsForDay = groupedSessionsByDay[dateKey] || [];
+                const isCurrentDay = isSameDay(day, new Date());
+                const isWeekend = day.getDay() === 0 || day.getDay() === 6; // Sunday or Saturday
+
+                return (
+                  <div key={dateKey} className={cn(
+                    "bg-white p-2 border-b border-r last:border-r-0 sm:border-r-0 sm:border-b-0",
+                    { 'bg-blue-50': isCurrentDay },
+                    { 'bg-gray-100': isWeekend && !isCurrentDay }
+                  )}>
+                    <h3 className="text-sm font-semibold text-center mb-2">
+                      {format(day, 'EEE dd')} {/* Mon 29 */}
+                    </h3>
+                    <div className="space-y-1">
+                      {sessionsForDay.length > 0 ? (
+                        sessionsForDay.map((session: any) => (
+                          <div key={session.id} className="text-xs p-1 bg-blue-100 rounded-sm hover:bg-blue-200 cursor-pointer">
+                            <p className="font-medium">{session.clients?.name}</p>
+                            <p>{format(new Date(session.session_date), 'p')} - {session.service_types?.name}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-gray-400 text-center text-xs">No sessions</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          ) : (
+          )}
+
+          {currentView === 'month' && (
+            <div className="grid grid-cols-7 gap-px border bg-gray-200 rounded-lg overflow-hidden min-h-[500px]">
+              {/* Day headers */}
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(dayName => (
+                <div key={dayName} className="bg-gray-100 p-2 text-center text-xs font-medium border-b border-r last:border-r-0">
+                  {dayName}
+                </div>
+              ))}
+
+              {/* Days of the month */}
+              {eachDayOfInterval({ start: startOfWeek(periodStart, { weekStartsOn: 1 }), end: endOfWeek(periodEnd, { weekStartsOn: 1 }) }).map(day => {
+                const dateKey = format(day, 'yyyy-MM-dd');
+                const sessionsForDayCount = groupedSessionsByDay[dateKey]?.length || 0;
+                const isCurrentMonth = isSameMonth(day, selectedDate);
+                const isCurrentDay = isSameDay(day, new Date());
+
+                return (
+                  <div key={dateKey} className={cn(
+                    "bg-white p-2 border-b border-r last:border-r-0",
+                    { 'text-gray-400 bg-gray-50': !isCurrentMonth }, // Mute days outside current month
+                    { 'bg-blue-50 border-blue-200': isCurrentDay } // Highlight today
+                  )}>
+                    <div className="flex justify-between items-center text-xs font-semibold mb-1">
+                      <span>{format(day, 'd')}</span> {/* Day number */}
+                      {sessionsForDayCount > 0 && (
+                        <Badge variant="default" className="h-4 px-1 rounded-full text-xs">
+                          {sessionsForDayCount}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {filteredSessions.length === 0 && currentView !== 'month' && ( // Only show "No sessions" for day/week if filtered is empty
             <div className="text-center py-12 text-gray-500">
               No sessions scheduled for this {currentView} view.
             </div>
