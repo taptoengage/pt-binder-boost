@@ -1,9 +1,121 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { DashboardNavigation } from '@/components/Navigation';
+import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
+import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, isWithinInterval, isToday } from 'date-fns';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 export default function ViewSchedule() {
+  const { user } = useAuth();
   const [currentView, setCurrentView] = useState<'day' | 'week' | 'month'>('week');
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
+  // Fetch all trainer's sessions
+  const { data: allTrainerSessions, isLoading: isLoadingSessions, error: sessionsError } = useQuery({
+    queryKey: ['trainerSessions', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase
+        .from('sessions')
+        .select(`
+          id,
+          session_date,
+          status,
+          notes,
+          clients (id, name),
+          service_types (id, name)
+        `)
+        .eq('trainer_id', user.id)
+        .order('session_date', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Calculate period start and end dates based on currentView and selectedDate
+  const { periodStart, periodEnd, formattedPeriod } = useMemo(() => {
+    let start: Date;
+    let end: Date;
+    let formatted: string;
+
+    if (currentView === 'day') {
+      start = startOfDay(selectedDate);
+      end = endOfDay(selectedDate);
+      formatted = format(selectedDate, 'PPP');
+    } else if (currentView === 'week') {
+      start = startOfWeek(selectedDate, { weekStartsOn: 1 });
+      end = endOfWeek(selectedDate, { weekStartsOn: 1 });
+      formatted = `${format(start, 'MMM dd')} - ${format(end, 'MMM dd, yyyy')}`;
+    } else {
+      start = startOfMonth(selectedDate);
+      end = endOfMonth(selectedDate);
+      formatted = format(selectedDate, 'MMM yyyy');
+    }
+    return { periodStart: start, periodEnd: end, formattedPeriod: formatted };
+  }, [currentView, selectedDate]);
+
+  // Filter sessions within the current period
+  const filteredSessions = useMemo(() => {
+    if (!allTrainerSessions) return [];
+    return allTrainerSessions.filter((session: any) => {
+      const sessionDateTime = new Date(session.session_date);
+      return isWithinInterval(sessionDateTime, { start: periodStart, end: periodEnd });
+    });
+  }, [allTrainerSessions, periodStart, periodEnd]);
+
+  // Navigation handlers
+  const handlePreviousPeriod = () => {
+    if (currentView === 'day') {
+      setSelectedDate(subDays(selectedDate, 1));
+    } else if (currentView === 'week') {
+      setSelectedDate(subWeeks(selectedDate, 1));
+    } else {
+      setSelectedDate(subMonths(selectedDate, 1));
+    }
+  };
+
+  const handleNextPeriod = () => {
+    if (currentView === 'day') {
+      setSelectedDate(addDays(selectedDate, 1));
+    } else if (currentView === 'week') {
+      setSelectedDate(addWeeks(selectedDate, 1));
+    } else {
+      setSelectedDate(addMonths(selectedDate, 1));
+    }
+  };
+
+  if (isLoadingSessions) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle">
+        <DashboardNavigation />
+        <main className="container mx-auto px-4 py-8">
+          <h1 className="text-heading-1 mb-6">My Schedule</h1>
+          <p>Loading sessions...</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (sessionsError) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle">
+        <DashboardNavigation />
+        <main className="container mx-auto px-4 py-8">
+          <h1 className="text-heading-1 mb-6">My Schedule</h1>
+          <p className="text-red-500">Error loading sessions: {sessionsError.message}</p>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
@@ -12,7 +124,19 @@ export default function ViewSchedule() {
       <main className="container mx-auto px-4 py-8">
         <h1 className="text-heading-1 mb-6">My Schedule</h1>
 
-        <div className="flex justify-center mb-6">
+        <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
+          {/* Period Navigation */}
+          <div className="flex items-center space-x-2">
+            <Button variant="outline" size="icon" onClick={handlePreviousPeriod}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <h2 className="text-xl font-semibold text-gray-800">{formattedPeriod}</h2>
+            <Button variant="outline" size="icon" onClick={handleNextPeriod}>
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* View Toggles */}
           <ToggleGroup type="single" value={currentView} onValueChange={(value: 'day' | 'week' | 'month') => {
             if (value) setCurrentView(value);
           }}>
@@ -28,9 +152,37 @@ export default function ViewSchedule() {
           </ToggleGroup>
         </div>
 
-        <div className="calendar-placeholder border rounded-lg p-8 bg-white shadow-sm h-[600px] flex items-center justify-center text-gray-500 text-xl">
-          {/* Placeholder for Calendar Grid */}
-          Calendar Grid ({currentView} view)
+        <div className="calendar-grid-display border rounded-lg p-4 bg-white shadow-sm">
+          {filteredSessions.length > 0 ? (
+            <div className="space-y-4">
+              {filteredSessions.map((session: any) => (
+                <Card key={session.id} className={cn(
+                  "flex items-center justify-between p-4",
+                  { 'bg-blue-50 border-blue-200': isToday(new Date(session.session_date)) && session.status === 'scheduled' }
+                )}>
+                  <div>
+                    <CardTitle className="text-lg">{session.clients?.name || 'Unknown Client'}</CardTitle>
+                    <p className="text-sm text-gray-600">{session.service_types?.name || 'Unknown Service'}</p>
+                    <p className="text-sm text-gray-600">
+                      {format(new Date(session.session_date), 'PPP')} at {format(new Date(session.session_date), 'p')}
+                    </p>
+                  </div>
+                  <Badge className={cn(
+                    { 'bg-green-500': session.status === 'scheduled' },
+                    { 'bg-gray-500': session.status === 'completed' },
+                    { 'bg-red-500': session.status === 'cancelled' || session.status === 'cancelled_late' },
+                    { 'bg-orange-500': session.status === 'cancelled_early' }
+                  )}>
+                    {session.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </Badge>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-gray-500">
+              No sessions scheduled for this {currentView} view.
+            </div>
+          )}
         </div>
       </main>
     </div>
