@@ -24,7 +24,7 @@ interface ClientPack {
   service_types: { name: string } | null;
 }
 
-const ClientPackHistoryPage: React.FC = () => {
+const ClientHistory: React.FC = () => {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -102,7 +102,7 @@ const ClientPackHistoryPage: React.FC = () => {
         
         <div className="flex items-center gap-3 mb-6">
           <Package className="w-8 h-8 text-primary" />
-          <h1 className="text-3xl font-bold">Client Pack History</h1>
+          <h1 className="text-3xl font-bold">Client History</h1>
         </div>
 
         {isLoadingAllClientPacks && (
@@ -202,4 +202,4 @@ const ClientPackHistoryPage: React.FC = () => {
   );
 };
 
-export default ClientPackHistoryPage;
+export default ClientHistory;

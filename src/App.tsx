@@ -23,7 +23,7 @@ import FinanceTransactions from "./pages/FinanceTransactions";
 import ScheduleOverview from "./pages/ScheduleOverview";
 import ClientDashboard from "./pages/ClientDashboard";
 import NotFound from "./pages/NotFound";
-import ClientPackHistory from "./pages/ClientPackHistory";
+import ClientHistory from "./pages/ClientHistory";
 
 const queryClient = new QueryClient();
 
@@ -75,7 +75,7 @@ function AppRoutes() {
       <Route path="/clients" element={<Clients />} />
       <Route path="/clients/new" element={<AddClient />} />
       <Route path="/clients/:clientId" element={<ClientDetail />} />
-      <Route path="/clients/:clientId/pack-history" element={<ClientPackHistory />} />
+      <Route path="/clients/:clientId/history" element={<ClientHistory />} />
       <Route path="/clients/:clientId/edit" element={<EditClient />} />
       <Route path="/clients/:clientId/payments/:paymentId/edit" element={<EditPayment />} />
       <Route path="/clients/:clientId/sessions/:sessionId/edit" element={<EditSession />} />
