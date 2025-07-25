@@ -19,6 +19,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, CalendarIcon, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSessionOverlapCheck, validateOverlap } from '@/hooks/useSessionOverlapCheck';
 
 // Create the base schema with dynamic validation using context
 const ScheduleSessionSchema = z.object({
@@ -38,61 +39,6 @@ const ScheduleSessionSchema = z.object({
   isFromCredit: z.boolean().optional(),
   creditIdConsumed: z.string().optional(),
   selectedCreditId: z.string().optional(),
-}).superRefine((data, ctx) => {
-  // Context will be passed during validation, for now use a placeholder approach
-  // The actual validation will be handled through manual triggering and external checks
-  const currentServiceAllocation = undefined;
-  const scheduledSessionsCount = undefined;
-  const isLoadingSessionsCount = false;
-
-  // Crucial: Prevent validation errors while count is loading
-  if (isLoadingSessionsCount) {
-    return;
-  }
-  
-  // ADD DEFENSIVE CHECKS:
-  if (currentServiceAllocation === undefined || scheduledSessionsCount === undefined) {
-    // Do NOT add an issue here unless you explicitly want to block submission
-    // just because data is still loading or not available yet. The button disabled state should handle loading.
-    return; // Exit superRefine if crucial data is missing
-  }
-  
-  // Basic conditional validation
-  if (data.scheduleType === 'oneOff' && !data.serviceTypeId) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Service type is required for a one-off session.",
-      path: ['serviceTypeId'],
-    });
-  }
-  
-  if (data.scheduleType === 'fromPack' && !data.packId) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "A pack must be selected.",
-      path: ['packId'],
-    });
-  }
-  
-  if (data.scheduleType === 'fromSubscription') {
-    if (!data.subscriptionId || !data.serviceTypeIdForSubscription || !data.session_date) {
-      // If critical data for subscription scheduling is missing,
-      // let direct field validations handle this
-      return;
-    }
-
-    // Core over-scheduling validation (will only run if above checks pass AND data is available)
-    const isThisSessionFromCredit = data.selectedCreditId ? true : false;
-    
-    // Use quantity_per_period from currentServiceAllocation
-    if (!isThisSessionFromCredit && scheduledSessionsCount >= currentServiceAllocation.quantity_per_period) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `You have exceeded the allocated sessions (${currentServiceAllocation.quantity_per_period}) for this subscription within the current ${currentServiceAllocation.period_type} period.`,
-        path: ['session_date'],
-      });
-    }
-  }
 });
 
 type SessionFormData = z.infer<typeof ScheduleSessionSchema>;
@@ -138,6 +84,21 @@ export default function ScheduleSession() {
   });
 
   const { handleSubmit, formState: { isSubmitting }, reset } = form;
+
+  // Watch form fields for reactivity
+  const watchedSessionDate = form.watch('session_date');
+  const watchedSessionTime = form.watch('session_time');
+  const watchedSessionStatus = form.watch('status');
+
+  // Use the reusable overlap check hook
+  const { isLoadingOverlaps, overlappingSessionsCount } = useSessionOverlapCheck({
+    trainerId: user?.id,
+    proposedDate: watchedSessionDate,
+    proposedTime: watchedSessionTime,
+    proposedStatus: watchedSessionStatus,
+    sessionIdToExclude: undefined, // No session to exclude for new bookings
+    enabled: true, // This hook should always be enabled when the form is interactive
+  });
 
   // Fetch available credits for subscription sessions
   const { data: availableCredits, isLoading: isLoadingCredits } = useQuery({
@@ -320,6 +281,24 @@ export default function ScheduleSession() {
       }
     }
   }, [finalScheduledSessionsInPeriod, finalIsLoadingPeriodSessions, currentServiceAllocation, form]);
+
+  // Add a useEffect to trigger validation when overlap data changes
+  useEffect(() => {
+    if (overlappingSessionsCount !== undefined && !isLoadingOverlaps && watchedSessionStatus === 'scheduled') {
+        // Manually set the overlap error if detected
+        if (overlappingSessionsCount > 0) {
+          form.setError('session_time', {
+            type: 'custom',
+            message: 'This time slot overlaps with another scheduled session.',
+          });
+        } else {
+          form.clearErrors('session_time');
+        }
+    } else if (watchedSessionStatus !== 'scheduled' && !isLoadingOverlaps) {
+        // Clear any overlap errors if status is not scheduled
+        form.clearErrors('session_time');
+    }
+  }, [overlappingSessionsCount, isLoadingOverlaps, watchedSessionStatus, form]);
 
   useEffect(() => {
     if (user?.id) {
@@ -1050,9 +1029,10 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
                 <Button 
                   type="submit" 
                   className="w-full" 
-                  disabled={form.formState.isSubmitting || !form.formState.isValid || finalIsLoadingPeriodSessions}
+                  disabled={form.formState.isSubmitting || !form.formState.isValid || finalIsLoadingPeriodSessions || isLoadingOverlaps}
                 >
                   {form.formState.isSubmitting ? "Scheduling..." : 
+                   isLoadingOverlaps ? "Checking Overlaps..." :
                    finalIsLoadingPeriodSessions ? "Checking Allocation..." :
                    "Schedule Session"}
                 </Button>

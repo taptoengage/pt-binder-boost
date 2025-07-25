@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
+import { useSessionOverlapCheck, validateOverlap } from '@/hooks/useSessionOverlapCheck';
 
 // Generate time options with 30-minute intervals
 const generateTimeOptions = () => {
@@ -61,6 +62,21 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
     mode: 'onChange'
   });
 
+  // Watch form fields to trigger overlap query
+  const watchedSessionDate = form.watch('session_date');
+  const watchedSessionTime = form.watch('session_time');
+  const watchedSessionStatus = form.watch('status');
+
+  // Use the reusable overlap check hook
+  const { isLoadingOverlaps, overlappingSessionsCount } = useSessionOverlapCheck({
+    trainerId: user?.id,
+    proposedDate: watchedSessionDate,
+    proposedTime: watchedSessionTime,
+    proposedStatus: watchedSessionStatus,
+    sessionIdToExclude: session?.id, // Pass current session ID to exclude!
+    enabled: isEditing, // Only enable this hook when in edit mode
+  });
+
   // Reset form when modal opens or session changes to ensure correct default values
   useEffect(() => {
     if (isOpen && session) {
@@ -72,6 +88,24 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
       setIsEditing(false); // Always start in view mode
     }
   }, [isOpen, session, form]);
+
+  // Add a useEffect to trigger validation when overlap data changes
+  useEffect(() => {
+    if (overlappingSessionsCount !== undefined && !isLoadingOverlaps && watchedSessionStatus === 'scheduled') {
+        // Manually set the overlap error if detected
+        if (overlappingSessionsCount > 0) {
+          form.setError('session_time', {
+            type: 'custom',
+            message: 'This time slot overlaps with another scheduled session.',
+          });
+        } else {
+          form.clearErrors('session_time');
+        }
+    } else if (watchedSessionStatus !== 'scheduled' && !isLoadingOverlaps) {
+        // Clear any overlap errors if status is not scheduled
+        form.clearErrors('session_time');
+    }
+  }, [overlappingSessionsCount, isLoadingOverlaps, watchedSessionStatus, form]);
 
   const onSubmit = async (data: EditSessionFormData) => {
     try {
@@ -252,8 +286,10 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
                   <Button type="button" variant="outline" onClick={() => setIsEditing(false)} className="mb-2 sm:mb-0">
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={form.formState.isSubmitting || !form.formState.isValid} className="mb-2 sm:mb-0">
-                    {form.formState.isSubmitting ? "Saving..." : "Save Changes"}
+                  <Button type="submit" disabled={form.formState.isSubmitting || !form.formState.isValid || isLoadingOverlaps} className="mb-2 sm:mb-0">
+                    {form.formState.isSubmitting ? "Saving..." :
+                     isLoadingOverlaps ? "Checking Overlaps..." :
+                     "Save Changes"}
                   </Button>
                 </>
               ) : (
