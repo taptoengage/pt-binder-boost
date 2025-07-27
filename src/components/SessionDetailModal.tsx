@@ -197,43 +197,81 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
       if (sessionUpdateError) throw new Error(`Failed to update session status: ${sessionUpdateError.message}`);
 
       let creditGenerated = false;
-      // Step 2: Conditionally generate credit if from subscription AND not already from credit
+
+      // --- NEW DEBUG LOGS FOR CREDIT GENERATION DIAGNOSIS ---
+      console.log("DEBUG: --- Credit Generation Attempt ---");
+      console.log("DEBUG: Session object for credit check:", {
+          sessionId: session.id,
+          subscription_id: session.subscription_id,
+          is_from_credit: session.is_from_credit,
+          service_types: session.service_types,
+          service_type_id_nested: session.service_types?.id, // Explicitly check nested ID
+          clients_id_nested: session.clients?.id // Explicitly check nested client ID
+      });
+
       if (session.subscription_id && session.is_from_credit === false) {
-        try {
-          // Fetch the specific service allocation to get cost_per_session
-          const { data: allocationData, error: allocationError } = await supabase
-            .from('subscription_service_allocations')
-            .select('cost_per_session')
-            .eq('subscription_id', session.subscription_id)
-            .eq('service_type_id', session.service_types?.id)
-            .single();
+          console.log("DEBUG: Credit generation condition met (from subscription, not from credit).");
+          try {
+              console.log("DEBUG: Querying allocation with subscription_id:", session.subscription_id, "and service_type_id:", session.service_types?.id);
+              const { data: allocationData, error: allocationError } = await supabase
+                  .from('subscription_service_allocations')
+                  .select('cost_per_session')
+                  .eq('subscription_id', session.subscription_id)
+                  .eq('service_type_id', session.service_types?.id)
+                  .single();
 
-          if (allocationError) throw new Error(`Failed to fetch allocation for credit generation: ${allocationError.message}`);
-          if (!allocationData) throw new Error("Service allocation not found for credit generation.");
+              if (allocationError) {
+                  console.error("DEBUG: ALLOCATION FETCH ERROR:", allocationError); // Crucial: Log Supabase error object
+                  throw new Error(`Failed to fetch allocation for credit generation: ${allocationError.message}`);
+              }
+              if (!allocationData) {
+                  console.error("DEBUG: ALLOCATION DATA NOT FOUND: No single row matched query criteria."); // Crucial: Log if query returned nothing
+                  throw new Error("Service allocation not found for credit generation.");
+              }
 
-          const creditValue = allocationData.cost_per_session;
+              const creditValue = allocationData.cost_per_session;
+              console.log("DEBUG: Allocation data fetched. Credit value:", creditValue);
 
-          const { error: creditInsertError } = await supabase
-            .from('subscription_session_credits')
-            .insert({
-              subscription_id: session.subscription_id,
-              service_type_id: session.service_types?.id,
-              credit_value: creditValue,
-              credit_reason: `Session cancelled (${cancellationStatus})`,
-              status: 'available',
-              originating_session_id: session.id,
-            });
+              if (creditValue === undefined || creditValue === null) {
+                   console.error("DEBUG: CREDIT VALUE IS UNDEFINED/NULL after fetching allocationData."); // Highlight if value is bad
+                   throw new Error("Credit value is invalid after fetching allocation data.");
+              }
 
-          if (creditInsertError) throw new Error(`Failed to generate session credit: ${creditInsertError.message}`);
-          creditGenerated = true;
-        } catch (creditGenError: any) {
-          toast({
-            title: 'Warning',
-            description: `Session cancelled, but failed to generate credit: ${creditGenError.message}`,
-            variant: 'destructive',
-          });
-        }
+              const { error: creditInsertError } = await supabase
+                  .from('subscription_session_credits')
+                  .insert({
+                      subscription_id: session.subscription_id,
+                      service_type_id: session.service_types?.id,
+                      credit_value: creditValue,
+                      credit_reason: `Session cancelled (${cancellationStatus})`,
+                      status: 'available',
+                      originating_session_id: session.id,
+                      client_id: session.clients?.id, // Ensure client_id is passed
+                  });
+
+              if (creditInsertError) {
+                  console.error("DEBUG: CREDIT INSERT ERROR:", creditInsertError); // Crucial: Log Supabase insert error object
+                  throw new Error(`Failed to generate session credit: ${creditInsertError.message}`);
+              }
+              creditGenerated = true;
+              console.log("DEBUG: Credit successfully inserted.");
+
+          } catch (creditGenError: any) {
+              console.error("DEBUG: TOP LEVEL CATCH - Error during credit generation TRY block:", creditGenError);
+              toast({
+                  title: 'Warning',
+                  description: `Session cancelled, but failed to generate credit: ${creditGenError.message}`,
+                  variant: 'destructive',
+              });
+          }
+      } else {
+          console.log("DEBUG: Credit generation condition NOT met.");
+          if (!session.subscription_id) console.log("DEBUG: Reason: session.subscription_id is missing/null/undefined.");
+          if (session.is_from_credit === true) console.log("DEBUG: Reason: session.is_from_credit is true (session consumed a credit).");
+          if (session.subscription_id && typeof session.is_from_credit !== 'boolean') console.log("DEBUG: Reason: session.is_from_credit is not a boolean.");
       }
+      console.log("DEBUG: --- End Credit Generation Attempt ---");
+      // --- END NEW DEBUG LOGS ---
 
       toast({
         title: 'Success',
