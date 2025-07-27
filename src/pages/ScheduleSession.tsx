@@ -547,11 +547,6 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         });
       }
 
-      // Step 3: Invalidate queries to refresh UI
-      queryClient.invalidateQueries({ queryKey: ['sessionsForClient'] });
-      queryClient.invalidateQueries({ queryKey: ['availableCredits'] });
-      queryClient.invalidateQueries({ queryKey: ['trainerSessions', user?.id] });
-
       reset();
     } catch (error: any) {
       toast({
@@ -564,6 +559,7 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
       // Invalidate and refetch queries
       queryClient.invalidateQueries({ queryKey: ['sessionsForClient'] });
       queryClient.invalidateQueries({ queryKey: ['availableCredits'] });
+      queryClient.invalidateQueries({ queryKey: ['trainerSessions', user?.id] });
     }
   };
 
