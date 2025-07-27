@@ -31,6 +31,8 @@ export default function ViewSchedule() {
           session_date,
           status,
           notes,
+          subscription_id,
+          is_from_credit,
           clients (id, name),
           service_types (id, name)
         `)
