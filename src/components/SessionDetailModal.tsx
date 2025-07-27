@@ -227,7 +227,6 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
           if (creditInsertError) throw new Error(`Failed to generate session credit: ${creditInsertError.message}`);
           creditGenerated = true;
         } catch (creditGenError: any) {
-          console.error("Error during credit generation:", creditGenError);
           toast({
             title: 'Warning',
             description: `Session cancelled, but failed to generate credit: ${creditGenError.message}`,
