@@ -237,17 +237,16 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
                    throw new Error("Credit value is invalid after fetching allocation data.");
               }
 
-              const { error: creditInsertError } = await supabase
-                  .from('subscription_session_credits')
-                  .insert({
-                      subscription_id: session.subscription_id,
-                      service_type_id: session.service_types?.id,
-                      credit_value: creditValue,
-                      credit_reason: `Session cancelled (${cancellationStatus})`,
-                      status: 'available',
-                      originating_session_id: session.id,
-                      client_id: session.clients?.id, // Ensure client_id is passed
-                  });
+            const { error: creditInsertError } = await supabase
+                .from('subscription_session_credits')
+                .insert({
+                    subscription_id: session.subscription_id,
+                    service_type_id: session.service_types?.id,
+                    credit_value: creditValue,
+                    credit_reason: `Session cancelled (${cancellationStatus})`,
+                    status: 'available',
+                    originating_session_id: session.id,
+                });
 
               if (creditInsertError) {
                   console.error("DEBUG: CREDIT INSERT ERROR:", creditInsertError); // Crucial: Log Supabase insert error object
