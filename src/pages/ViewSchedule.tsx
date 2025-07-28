@@ -37,6 +37,7 @@ export default function ViewSchedule() {
           service_types (id, name)
         `)
         .eq('trainer_id', user.id)
+        .in('status', ['scheduled', 'completed'])
         .order('session_date', { ascending: true });
 
       if (error) throw error;
