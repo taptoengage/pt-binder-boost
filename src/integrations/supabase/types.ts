@@ -534,6 +534,53 @@ export type Database = {
           },
         ]
       }
+      trainer_availability_exceptions: {
+        Row: {
+          created_at: string | null
+          end_time: string | null
+          exception_date: string
+          exception_type: string
+          id: string
+          is_available: boolean
+          notes: string | null
+          start_time: string | null
+          trainer_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          end_time?: string | null
+          exception_date: string
+          exception_type: string
+          id?: string
+          is_available: boolean
+          notes?: string | null
+          start_time?: string | null
+          trainer_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          end_time?: string | null
+          exception_date?: string
+          exception_type?: string
+          id?: string
+          is_available?: boolean
+          notes?: string | null
+          start_time?: string | null
+          trainer_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_availability_exceptions_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trainer_availability_templates: {
         Row: {
           created_at: string | null
