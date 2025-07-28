@@ -1316,7 +1316,7 @@ export default function ClientDetail() {
                               >
                                 <Edit className="w-4 h-4" />
                               </Button>
-                              {session.status !== 'cancelled' && session.status !== 'completed' && session.subscription_id && (
+                              {session.status === 'scheduled' && session.subscription_id && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
