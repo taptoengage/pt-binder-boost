@@ -18,7 +18,19 @@ export default function MyProfile() {
       if (!user?.id) return null;
       const { data, error } = await supabase
         .from('trainers')
-        .select('*')
+        .select(`
+          id,
+          business_name,
+          contact_email,
+          phone,
+          instagram_handle,
+          whatsapp_id,
+          facebook_id,
+          trainerize_id,
+          wechat_id,
+          created_at,
+          updated_at
+        `)
         .eq('id', user.id)
         .maybeSingle();
 
@@ -71,8 +83,8 @@ export default function MyProfile() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <p><strong>Business Name:</strong> {trainerProfile.business_name || 'N/A'}</p>
-              <p className="flex items-center"><Mail className="w-4 h-4 mr-2 text-muted-foreground" /> <strong>Email:</strong> {trainerProfile.contact_email || 'N/A'}</p>
+              <p><strong>Business Name:</strong> {(trainerProfile as any).business_name || 'N/A'}</p>
+              <p className="flex items-center"><Mail className="w-4 h-4 mr-2 text-muted-foreground" /> <strong>Email:</strong> {(trainerProfile as any).contact_email || 'N/A'}</p>
               <p className="flex items-center"><Phone className="w-4 h-4 mr-2 text-muted-foreground" /> <strong>Phone:</strong> {(trainerProfile as any).phone || 'N/A'}</p>
 
               <div className="pt-4 border-t mt-4">
