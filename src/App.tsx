@@ -24,6 +24,7 @@ import ViewSchedule from "./pages/ViewSchedule";
 import ClientDashboard from "./pages/ClientDashboard";
 import NotFound from "./pages/NotFound";
 import ClientHistory from "./pages/ClientHistory";
+import MyProfile from "./pages/MyProfile";
 
 const queryClient = new QueryClient();
 
@@ -85,6 +86,7 @@ function AppRoutes() {
       <Route path="/finance" element={<FinanceTransactions />} />
       <Route path="/finance/transactions" element={<FinanceTransactions />} />
       <Route path="/settings/service-types" element={<ServiceTypes />} />
+      <Route path="/profile" element={<MyProfile />} />
       <Route path="/client/dashboard" element={<ClientDashboard />} />
       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
       <Route path="*" element={<NotFound />} />
