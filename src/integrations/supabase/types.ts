@@ -76,7 +76,7 @@ export type Database = {
           id: string
           payment_frequency: string
           start_date: string
-          status: string
+          status: Database["public"]["Enums"]["client_subscription_status_enum"]
           trainer_id: string
           updated_at: string
         }
@@ -89,7 +89,7 @@ export type Database = {
           id?: string
           payment_frequency: string
           start_date: string
-          status?: string
+          status?: Database["public"]["Enums"]["client_subscription_status_enum"]
           trainer_id: string
           updated_at?: string
         }
@@ -102,7 +102,7 @@ export type Database = {
           id?: string
           payment_frequency?: string
           start_date?: string
-          status?: string
+          status?: Database["public"]["Enums"]["client_subscription_status_enum"]
           trainer_id?: string
           updated_at?: string
         }
@@ -427,7 +427,6 @@ export type Database = {
           cost_per_session: number
           created_at: string
           id: string
-          max_sessions_per_period: number
           period_type: string
           quantity_per_period: number
           service_type_id: string
@@ -438,7 +437,6 @@ export type Database = {
           cost_per_session: number
           created_at?: string
           id?: string
-          max_sessions_per_period?: number
           period_type: string
           quantity_per_period: number
           service_type_id: string
@@ -449,7 +447,6 @@ export type Database = {
           cost_per_session?: number
           created_at?: string
           id?: string
-          max_sessions_per_period?: number
           period_type?: string
           quantity_per_period?: number
           service_type_id?: string
@@ -483,7 +480,7 @@ export type Database = {
           id: string
           originating_session_id: string | null
           service_type_id: string
-          status: string
+          status: Database["public"]["Enums"]["session_credit_status_enum"]
           subscription_id: string
           used_at: string | null
         }
@@ -496,7 +493,7 @@ export type Database = {
           id?: string
           originating_session_id?: string | null
           service_type_id: string
-          status?: string
+          status?: Database["public"]["Enums"]["session_credit_status_enum"]
           subscription_id: string
           used_at?: string | null
         }
@@ -509,7 +506,7 @@ export type Database = {
           id?: string
           originating_session_id?: string | null
           service_type_id?: string
-          status?: string
+          status?: Database["public"]["Enums"]["session_credit_status_enum"]
           subscription_id?: string
           used_at?: string | null
         }
@@ -537,27 +534,83 @@ export type Database = {
           },
         ]
       }
+      trainer_availability_templates: {
+        Row: {
+          created_at: string | null
+          day_of_week: string
+          end_time: string
+          id: string
+          start_time: string
+          trainer_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          day_of_week: string
+          end_time: string
+          id?: string
+          start_time: string
+          trainer_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          day_of_week?: string
+          end_time?: string
+          id?: string
+          start_time?: string
+          trainer_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_availability_templates_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trainers: {
         Row: {
           business_name: string
           contact_email: string
           created_at: string | null
+          facebook_id: string | null
           id: string
+          instagram_handle: string | null
+          phone: string | null
+          trainerize_id: string | null
           updated_at: string | null
+          wechat_id: string | null
+          whatsapp_id: string | null
         }
         Insert: {
           business_name: string
           contact_email: string
           created_at?: string | null
+          facebook_id?: string | null
           id?: string
+          instagram_handle?: string | null
+          phone?: string | null
+          trainerize_id?: string | null
           updated_at?: string | null
+          wechat_id?: string | null
+          whatsapp_id?: string | null
         }
         Update: {
           business_name?: string
           contact_email?: string
           created_at?: string | null
+          facebook_id?: string | null
           id?: string
+          instagram_handle?: string | null
+          phone?: string | null
+          trainerize_id?: string | null
           updated_at?: string | null
+          wechat_id?: string | null
+          whatsapp_id?: string | null
         }
         Relationships: []
       }
@@ -569,6 +622,18 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
+      client_subscription_status_enum:
+        | "active"
+        | "paused"
+        | "ended"
+        | "cancelled"
+      session_credit_status_enum:
+        | "available"
+        | "used_for_session"
+        | "applied_to_payment"
+        | "expired"
+        | "forfeited"
+        | "refunded"
       session_status_enum:
         | "scheduled"
         | "completed"
@@ -701,6 +766,20 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      client_subscription_status_enum: [
+        "active",
+        "paused",
+        "ended",
+        "cancelled",
+      ],
+      session_credit_status_enum: [
+        "available",
+        "used_for_session",
+        "applied_to_payment",
+        "expired",
+        "forfeited",
+        "refunded",
+      ],
       session_status_enum: [
         "scheduled",
         "completed",
