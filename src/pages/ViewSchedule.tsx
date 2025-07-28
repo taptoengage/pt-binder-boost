@@ -81,6 +81,28 @@ export default function ViewSchedule() {
     staleTime: 60 * 1000, // Cache for 1 minute
   });
 
+  // Fetch trainer's one-off availability exceptions
+  const { data: exceptions, isLoading: isLoadingExceptions, error: exceptionsError } = useQuery({
+    queryKey: ['trainerAvailabilityExceptions', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase
+        .from('trainer_availability_exceptions')
+        .select('*')
+        .eq('trainer_id', user.id)
+        .order('exception_date', { ascending: true })
+        .order('start_time', { ascending: true });
+
+      if (error) {
+        console.error("Error fetching exceptions:", error);
+        throw error;
+      }
+      return data || [];
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000, // Cache for 1 minute
+  });
+
   // Process recurring templates into a map for easy lookup
   const processedAvailability = useMemo(() => {
     const availabilityMap: { [key: string]: Array<{ start: string; end: string }> } = {};
@@ -93,6 +115,90 @@ export default function ViewSchedule() {
     });
     return availabilityMap;
   }, [recurringTemplates]);
+
+  // Combine recurring templates and exceptions into a final availability map
+  const finalAvailabilityMap = useMemo(() => {
+    const map = new Map<string, { type: 'available' | 'unavailable' | 'override', ranges: Array<{ start: Date; end: Date }> }>();
+
+    const currentYear = selectedDate.getFullYear();
+    const currentMonth = selectedDate.getMonth();
+    const currentDay = selectedDate.getDate();
+
+    // 1. Initialize from recurring templates
+    Object.keys(processedAvailability).forEach(dayName => {
+      const recurringRanges = processedAvailability[dayName].map(block => {
+        const start = parse(block.start, 'HH:mm', new Date(currentYear, currentMonth, currentDay));
+        const end = parse(block.end, 'HH:mm', new Date(currentYear, currentMonth, currentDay));
+        return { start, end };
+      });
+      map.set(dayName, { type: 'available', ranges: recurringRanges });
+    });
+
+    // 2. Apply exceptions (override recurring templates)
+    exceptions?.forEach(exception => {
+      const exceptionDate = new Date(exception.exception_date);
+      const dayKey = format(exceptionDate, 'yyyy-MM-dd');
+
+      if (exception.exception_type === 'unavailable_full_day') {
+        map.set(dayKey, { type: 'unavailable', ranges: [] });
+      } else if (exception.exception_type === 'unavailable_partial_day') {
+        const dayOfWeekLowercase = format(exceptionDate, 'EEEE').toLowerCase();
+        const existingRanges = map.get(dayOfWeekLowercase)?.ranges || [];
+        const unavailableStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDate);
+        const unavailableEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDate);
+
+        // Filter out parts of existing ranges that overlap with the unavailable period
+        const newRanges: Array<{start: Date; end: Date}> = [];
+        existingRanges.forEach(range => {
+          if (range.start < unavailableEnd && range.end > unavailableStart) {
+            // Case 1: Existing range completely covers unavailable part - split it
+            if (range.start < unavailableStart && range.end > unavailableEnd) {
+              newRanges.push({ start: range.start, end: unavailableStart });
+              newRanges.push({ start: unavailableEnd, end: range.end });
+            }
+            // Case 2: Unavailable cuts off the start of existing range
+            else if (range.start < unavailableEnd && range.end > unavailableEnd) {
+              newRanges.push({ start: unavailableEnd, end: range.end });
+            }
+            // Case 3: Unavailable cuts off the end of existing range
+            else if (range.start < unavailableStart && range.end > unavailableStart) {
+              newRanges.push({ start: range.start, end: unavailableStart });
+            }
+            // Case 4: Unavailable completely covers existing range - do nothing
+          } else {
+            newRanges.push(range);
+          }
+        });
+        map.set(dayKey, { type: 'override', ranges: newRanges });
+
+      } else if (exception.exception_type === 'available_extra_slot') {
+        const dayOfWeekLowercase = format(exceptionDate, 'EEEE').toLowerCase();
+        const existingRanges = map.get(dayOfWeekLowercase)?.ranges || [];
+        const extraStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDate);
+        const extraEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDate);
+
+        // Add the extra slot, merge with existing if they overlap/touch
+        const allRanges = [...existingRanges, { start: extraStart, end: extraEnd }];
+        allRanges.sort((a, b) => a.start.getTime() - b.start.getTime());
+        const mergedRanges: Array<{start: Date; end: Date}> = [];
+        if (allRanges.length > 0) {
+          let currentMerge = allRanges[0];
+          for (let i = 1; i < allRanges.length; i++) {
+            if (allRanges[i].start <= currentMerge.end) {
+              currentMerge.end = new Date(Math.max(currentMerge.end.getTime(), allRanges[i].end.getTime()));
+            } else {
+              mergedRanges.push(currentMerge);
+              currentMerge = allRanges[i];
+            }
+          }
+          mergedRanges.push(currentMerge);
+        }
+        map.set(dayKey, { type: 'override', ranges: mergedRanges });
+      }
+    });
+
+    return map;
+  }, [processedAvailability, exceptions, selectedDate]);
 
   // Calculate period start and end dates based on currentView and selectedDate
   const { periodStart, periodEnd, formattedPeriod } = useMemo(() => {
@@ -167,7 +273,7 @@ export default function ViewSchedule() {
     }
   };
 
-  if (isLoadingSessions || isLoadingTemplates) {
+  if (isLoadingSessions || isLoadingTemplates || isLoadingExceptions) {
     return (
       <div className="min-h-screen bg-gradient-subtle">
         <DashboardNavigation />
@@ -179,13 +285,13 @@ export default function ViewSchedule() {
     );
   }
 
-  if (sessionsError || templatesError) {
+  if (sessionsError || templatesError || exceptionsError) {
     return (
       <div className="min-h-screen bg-gradient-subtle">
         <DashboardNavigation />
         <main className="container mx-auto px-4 py-8">
           <h1 className="text-heading-1 mb-6">My Schedule</h1>
-          <p className="text-red-500">Error loading schedule: {sessionsError?.message || templatesError?.message}</p>
+          <p className="text-red-500">Error loading schedule: {sessionsError?.message || templatesError?.message || exceptionsError?.message}</p>
         </main>
       </div>
     );
@@ -231,19 +337,21 @@ export default function ViewSchedule() {
           {currentView === 'day' && (
             <div className="space-y-px">
               {allDayTimeSlots.map(slotTime => {
-                const dayOfWeek = format(selectedDate, 'EEEE').toLowerCase();
-                const availableSlotsToday = processedAvailability[dayOfWeek] || [];
+                const currentDay = format(selectedDate, 'yyyy-MM-dd');
+                const dayOfWeekLowercase = format(selectedDate, 'EEEE').toLowerCase();
 
-                // Check if the current time slot is within any available block
-                const isSlotAvailable = availableSlotsToday.some(block => {
-                  const slotStart = parse(slotTime, 'HH:mm', selectedDate);
-                  const blockStart = parse(block.start, 'HH:mm', selectedDate);
-                  const blockEnd = parse(block.end, 'HH:mm', selectedDate);
-                  const slotEnd = addMinutes(slotStart, 30);
+                // Get availability for this exact day (checking for exceptions first)
+                const availabilityForThisDay = finalAvailabilityMap.get(currentDay) || finalAvailabilityMap.get(dayOfWeekLowercase);
+                const isFullDayUnavailable = availabilityForThisDay?.type === 'unavailable' && availabilityForThisDay.ranges.length === 0;
+                const availableRanges = availabilityForThisDay?.ranges || [];
 
-                  return isWithinInterval(slotStart, { start: blockStart, end: blockEnd }) &&
-                         (isBefore(slotEnd, blockEnd) || slotEnd.getTime() === blockEnd.getTime());
-                });
+                // Determine if this specific slot is available
+                const slotStart = parse(slotTime, 'HH:mm', selectedDate);
+                const slotEnd = addMinutes(slotStart, 30);
+                const isSlotAvailable = !isFullDayUnavailable && availableRanges.some(block =>
+                  isWithinInterval(slotStart, { start: block.start, end: block.end }) &&
+                  (isBefore(slotEnd, block.end) || slotEnd.getTime() === block.end.getTime())
+                );
 
                 const sessionsInSlot = filteredSessions.filter((session: any) => {
                   const sessionStart = new Date(session.session_date);
@@ -260,7 +368,8 @@ export default function ViewSchedule() {
                     key={slotTime}
                     className={cn(
                       "relative h-12 border-b border-gray-200",
-                      { 'bg-gray-100': !isSlotAvailable },
+                      { 'bg-gray-100': !isSlotAvailable && !isFullDayUnavailable },
+                      { 'bg-red-100 border-red-200': isFullDayUnavailable },
                       { 'bg-blue-50': isSlotAvailable }
                     )}
                   >
@@ -322,14 +431,18 @@ export default function ViewSchedule() {
                     </h3>
                     <div className="space-y-px h-[calc(100%-30px)] overflow-y-auto">
                       {allDayTimeSlots.map(slotTime => {
-                        const isSlotAvailable = processedAvailability[dayOfWeekLowercase]?.some(block => {
-                          const slotStart = parse(slotTime, 'HH:mm', day);
-                          const blockStart = parse(block.start, 'HH:mm', day);
-                          const blockEnd = parse(block.end, 'HH:mm', day);
-                          const slotEnd = addMinutes(slotStart, 30);
-                          return isWithinInterval(slotStart, { start: blockStart, end: blockEnd }) &&
-                                 (isBefore(slotEnd, blockEnd) || slotEnd.getTime() === blockEnd.getTime());
-                        });
+                        // Get availability for this exact day (checking for exceptions first)
+                        const availabilityForThisDay = finalAvailabilityMap.get(dateKey) || finalAvailabilityMap.get(dayOfWeekLowercase);
+                        const isFullDayUnavailable = availabilityForThisDay?.type === 'unavailable' && availabilityForThisDay.ranges.length === 0;
+                        const availableRanges = availabilityForThisDay?.ranges || [];
+
+                        // Determine if this specific slot is available
+                        const slotStart = parse(slotTime, 'HH:mm', day);
+                        const slotEnd = addMinutes(slotStart, 30);
+                        const isSlotAvailable = !isFullDayUnavailable && availableRanges.some(block =>
+                          isWithinInterval(slotStart, { start: block.start, end: block.end }) &&
+                          (isBefore(slotEnd, block.end) || slotEnd.getTime() === block.end.getTime())
+                        );
 
                         const sessionsInSlot = sessionsForDay.filter((session: any) => {
                           const sessionStart = new Date(session.session_date);
@@ -345,9 +458,10 @@ export default function ViewSchedule() {
                             key={slotTime}
                             className={cn(
                               "relative h-8 border-b border-gray-100 last:border-b-0",
-                              { 'bg-gray-50': !isSlotAvailable && !isWeekend },
+                              { 'bg-gray-50': !isSlotAvailable && !isWeekend && !isFullDayUnavailable },
+                              { 'bg-red-100 border-red-200': isFullDayUnavailable },
                               { 'bg-blue-50': isSlotAvailable && !isWeekend },
-                              { 'bg-gray-100': isWeekend && !isSlotAvailable },
+                              { 'bg-gray-100': isWeekend && !isSlotAvailable && !isFullDayUnavailable },
                               { 'bg-blue-100': isWeekend && isSlotAvailable }
                             )}
                           >
