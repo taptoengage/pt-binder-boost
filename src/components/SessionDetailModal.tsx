@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { format, differenceInHours, isBefore } from 'date-fns';
+import { format, differenceInHours, isBefore, parse, addMinutes, isWithinInterval } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useSessionOverlapCheck, validateOverlap } from '@/hooks/useSessionOverlapCheck';
+import ConfirmAvailabilityOverrideModal from '@/components/ConfirmAvailabilityOverrideModal';
 
 // Generate time options with 30-minute intervals
 const generateTimeOptions = () => {
@@ -50,9 +51,15 @@ interface SessionDetailModalProps {
 export default function SessionDetailModal({ isOpen, onClose, session }: SessionDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [showCancelSessionConfirm, setShowCancelSessionConfirm] = useState(false);
+  // NEW STATE for availability override modal
+  const [showAvailabilityOverrideConfirm, setShowAvailabilityOverrideConfirm] = useState(false);
+  const [pendingSubmitData, setPendingSubmitData] = useState<EditSessionFormData | null>(null);
+  
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  
+  const DEFAULT_SESSION_DURATION_MINUTES = 60;
 
   // Fetch client contact details
   const { data: clientContact, isLoading: isLoadingContact, error: contactError } = useQuery({
@@ -89,6 +96,50 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
   const watchedSessionDate = form.watch('session_date');
   const watchedSessionTime = form.watch('session_time');
   const watchedSessionStatus = form.watch('status');
+
+  // NEW: Fetch trainer's recurring availability templates
+  const { data: recurringTemplates, isLoading: isLoadingTemplates } = useQuery({
+    queryKey: ['trainerAvailabilityTemplates', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase
+        .from('trainer_availability_templates')
+        .select('*')
+        .eq('trainer_id', user.id)
+        .order('day_of_week', { ascending: true })
+        .order('start_time', { ascending: true });
+
+      if (error) {
+        console.error("Error fetching templates:", error);
+        throw error;
+      }
+      return data || [];
+    },
+    enabled: !!user?.id && isEditing, // Only enable if editing
+    staleTime: 60 * 1000,
+  });
+
+  // NEW: Fetch trainer's one-off availability exceptions
+  const { data: exceptions, isLoading: isLoadingExceptions } = useQuery({
+    queryKey: ['trainerAvailabilityExceptions', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase
+        .from('trainer_availability_exceptions')
+        .select('*')
+        .eq('trainer_id', user.id)
+        .order('exception_date', { ascending: true })
+        .order('start_time', { ascending: true });
+
+      if (error) {
+        console.error("Error fetching exceptions:", error);
+        throw error;
+      }
+      return data || [];
+    },
+    enabled: !!user?.id && isEditing, // Only enable if editing
+    staleTime: 60 * 1000,
+  });
 
   // Use the reusable overlap check hook
   const { isLoadingOverlaps, overlappingSessionsCount } = useSessionOverlapCheck({
@@ -130,7 +181,119 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
     }
   }, [overlappingSessionsCount, isLoadingOverlaps, watchedSessionStatus, form]);
 
-  const onSubmit = async (data: EditSessionFormData) => {
+  // NEW: Process availability (templates + exceptions) 
+  const finalAvailabilityMap = React.useMemo(() => {
+    const map = new Map<string, { type: 'available' | 'unavailable' | 'override', ranges: Array<{ start: Date; end: Date }> }>();
+
+    const tempDateForParsing = new Date(); // Use a temp date for parsing times
+
+    // 1. Initialize from recurring templates
+    (recurringTemplates || []).forEach(template => {
+      const dayName = template.day_of_week;
+      const start = parse(template.start_time, 'HH:mm', tempDateForParsing);
+      const end = parse(template.end_time, 'HH:mm', tempDateForParsing);
+      
+      if (!map.has(dayName)) {
+        map.set(dayName, { type: 'available', ranges: [] });
+      }
+      map.get(dayName)!.ranges.push({ start, end });
+    });
+
+    // 2. Apply exceptions (override recurring templates)
+    (exceptions || []).forEach(exception => {
+      const exceptionDate = new Date(exception.exception_date);
+      const dayKey = format(exceptionDate, 'yyyy-MM-dd');
+
+      if (exception.exception_type === 'unavailable_full_day') {
+        map.set(dayKey, { type: 'unavailable', ranges: [] });
+      } else if (exception.exception_type === 'unavailable_partial_day') {
+        const dayOfWeekLowercase = format(exceptionDate, 'EEEE').toLowerCase();
+        const existingRanges = map.get(dayKey)?.ranges || map.get(dayOfWeekLowercase)?.ranges || [];
+
+        const unavailableStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDate);
+        const unavailableEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDate);
+
+        const newRanges: Array<{start: Date; end: Date}> = [];
+        existingRanges.forEach(range => {
+          if (range.start < unavailableEnd && range.end > unavailableStart) {
+            // There is an overlap
+            if (range.start < unavailableStart && range.end > unavailableEnd) {
+              // Split the range
+              newRanges.push({ start: range.start, end: unavailableStart });
+              newRanges.push({ start: unavailableEnd, end: range.end });
+            } else if (range.start < unavailableEnd && range.end > unavailableEnd) {
+              // Unavailable cuts off the start
+              newRanges.push({ start: unavailableEnd, end: range.end });
+            } else if (range.start < unavailableStart && range.end > unavailableStart) {
+              // Unavailable cuts off the end
+              newRanges.push({ start: range.start, end: unavailableStart });
+            }
+            // If unavailable completely covers existing, don't add to newRanges
+          } else {
+            // No overlap, keep the existing range
+            newRanges.push(range);
+          }
+        });
+        map.set(dayKey, { type: 'override', ranges: newRanges });
+
+      } else if (exception.exception_type === 'available_extra_slot') {
+        const dayOfWeekLowercase = format(exceptionDate, 'EEEE').toLowerCase();
+        const existingRanges = map.get(dayKey)?.ranges || map.get(dayOfWeekLowercase)?.ranges || [];
+        const extraStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDate);
+        const extraEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDate);
+
+        const allRanges = [...existingRanges, { start: extraStart, end: extraEnd }];
+        allRanges.sort((a,b) => a.start.getTime() - b.start.getTime());
+        const mergedRanges: Array<{start: Date; end: Date}> = [];
+        if(allRanges.length > 0) {
+          let currentMerge = allRanges[0];
+          for(let i = 1; i < allRanges.length; i++) {
+            if (allRanges[i].start.getTime() <= currentMerge.end.getTime()) {
+              currentMerge.end = new Date(Math.max(currentMerge.end.getTime(), allRanges[i].end.getTime()));
+            } else {
+              mergedRanges.push(currentMerge);
+              currentMerge = allRanges[i];
+            }
+          }
+          mergedRanges.push(currentMerge);
+        }
+        map.set(dayKey, { type: 'override', ranges: mergedRanges });
+      }
+    });
+
+    return map;
+  }, [recurringTemplates, exceptions]);
+
+  // NEW: Check if proposed session is outside availability
+  const isOutsideAvailability = React.useMemo(() => {
+    const proposedDate = form.watch('session_date');
+    const proposedTime = form.watch('session_time');
+    const proposedStatus = form.watch('status');
+
+    if (!proposedDate || !proposedTime || proposedStatus !== 'scheduled') {
+      return false;
+    }
+    const proposedSessionStart = parse(proposedTime, 'HH:mm', proposedDate);
+    const proposedSessionEnd = addMinutes(proposedSessionStart, DEFAULT_SESSION_DURATION_MINUTES);
+
+    const dayKey = format(proposedDate, 'yyyy-MM-dd');
+    const dayOfWeekLowercase = format(proposedDate, 'EEEE').toLowerCase();
+
+    const availabilityForThisDay = finalAvailabilityMap.get(dayKey) || finalAvailabilityMap.get(dayOfWeekLowercase);
+
+    if (!availabilityForThisDay || availabilityForThisDay.type === 'unavailable') {
+      return true;
+    }
+
+    const fallsWithinAvailableBlock = availabilityForThisDay.ranges.some(block =>
+      proposedSessionStart >= block.start && proposedSessionEnd <= block.end
+    );
+
+    return !fallsWithinAvailableBlock;
+  }, [form.watch('session_date'), form.watch('session_time'), form.watch('status'), finalAvailabilityMap]);
+
+  // Helper to proceed with save (called by onSubmit and handleConfirmOverride)
+  const proceedWithSave = async (data: EditSessionFormData) => {
     try {
       // Combine date and time into a proper timestamp for Supabase
       const [hours, minutes] = data.session_time.split(':').map(Number);
@@ -167,6 +330,39 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
       });
     }
   };
+
+  // MODIFIED onSubmit: Intercept for availability override
+  const onSubmit = async (data: EditSessionFormData) => {
+    // Manual validation check
+    const isValid = await form.trigger();
+    if (!isValid || isLoadingOverlaps) {
+      toast({ title: 'Validation Error', description: 'Please correct the errors before saving.', variant: 'destructive' });
+      return;
+    }
+
+    // NEW: Soft validation for availability override
+    if (form.watch('status') === 'scheduled' && isOutsideAvailability) {
+      setPendingSubmitData(data); // Store data to use after confirmation
+      setShowAvailabilityOverrideConfirm(true);
+      return; // INTERCEPT HERE
+    }
+
+    // If no override, proceed directly
+    await proceedWithSave(data);
+  };
+
+  // NEW: Handle confirmation from override modal
+  const handleConfirmAvailabilityOverride = async () => {
+    setShowAvailabilityOverrideConfirm(false); // Close confirmation modal
+    if (pendingSubmitData) {
+      await proceedWithSave(pendingSubmitData); // Proceed with original save
+      setPendingSubmitData(null); // Clear pending data
+    } else {
+      toast({ title: 'Error', description: 'No session data to confirm.', variant: 'destructive' });
+      onClose();
+    }
+  };
+
 
   // Cancel session function with credit generation
   const onConfirmCancelSession = async () => {
@@ -477,6 +673,19 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
             </DialogFooter>
           </form>
         </Form>
+
+        {/* NEW: Render ConfirmAvailabilityOverrideModal */}
+        {showAvailabilityOverrideConfirm && (
+          <ConfirmAvailabilityOverrideModal
+            isOpen={showAvailabilityOverrideConfirm}
+            onClose={() => {
+              setShowAvailabilityOverrideConfirm(false);
+              setPendingSubmitData(null); // Clear pending data if user cancels
+            }}
+            onConfirm={handleConfirmAvailabilityOverride}
+            proposedDateTime={parse(form.watch('session_time'), 'HH:mm', form.watch('session_date') || new Date())}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

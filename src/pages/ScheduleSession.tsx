@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useForm, Path } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks, addMonths, isBefore, isAfter } from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks, addMonths, isBefore, isAfter, parse, addMinutes, isWithinInterval } from 'date-fns';
 import { DashboardNavigation } from '@/components/Navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +20,7 @@ import { ArrowLeft, CalendarIcon, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionOverlapCheck, validateOverlap } from '@/hooks/useSessionOverlapCheck';
+import ConfirmAvailabilityOverrideModal from '@/components/ConfirmAvailabilityOverrideModal';
 
 // Create the base schema with dynamic validation using context
 const ScheduleSessionSchema = z.object({
@@ -70,6 +71,12 @@ export default function ScheduleSession() {
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const queryClient = useQueryClient();
 
+  // NEW STATE for availability override modal
+  const [showAvailabilityOverrideConfirm, setShowAvailabilityOverrideConfirm] = useState(false);
+  const [pendingSubmitData, setPendingSubmitData] = useState<SessionFormData | null>(null);
+
+  const DEFAULT_SESSION_DURATION_MINUTES = 60;
+
   // Initialize form - context will be handled through manual validation
   const form = useForm<SessionFormData>({
     resolver: zodResolver(ScheduleSessionSchema),
@@ -98,6 +105,50 @@ export default function ScheduleSession() {
     proposedStatus: watchedSessionStatus,
     sessionIdToExclude: undefined, // No session to exclude for new bookings
     enabled: true, // This hook should always be enabled when the form is interactive
+  });
+
+  // NEW: Fetch trainer's recurring availability templates
+  const { data: recurringTemplates, isLoading: isLoadingTemplates } = useQuery({
+    queryKey: ['trainerAvailabilityTemplates', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase
+        .from('trainer_availability_templates')
+        .select('*')
+        .eq('trainer_id', user.id)
+        .order('day_of_week', { ascending: true })
+        .order('start_time', { ascending: true });
+
+      if (error) {
+        console.error("Error fetching templates:", error);
+        throw error;
+      }
+      return data || [];
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
+  });
+
+  // NEW: Fetch trainer's one-off availability exceptions
+  const { data: exceptions, isLoading: isLoadingExceptions } = useQuery({
+    queryKey: ['trainerAvailabilityExceptions', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase
+        .from('trainer_availability_exceptions')
+        .select('*')
+        .eq('trainer_id', user.id)
+        .order('exception_date', { ascending: true })
+        .order('start_time', { ascending: true });
+
+      if (error) {
+        console.error("Error fetching exceptions:", error);
+        throw error;
+      }
+      return data || [];
+    },
+    enabled: !!user?.id,
+    staleTime: 60 * 1000,
   });
 
   // Fetch available credits for subscription sessions
@@ -263,6 +314,114 @@ export default function ScheduleSession() {
     ) as { service_type_id: string; quantity_per_period: number; period_type: 'weekly' | 'fortnightly' | 'monthly'; } | undefined;
   }, [activeClientSubscriptions, form.watch('subscriptionId'), form.watch('serviceTypeIdForSubscription')]);
 
+  // NEW: Process availability (templates + exceptions) 
+  const finalAvailabilityMap = useMemo(() => {
+    const map = new Map<string, { type: 'available' | 'unavailable' | 'override', ranges: Array<{ start: Date; end: Date }> }>();
+
+    const tempDateForParsing = new Date(); // Use a temp date for parsing times
+
+    // 1. Initialize from recurring templates
+    (recurringTemplates || []).forEach(template => {
+      const dayName = template.day_of_week;
+      const start = parse(template.start_time, 'HH:mm', tempDateForParsing);
+      const end = parse(template.end_time, 'HH:mm', tempDateForParsing);
+      
+      if (!map.has(dayName)) {
+        map.set(dayName, { type: 'available', ranges: [] });
+      }
+      map.get(dayName)!.ranges.push({ start, end });
+    });
+
+    // 2. Apply exceptions (override recurring templates)
+    (exceptions || []).forEach(exception => {
+      const exceptionDate = new Date(exception.exception_date);
+      const dayKey = format(exceptionDate, 'yyyy-MM-dd');
+
+      if (exception.exception_type === 'unavailable_full_day') {
+        map.set(dayKey, { type: 'unavailable', ranges: [] });
+      } else if (exception.exception_type === 'unavailable_partial_day') {
+        const dayOfWeekLowercase = format(exceptionDate, 'EEEE').toLowerCase();
+        const existingRanges = map.get(dayKey)?.ranges || map.get(dayOfWeekLowercase)?.ranges || [];
+
+        const unavailableStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDate);
+        const unavailableEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDate);
+
+        const newRanges: Array<{start: Date; end: Date}> = [];
+        existingRanges.forEach(range => {
+          if (range.start < unavailableEnd && range.end > unavailableStart) {
+            // There is an overlap
+            if (range.start < unavailableStart && range.end > unavailableEnd) {
+              // Split the range
+              newRanges.push({ start: range.start, end: unavailableStart });
+              newRanges.push({ start: unavailableEnd, end: range.end });
+            } else if (range.start < unavailableEnd && range.end > unavailableEnd) {
+              // Unavailable cuts off the start
+              newRanges.push({ start: unavailableEnd, end: range.end });
+            } else if (range.start < unavailableStart && range.end > unavailableStart) {
+              // Unavailable cuts off the end
+              newRanges.push({ start: range.start, end: unavailableStart });
+            }
+            // If unavailable completely covers existing, don't add to newRanges
+          } else {
+            // No overlap, keep the existing range
+            newRanges.push(range);
+          }
+        });
+        map.set(dayKey, { type: 'override', ranges: newRanges });
+
+      } else if (exception.exception_type === 'available_extra_slot') {
+        const dayOfWeekLowercase = format(exceptionDate, 'EEEE').toLowerCase();
+        const existingRanges = map.get(dayKey)?.ranges || map.get(dayOfWeekLowercase)?.ranges || [];
+        const extraStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDate);
+        const extraEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDate);
+
+        const allRanges = [...existingRanges, { start: extraStart, end: extraEnd }];
+        allRanges.sort((a,b) => a.start.getTime() - b.start.getTime());
+        const mergedRanges: Array<{start: Date; end: Date}> = [];
+        if(allRanges.length > 0) {
+          let currentMerge = allRanges[0];
+          for(let i = 1; i < allRanges.length; i++) {
+            if (allRanges[i].start.getTime() <= currentMerge.end.getTime()) {
+              currentMerge.end = new Date(Math.max(currentMerge.end.getTime(), allRanges[i].end.getTime()));
+            } else {
+              mergedRanges.push(currentMerge);
+              currentMerge = allRanges[i];
+            }
+          }
+          mergedRanges.push(currentMerge);
+        }
+        map.set(dayKey, { type: 'override', ranges: mergedRanges });
+      }
+    });
+
+    return map;
+  }, [recurringTemplates, exceptions]);
+
+  // NEW: Check if proposed session is outside availability
+  const isOutsideAvailability = useMemo(() => {
+    if (!watchedSessionDate || !watchedSessionTime || watchedSessionStatus !== 'scheduled') {
+      return false; // Only check if date/time/status are set and status is scheduled
+    }
+    const proposedSessionStart = parse(watchedSessionTime, 'HH:mm', watchedSessionDate);
+    const proposedSessionEnd = addMinutes(proposedSessionStart, DEFAULT_SESSION_DURATION_MINUTES);
+
+    const dayKey = format(watchedSessionDate, 'yyyy-MM-dd');
+    const dayOfWeekLowercase = format(watchedSessionDate, 'EEEE').toLowerCase();
+
+    // Get availability for this exact day (exceptions take precedence over recurring)
+    const availabilityForThisDay = finalAvailabilityMap.get(dayKey) || finalAvailabilityMap.get(dayOfWeekLowercase);
+
+    if (!availabilityForThisDay || availabilityForThisDay.type === 'unavailable') {
+      return true; // Outside availability
+    }
+
+    // Check if session falls within any of the available ranges for this day
+    const fallsWithinAvailableBlock = availabilityForThisDay.ranges.some(block =>
+      proposedSessionStart >= block.start && proposedSessionEnd <= block.end
+    );
+
+    return !fallsWithinAvailableBlock; // If it doesn't fall within any, it's outside
+  }, [watchedSessionDate, watchedSessionTime, watchedSessionStatus, finalAvailabilityMap]);
 
   // Critical part: Perform custom validation logic
   useEffect(() => {
@@ -421,29 +580,8 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
     }
   };
 
-  const onSubmit = async (data: SessionFormData) => {
-    setIsSubmittingForm(true);
-
-    // --- CRITICAL MANUAL VALIDATION STEP ---
-    // Trigger validation for the fields relevant to the allocation check
-    const isValid = await form.trigger(['session_date', 'serviceTypeIdForSubscription']);
-    // After triggering, check if the form is valid based on the latest state
-    if (!isValid) {
-      toast({
-        title: 'Validation Error',
-        description: 'Please correct the errors in the form before scheduling.',
-        variant: 'destructive',
-      });
-      // Optional: Set focus to the first error field
-      const firstError = Object.keys(form.formState.errors).find(key => form.formState.errors[key]);
-      if (firstError) {
-        form.setFocus(firstError as Path<SessionFormData>);
-      }
-      setIsSubmittingForm(false);
-      return;
-    }
-    // --- END CRITICAL MANUAL VALIDATION STEP ---
-
+  // NEW: Helper to extract booking logic (called by onSubmit and handleConfirmOverride)
+  const proceedWithBooking = async (data: SessionFormData) => {
     try {
       // Combine date and time into a proper timestamp
       const [hours, minutes] = data.session_time.split(':').map(Number);
@@ -500,14 +638,13 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         service_type_id: finalServiceTypeId,
         session_date: sessionDateTime.toISOString(),
         status: data.status,
+        notes: data.notes || null,
         session_pack_id: finalPackId,
         subscription_id: finalSubscriptionId,
-        notes: data.notes || null,
         is_from_credit: finalIsFromCredit,
         credit_id_consumed: finalCreditIdConsumed,
       };
 
-      // Step 1: Insert the session
       const { data: sessionInsertData, error: sessionInsertError } = await supabase
         .from('sessions')
         .insert([sessionData])
@@ -518,48 +655,93 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         throw new Error(`Failed to schedule session: ${sessionInsertError.message}`);
       }
 
-      // Step 2: If a credit was used, update its status
-      if (finalIsFromCredit && finalCreditIdConsumed) {
+      // Handle credit consumption for subscription sessions
+      if (data.scheduleType === 'fromSubscription' && data.selectedCreditId) {
         const { error: creditUpdateError } = await supabase
           .from('subscription_session_credits')
           .update({ 
-            status: 'used_for_session', 
-            used_at: new Date().toISOString() 
+            status: 'used_for_session',
+            used_at: new Date().toISOString()
           })
-          .eq('id', finalCreditIdConsumed);
+          .eq('id', data.selectedCreditId);
 
         if (creditUpdateError) {
+          console.error("Failed to update credit status:", creditUpdateError);
           toast({
             title: 'Warning',
-            description: `Session scheduled, but failed to mark credit as used: ${creditUpdateError.message}`,
+            description: 'Session scheduled, but failed to update credit status.',
             variant: 'destructive',
           });
-        } else {
-          toast({
-            title: 'Success',
-            description: 'Session scheduled and credit applied successfully!',
-          });
         }
-      } else {
-        toast({
-          title: 'Success',
-          description: 'Session scheduled successfully!',
-        });
       }
 
+      toast({
+        title: 'Success',
+        description: 'Session scheduled successfully!',
+      });
+      
       reset();
+      queryClient.invalidateQueries({ queryKey: ['sessionsForClient'] });
+      queryClient.invalidateQueries({ queryKey: ['availableCredits'] });
+      queryClient.invalidateQueries({ queryKey: ['trainerSessions', user?.id] });
     } catch (error: any) {
       toast({
         title: 'Error',
         description: `Error scheduling session: ${error.message}`,
         variant: 'destructive',
       });
+      console.error("Error scheduling session:", error);
     } finally {
       setIsSubmittingForm(false);
-      // Invalidate and refetch queries
       queryClient.invalidateQueries({ queryKey: ['sessionsForClient'] });
       queryClient.invalidateQueries({ queryKey: ['availableCredits'] });
-      queryClient.invalidateQueries({ queryKey: ['trainerSessions', user?.id] });
+    }
+  };
+
+  const onSubmit = async (data: SessionFormData) => {
+    setIsSubmittingForm(true);
+
+    // --- CRITICAL MANUAL VALIDATION STEP ---
+    // Trigger validation for the fields relevant to the allocation check
+    const isValid = await form.trigger(['session_date', 'serviceTypeIdForSubscription']);
+    // After triggering, check if the form is valid based on the latest state
+    if (!isValid || isLoadingOverlaps) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please correct the errors in the form before scheduling.',
+        variant: 'destructive',
+      });
+      // Optional: Set focus to the first error field
+      const firstError = Object.keys(form.formState.errors).find(key => form.formState.errors[key]);
+      if (firstError) {
+        form.setFocus(firstError as Path<SessionFormData>);
+      }
+      setIsSubmittingForm(false);
+      return;
+    }
+    // --- END CRITICAL MANUAL VALIDATION STEP ---
+
+    // NEW: Soft validation for availability override
+    if (watchedSessionStatus === 'scheduled' && isOutsideAvailability) {
+      setPendingSubmitData(data); // Store data to use after confirmation
+      setShowAvailabilityOverrideConfirm(true);
+      setIsSubmittingForm(false); // Stop submitting while confirmation is active
+      return; // INTERCEPT HERE
+    }
+
+    // If no override, proceed directly
+    await proceedWithBooking(data);
+  };
+
+  // NEW: Handle confirmation from override modal
+  const handleConfirmAvailabilityOverride = async () => {
+    setShowAvailabilityOverrideConfirm(false); // Close confirmation modal
+    if (pendingSubmitData) {
+      await proceedWithBooking(pendingSubmitData); // Proceed with original booking
+      setPendingSubmitData(null); // Clear pending data
+    } else {
+      toast({ title: 'Error', description: 'No session data to confirm.', variant: 'destructive' });
+      setIsSubmittingForm(false);
     }
   };
 
@@ -1038,6 +1220,20 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
           </CardContent>
         </Card>
       </main>
+
+      {/* NEW: Render ConfirmAvailabilityOverrideModal */}
+      {showAvailabilityOverrideConfirm && watchedSessionDate && watchedSessionTime && (
+        <ConfirmAvailabilityOverrideModal
+          isOpen={showAvailabilityOverrideConfirm}
+          onClose={() => {
+            setShowAvailabilityOverrideConfirm(false);
+            setPendingSubmitData(null); // Clear pending data if user cancels
+            setIsSubmittingForm(false); // Ensure button state is reset
+          }}
+          onConfirm={handleConfirmAvailabilityOverride}
+          proposedDateTime={parse(watchedSessionTime, 'HH:mm', watchedSessionDate)}
+        />
+      )}
     </div>
   );
 }
