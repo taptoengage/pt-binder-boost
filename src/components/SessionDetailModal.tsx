@@ -448,7 +448,12 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
                   {/* Cancel Session Button with Confirmation */}
                   <AlertDialog open={showCancelSessionConfirm} onOpenChange={setShowCancelSessionConfirm}>
                     <AlertDialogTrigger asChild>
-                      <Button type="button" variant="destructive" className="mb-2 sm:mb-0">
+                      <Button 
+                        type="button" 
+                        variant="destructive" 
+                        className="mb-2 sm:mb-0"
+                        disabled={session.status === 'completed' || session.status.startsWith('cancelled')}
+                      >
                         Cancel Session
                       </Button>
                     </AlertDialogTrigger>
