@@ -332,75 +332,94 @@ export default function ViewSchedule() {
           {/* Conditional rendering based on currentView */}
           {currentView === 'day' && (
             <div className="space-y-px">
-              {allDayTimeSlots.map(slotTime => {
-                // Get effective availability ranges for the selected day
-                const effectiveAvailableRanges = getEffectiveDayAvailabilityRanges(
+              {(() => {
+                const effectiveAvailableRangesForDay = getEffectiveDayAvailabilityRanges(
                   selectedDate,
                   recurringTemplates || [],
                   exceptions || []
                 );
 
-                // Check if it's a full day unavailable exception
                 const isFullDayUnavailable = (exceptions || []).some(ex =>
-                  format(new Date(ex.exception_date), 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') &&
-                  ex.exception_type === 'unavailable_full_day'
+                    format(new Date(ex.exception_date), 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') &&
+                    ex.exception_type === 'unavailable_full_day'
                 );
 
-                // Determine if this specific slot is available
-                const slotStart = parse(slotTime, 'HH:mm', selectedDate);
-                const slotEnd = addMinutes(slotStart, 30);
-                const isSlotAvailable = !isFullDayUnavailable && effectiveAvailableRanges.some(block =>
-                  isWithinInterval(slotStart, { start: block.start, end: block.end }) &&
-                  (isBefore(slotEnd, block.end) || slotEnd.getTime() === block.end.getTime())
-                );
-
-                const sessionsInSlot = filteredSessions.filter((session: any) => {
-                  const sessionStart = new Date(session.session_date);
-                  const sessionEnd = addMinutes(sessionStart, 60);
-                  const slotStart = parse(slotTime, 'HH:mm', selectedDate);
-                  const slotEnd = addMinutes(slotStart, 30);
-
-                  return (sessionStart >= slotStart && sessionStart < slotEnd) ||
-                         (slotStart >= sessionStart && slotStart < sessionEnd);
+                // Generate 30-minute slots ONLY within the effective available ranges
+                const slotsToDisplay = effectiveAvailableRangesForDay.flatMap(range => {
+                    const rangeSlots = [];
+                    let currentSlotTime = range.start;
+                    // Generate slots as long as they are within the available block
+                    while (isBefore(currentSlotTime, range.end)) {
+                        rangeSlots.push(format(currentSlotTime, 'HH:mm'));
+                        currentSlotTime = addMinutes(currentSlotTime, 30);
+                    }
+                    return rangeSlots;
                 });
 
-                return (
-                  <div
-                    key={slotTime}
-                    className={cn(
-                      "relative h-12 border-b border-gray-200",
-                      { 'bg-gray-100': !isSlotAvailable && !isFullDayUnavailable },
-                      { 'bg-red-100 border-red-200': isFullDayUnavailable },
-                      { 'bg-blue-50': isSlotAvailable }
-                    )}
-                  >
-                    <span className="absolute left-2 top-1 text-xs text-gray-500">{slotTime}</span>
-                    {sessionsInSlot.map((session: any) => (
-                      <Card
-                        key={session.id}
-                        className="absolute left-16 right-0 top-0 bottom-0 p-1 cursor-pointer hover:bg-blue-200 transition-colors flex items-center"
-                        onClick={() => {
-                          setSelectedSessionForModal(session);
-                          setIsSessionDetailModalOpen(true);
-                        }}
-                      >
-                        <div className="flex-1 text-xs font-medium truncate">
-                          {session.clients?.name} - {format(new Date(session.session_date), 'p')}
+                if (slotsToDisplay.length === 0 && !isFullDayUnavailable) {
+                    return (
+                        <div className="text-center py-12 text-gray-500">
+                            No availability set for this day.
                         </div>
-                        <Badge className={cn(
-                          "ml-auto h-4 px-1 text-xs",
-                          { 'bg-green-500': session.status === 'scheduled' },
-                          { 'bg-gray-500': session.status === 'completed' },
-                          { 'bg-red-500': session.status === 'cancelled' || session.status === 'cancelled_late' },
-                          { 'bg-orange-500': session.status === 'cancelled_early' }
-                        )}>
-                          {session.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        </Badge>
-                      </Card>
-                    ))}
-                  </div>
+                    );
+                } else if (isFullDayUnavailable) {
+                     return (
+                        <div className="text-center py-12 text-gray-500 bg-red-100 border-red-200 rounded-lg">
+                            Trainer is unavailable for the entire day.
+                        </div>
+                    );
+                }
+
+                return (
+                    <>
+                        {slotsToDisplay.map(slotTime => {
+                            const sessionsInSlot = filteredSessions.filter((session: any) => {
+                                const sessionStart = new Date(session.session_date);
+                                const sessionEnd = addMinutes(sessionStart, 60);
+                                const slotStart = parse(slotTime, 'HH:mm', selectedDate);
+                                const slotEnd = addMinutes(slotStart, 30);
+                                return (sessionStart >= slotStart && sessionStart < slotEnd) ||
+                                       (slotStart >= sessionStart && slotStart < sessionEnd);
+                            });
+
+                            return (
+                                <div
+                                    key={slotTime}
+                                    className={cn(
+                                        "relative h-12 border-b border-gray-200",
+                                        { 'bg-blue-50': true }
+                                    )}
+                                >
+                                    <span className="absolute left-2 top-1 text-xs text-gray-500">{slotTime}</span>
+                                    {sessionsInSlot.map((session: any) => (
+                                        <Card
+                                            key={session.id}
+                                            className="absolute left-16 right-0 top-0 bottom-0 p-1 cursor-pointer hover:bg-blue-200 transition-colors flex items-center"
+                                            onClick={() => {
+                                                setSelectedSessionForModal(session);
+                                                setIsSessionDetailModalOpen(true);
+                                            }}
+                                        >
+                                            <div className="flex-1 text-xs font-medium truncate">
+                                                {session.clients?.name} - {format(new Date(session.session_date), 'p')}
+                                            </div>
+                                            <Badge className={cn(
+                                              "ml-auto h-4 px-1 text-xs",
+                                              { 'bg-green-500': session.status === 'scheduled' },
+                                              { 'bg-gray-500': session.status === 'completed' },
+                                              { 'bg-red-500': session.status === 'cancelled' || session.status === 'cancelled_late' },
+                                              { 'bg-orange-500': session.status === 'cancelled_early' }
+                                            )}>
+                                              {session.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                            </Badge>
+                                        </Card>
+                                    ))}
+                                </div>
+                            );
+                        })}
+                    </>
                 );
-              })}
+              })()}
             </div>
           )}
 
