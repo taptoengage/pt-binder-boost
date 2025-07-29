@@ -185,13 +185,13 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
   const finalAvailabilityMap = React.useMemo(() => {
     const map = new Map<string, { type: 'available' | 'unavailable' | 'override', ranges: Array<{ start: Date; end: Date }> }>();
 
-    const tempDateForParsing = new Date(); // Use a temp date for parsing times
+    const referenceDateForParsing = form.watch('session_date') || new Date(); // Use proposed session date as reference
 
     // 1. Initialize from recurring templates
     (recurringTemplates || []).forEach(template => {
       const dayName = template.day_of_week;
-      const start = parse(template.start_time, 'HH:mm', tempDateForParsing);
-      const end = parse(template.end_time, 'HH:mm', tempDateForParsing);
+      const start = parse(template.start_time, 'HH:mm', referenceDateForParsing);
+      const end = parse(template.end_time, 'HH:mm', referenceDateForParsing);
       
       if (!map.has(dayName)) {
         map.set(dayName, { type: 'available', ranges: [] });
@@ -262,7 +262,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
     });
 
     return map;
-  }, [recurringTemplates, exceptions]);
+  }, [recurringTemplates, exceptions, form.watch('session_date')]);
 
   // NEW: Check if proposed session is outside availability
   const isOutsideAvailability = React.useMemo(() => {
