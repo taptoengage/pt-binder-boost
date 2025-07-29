@@ -181,116 +181,118 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
     }
   }, [overlappingSessionsCount, isLoadingOverlaps, watchedSessionStatus, form]);
 
-  // NEW: Process availability (templates + exceptions) 
-  const finalAvailabilityMap = React.useMemo(() => {
-    const map = new Map<string, { type: 'available' | 'unavailable' | 'override', ranges: Array<{ start: Date; end: Date }> }>();
+  // Process availability ranges for the proposed date
+  const finalAvailabilityRangesForProposedDate = React.useMemo(() => {
+    const ranges: Array<{ start: Date; end: Date }> = [];
+    const proposedDate = form.watch('session_date'); // Use proposed session date for reference
+    if (!proposedDate) return ranges;
 
-    const referenceDateForParsing = form.watch('session_date') || new Date(); // Use proposed session date as reference
+    const dayKey = format(proposedDate, 'yyyy-MM-dd');
+    const dayOfWeekLowercase = format(proposedDate, 'EEEE').toLowerCase();
 
-    // 1. Initialize from recurring templates
+    // --- 1. Get Recurring Ranges for this day ---
+    let currentDayRanges: Array<{ start: Date; end: Date }> = [];
     (recurringTemplates || []).forEach(template => {
-      const dayName = template.day_of_week;
-      const start = parse(template.start_time, 'HH:mm', referenceDateForParsing);
-      const end = parse(template.end_time, 'HH:mm', referenceDateForParsing);
-      
-      if (!map.has(dayName)) {
-        map.set(dayName, { type: 'available', ranges: [] });
-      }
-      map.get(dayName)!.ranges.push({ start, end });
-    });
-
-    // 2. Apply exceptions (override recurring templates)
-    (exceptions || []).forEach(exception => {
-      const exceptionDate = new Date(exception.exception_date);
-      const dayKey = format(exceptionDate, 'yyyy-MM-dd');
-
-      if (exception.exception_type === 'unavailable_full_day') {
-        map.set(dayKey, { type: 'unavailable', ranges: [] });
-      } else if (exception.exception_type === 'unavailable_partial_day') {
-        const dayOfWeekLowercase = format(exceptionDate, 'EEEE').toLowerCase();
-        const existingRanges = map.get(dayKey)?.ranges || map.get(dayOfWeekLowercase)?.ranges || [];
-
-        const unavailableStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDate);
-        const unavailableEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDate);
-
-        const newRanges: Array<{start: Date; end: Date}> = [];
-        existingRanges.forEach(range => {
-          if (range.start < unavailableEnd && range.end > unavailableStart) {
-            // There is an overlap
-            if (range.start < unavailableStart && range.end > unavailableEnd) {
-              // Split the range
-              newRanges.push({ start: range.start, end: unavailableStart });
-              newRanges.push({ start: unavailableEnd, end: range.end });
-            } else if (range.start < unavailableEnd && range.end > unavailableEnd) {
-              // Unavailable cuts off the start
-              newRanges.push({ start: unavailableEnd, end: range.end });
-            } else if (range.start < unavailableStart && range.end > unavailableStart) {
-              // Unavailable cuts off the end
-              newRanges.push({ start: range.start, end: unavailableStart });
-            }
-            // If unavailable completely covers existing, don't add to newRanges
-          } else {
-            // No overlap, keep the existing range
-            newRanges.push(range);
-          }
-        });
-        map.set(dayKey, { type: 'override', ranges: newRanges });
-
-      } else if (exception.exception_type === 'available_extra_slot') {
-        const dayOfWeekLowercase = format(exceptionDate, 'EEEE').toLowerCase();
-        const existingRanges = map.get(dayKey)?.ranges || map.get(dayOfWeekLowercase)?.ranges || [];
-        const extraStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDate);
-        const extraEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDate);
-
-        const allRanges = [...existingRanges, { start: extraStart, end: extraEnd }];
-        allRanges.sort((a,b) => a.start.getTime() - b.start.getTime());
-        const mergedRanges: Array<{start: Date; end: Date}> = [];
-        if(allRanges.length > 0) {
-          let currentMerge = allRanges[0];
-          for(let i = 1; i < allRanges.length; i++) {
-            if (allRanges[i].start.getTime() <= currentMerge.end.getTime()) {
-              currentMerge.end = new Date(Math.max(currentMerge.end.getTime(), allRanges[i].end.getTime()));
-            } else {
-              mergedRanges.push(currentMerge);
-              currentMerge = allRanges[i];
-            }
-          }
-          mergedRanges.push(currentMerge);
+        if (template.day_of_week === dayOfWeekLowercase) {
+            const start = parse(template.start_time, 'HH:mm', proposedDate); // Use proposedDate
+            const end = parse(template.end_time, 'HH:mm', proposedDate);     // Use proposedDate
+            currentDayRanges.push({ start, end });
         }
-        map.set(dayKey, { type: 'override', ranges: mergedRanges });
-      }
     });
 
-    return map;
-  }, [recurringTemplates, exceptions, form.watch('session_date')]);
+    // Sort and merge recurring ranges
+    currentDayRanges.sort((a,b) => a.start.getTime() - b.start.getTime());
+    let mergedRecurringRanges: Array<{start: Date; end: Date}> = [];
+    if (currentDayRanges.length > 0) {
+        let lastMerged = currentDayRanges[0];
+        for (let i = 1; i < currentDayRanges.length; i++) {
+            if (currentDayRanges[i].start.getTime() <= lastMerged.end.getTime()) {
+                lastMerged.end = new Date(Math.max(lastMerged.end.getTime(), currentDayRanges[i].end.getTime()));
+            } else {
+                mergedRecurringRanges.push(lastMerged);
+                lastMerged = currentDayRanges[i];
+            }
+        }
+        mergedRecurringRanges.push(lastMerged);
+    }
+    // Start with merged recurring ranges as base for this day
+    let effectiveAvailableRanges = mergedRecurringRanges;
 
-  // NEW: Check if proposed session is outside availability
+    // --- 2. Apply Exceptions for this specific date ---
+    const exceptionsForProposedDate = (exceptions || []).filter(
+        ex => format(new Date(ex.exception_date), 'yyyy-MM-dd') === dayKey
+    );
+
+    exceptionsForProposedDate.forEach(exception => {
+        const exceptionDateRef = new Date(exception.exception_date); // Parse times relative to exception date
+
+        if (exception.exception_type === 'unavailable_full_day') {
+            effectiveAvailableRanges = []; // Full day unavailable overrides everything
+        } else if (exception.exception_type === 'unavailable_partial_day') {
+            const unavailableStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDateRef);
+            const unavailableEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDateRef);
+
+            const newRangesAfterPartialRemoval: Array<{start: Date; end: Date}> = [];
+            effectiveAvailableRanges.forEach(range => {
+                if (range.start < unavailableEnd && range.end > unavailableStart) {
+                    if (range.start < unavailableStart) {
+                        newRangesAfterPartialRemoval.push({ start: range.start, end: unavailableStart });
+                    }
+                    if (range.end > unavailableEnd) {
+                        newRangesAfterPartialRemoval.push({ start: unavailableEnd, end: range.end });
+                    }
+                } else {
+                    newRangesAfterPartialRemoval.push(range);
+                }
+            });
+            effectiveAvailableRanges = newRangesAfterPartialRemoval;
+
+        } else if (exception.exception_type === 'available_extra_slot') {
+            const extraStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDateRef);
+            const extraEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDateRef);
+
+            effectiveAvailableRanges.push({ start: extraStart, end: extraEnd });
+
+            effectiveAvailableRanges.sort((a,b) => a.start.getTime() - b.start.getTime());
+            const tempMerged: Array<{start: Date; end: Date}> = [];
+            if(effectiveAvailableRanges.length > 0) {
+                let lastTempMerged = effectiveAvailableRanges[0];
+                for(let i = 1; i < effectiveAvailableRanges.length; i++) {
+                    if (effectiveAvailableRanges[i].start.getTime() <= lastTempMerged.end.getTime()) {
+                        lastTempMerged.end = new Date(Math.max(lastTempMerged.end.getTime(), effectiveAvailableRanges[i].end.getTime()));
+                    } else {
+                        tempMerged.push(lastTempMerged);
+                        lastTempMerged = effectiveAvailableRanges[i];
+                    }
+                }
+                tempMerged.push(lastTempMerged);
+            }
+            effectiveAvailableRanges = tempMerged;
+        }
+    });
+
+    return effectiveAvailableRanges;
+  }, [form.watch('session_date'), recurringTemplates, exceptions]);
+
+  // Check if proposed session is outside availability
   const isOutsideAvailability = React.useMemo(() => {
     const proposedDate = form.watch('session_date');
     const proposedTime = form.watch('session_time');
     const proposedStatus = form.watch('status');
 
     if (!proposedDate || !proposedTime || proposedStatus !== 'scheduled') {
-      return false;
+        return false;
     }
     const proposedSessionStart = parse(proposedTime, 'HH:mm', proposedDate);
     const proposedSessionEnd = addMinutes(proposedSessionStart, DEFAULT_SESSION_DURATION_MINUTES);
 
-    const dayKey = format(proposedDate, 'yyyy-MM-dd');
-    const dayOfWeekLowercase = format(proposedDate, 'EEEE').toLowerCase();
-
-    const availabilityForThisDay = finalAvailabilityMap.get(dayKey) || finalAvailabilityMap.get(dayOfWeekLowercase);
-
-    if (!availabilityForThisDay || availabilityForThisDay.type === 'unavailable') {
-      return true;
-    }
-
-    const fallsWithinAvailableBlock = availabilityForThisDay.ranges.some(block =>
+    // Check if session falls within any of the final available ranges for this day
+    const fallsWithinAvailableBlock = finalAvailabilityRangesForProposedDate.some(block =>
       proposedSessionStart >= block.start && proposedSessionEnd <= block.end
     );
 
     return !fallsWithinAvailableBlock;
-  }, [form.watch('session_date'), form.watch('session_time'), form.watch('status'), finalAvailabilityMap]);
+  }, [form.watch('session_date'), form.watch('session_time'), form.watch('status'), finalAvailabilityRangesForProposedDate]);
 
   // Helper to proceed with save (called by onSubmit and handleConfirmOverride)
   const proceedWithSave = async (data: EditSessionFormData) => {
