@@ -24,6 +24,98 @@ const generateDayTimeSlots = () => {
 };
 const allDayTimeSlots = generateDayTimeSlots();
 
+// Helper function to get effective availability for a specific day
+const getEffectiveDayAvailabilityRanges = (
+  day: Date,
+  recurringTemplates: any[],
+  exceptions: any[]
+) => {
+  const dayKey = format(day, 'yyyy-MM-dd');
+  const dayOfWeekLowercase = format(day, 'EEEE').toLowerCase();
+
+  // 1. Get Recurring Ranges for this day
+  let currentDayRanges: Array<{ start: Date; end: Date }> = (recurringTemplates || [])
+    .filter(template => template.day_of_week === dayOfWeekLowercase)
+    .map(block => ({
+      start: parse(block.start_time, 'HH:mm', day),
+      end: parse(block.end_time, 'HH:mm', day),
+    }));
+
+  // Sort and merge recurring ranges for this day
+  currentDayRanges.sort((a, b) => a.start.getTime() - b.start.getTime());
+  let mergedRecurringRanges: Array<{ start: Date; end: Date }> = [];
+  if (currentDayRanges.length > 0) {
+    let lastMerged = currentDayRanges[0];
+    for (let i = 1; i < currentDayRanges.length; i++) {
+      if (currentDayRanges[i].start.getTime() <= lastMerged.end.getTime()) {
+        lastMerged.end = new Date(Math.max(lastMerged.end.getTime(), currentDayRanges[i].end.getTime()));
+      } else {
+        mergedRecurringRanges.push(lastMerged);
+        lastMerged = currentDayRanges[i];
+      }
+    }
+    mergedRecurringRanges.push(lastMerged);
+  }
+  // Start with merged recurring ranges as base for this day
+  let effectiveAvailableRanges = mergedRecurringRanges;
+
+  // 2. Apply Exceptions for this specific date
+  const exceptionsForThisDay = (exceptions || []).filter(
+    ex => format(new Date(ex.exception_date), 'yyyy-MM-dd') === dayKey
+  );
+
+  exceptionsForThisDay.forEach(exception => {
+    const exceptionDateRef = new Date(exception.exception_date);
+
+    if (exception.exception_type === 'unavailable_full_day') {
+      effectiveAvailableRanges = [];
+    } else if (exception.exception_type === 'unavailable_partial_day') {
+      const unavailableStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDateRef);
+      const unavailableEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDateRef);
+
+      const newRangesAfterPartialRemoval: Array<{ start: Date; end: Date }> = [];
+      effectiveAvailableRanges.forEach(range => {
+        if (range.start < unavailableEnd && range.end > unavailableStart) {
+          if (range.start < unavailableStart) {
+            newRangesAfterPartialRemoval.push({ start: range.start, end: unavailableStart });
+          }
+          if (range.end > unavailableEnd) {
+            newRangesAfterPartialRemoval.push({ start: unavailableEnd, end: range.end });
+          }
+        } else {
+          newRangesAfterPartialRemoval.push(range);
+        }
+      });
+      effectiveAvailableRanges = newRangesAfterPartialRemoval;
+
+    } else if (exception.exception_type === 'available_extra_slot') {
+      const extraStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDateRef);
+      const extraEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDateRef);
+
+      effectiveAvailableRanges.push({ start: extraStart, end: extraEnd });
+
+      // Re-merge after adding extra slot
+      effectiveAvailableRanges.sort((a, b) => a.start.getTime() - b.start.getTime());
+      const tempMerged: Array<{ start: Date; end: Date }> = [];
+      if (effectiveAvailableRanges.length > 0) {
+        let lastTempMerged = effectiveAvailableRanges[0];
+        for (let i = 1; i < effectiveAvailableRanges.length; i++) {
+          if (effectiveAvailableRanges[i].start.getTime() <= lastTempMerged.end.getTime()) {
+            lastTempMerged.end = new Date(Math.max(lastTempMerged.end.getTime(), effectiveAvailableRanges[i].end.getTime()));
+          } else {
+            tempMerged.push(lastTempMerged);
+            lastTempMerged = effectiveAvailableRanges[i];
+          }
+        }
+        tempMerged.push(lastTempMerged);
+      }
+      effectiveAvailableRanges = tempMerged;
+    }
+  });
+
+  return effectiveAvailableRanges;
+};
+
 export default function ViewSchedule() {
   const { user } = useAuth();
   const [currentView, setCurrentView] = useState<'day' | 'week' | 'month'>('week');
@@ -103,102 +195,6 @@ export default function ViewSchedule() {
     staleTime: 60 * 1000, // Cache for 1 minute
   });
 
-  // Process recurring templates into a map for easy lookup
-  const processedAvailability = useMemo(() => {
-    const availabilityMap: { [key: string]: Array<{ start: string; end: string }> } = {};
-    recurringTemplates?.forEach(template => {
-      const day = template.day_of_week;
-      if (!availabilityMap[day]) {
-        availabilityMap[day] = [];
-      }
-      availabilityMap[day].push({ start: template.start_time, end: template.end_time });
-    });
-    return availabilityMap;
-  }, [recurringTemplates]);
-
-  // Combine recurring templates and exceptions into a final availability map
-  const finalAvailabilityMap = useMemo(() => {
-    const map = new Map<string, { type: 'available' | 'unavailable' | 'override', ranges: Array<{ start: Date; end: Date }> }>();
-
-    const currentYear = selectedDate.getFullYear();
-    const currentMonth = selectedDate.getMonth();
-    const currentDay = selectedDate.getDate();
-
-    // 1. Initialize from recurring templates
-    Object.keys(processedAvailability).forEach(dayName => {
-      const recurringRanges = processedAvailability[dayName].map(block => {
-        const start = parse(block.start, 'HH:mm', new Date(currentYear, currentMonth, currentDay));
-        const end = parse(block.end, 'HH:mm', new Date(currentYear, currentMonth, currentDay));
-        return { start, end };
-      });
-      map.set(dayName, { type: 'available', ranges: recurringRanges });
-    });
-
-    // 2. Apply exceptions (override recurring templates)
-    exceptions?.forEach(exception => {
-      const exceptionDate = new Date(exception.exception_date);
-      const dayKey = format(exceptionDate, 'yyyy-MM-dd');
-
-      if (exception.exception_type === 'unavailable_full_day') {
-        map.set(dayKey, { type: 'unavailable', ranges: [] });
-      } else if (exception.exception_type === 'unavailable_partial_day') {
-        const dayOfWeekLowercase = format(exceptionDate, 'EEEE').toLowerCase();
-        const existingRanges = map.get(dayOfWeekLowercase)?.ranges || [];
-        const unavailableStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDate);
-        const unavailableEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDate);
-
-        // Filter out parts of existing ranges that overlap with the unavailable period
-        const newRanges: Array<{start: Date; end: Date}> = [];
-        existingRanges.forEach(range => {
-          if (range.start < unavailableEnd && range.end > unavailableStart) {
-            // Case 1: Existing range completely covers unavailable part - split it
-            if (range.start < unavailableStart && range.end > unavailableEnd) {
-              newRanges.push({ start: range.start, end: unavailableStart });
-              newRanges.push({ start: unavailableEnd, end: range.end });
-            }
-            // Case 2: Unavailable cuts off the start of existing range
-            else if (range.start < unavailableEnd && range.end > unavailableEnd) {
-              newRanges.push({ start: unavailableEnd, end: range.end });
-            }
-            // Case 3: Unavailable cuts off the end of existing range
-            else if (range.start < unavailableStart && range.end > unavailableStart) {
-              newRanges.push({ start: range.start, end: unavailableStart });
-            }
-            // Case 4: Unavailable completely covers existing range - do nothing
-          } else {
-            newRanges.push(range);
-          }
-        });
-        map.set(dayKey, { type: 'override', ranges: newRanges });
-
-      } else if (exception.exception_type === 'available_extra_slot') {
-        const dayOfWeekLowercase = format(exceptionDate, 'EEEE').toLowerCase();
-        const existingRanges = map.get(dayOfWeekLowercase)?.ranges || [];
-        const extraStart = parse(exception.start_time || '00:00', 'HH:mm', exceptionDate);
-        const extraEnd = parse(exception.end_time || '23:59', 'HH:mm', exceptionDate);
-
-        // Add the extra slot, merge with existing if they overlap/touch
-        const allRanges = [...existingRanges, { start: extraStart, end: extraEnd }];
-        allRanges.sort((a, b) => a.start.getTime() - b.start.getTime());
-        const mergedRanges: Array<{start: Date; end: Date}> = [];
-        if (allRanges.length > 0) {
-          let currentMerge = allRanges[0];
-          for (let i = 1; i < allRanges.length; i++) {
-            if (allRanges[i].start <= currentMerge.end) {
-              currentMerge.end = new Date(Math.max(currentMerge.end.getTime(), allRanges[i].end.getTime()));
-            } else {
-              mergedRanges.push(currentMerge);
-              currentMerge = allRanges[i];
-            }
-          }
-          mergedRanges.push(currentMerge);
-        }
-        map.set(dayKey, { type: 'override', ranges: mergedRanges });
-      }
-    });
-
-    return map;
-  }, [processedAvailability, exceptions, selectedDate]);
 
   // Calculate period start and end dates based on currentView and selectedDate
   const { periodStart, periodEnd, formattedPeriod } = useMemo(() => {
@@ -337,18 +333,23 @@ export default function ViewSchedule() {
           {currentView === 'day' && (
             <div className="space-y-px">
               {allDayTimeSlots.map(slotTime => {
-                const currentDay = format(selectedDate, 'yyyy-MM-dd');
-                const dayOfWeekLowercase = format(selectedDate, 'EEEE').toLowerCase();
+                // Get effective availability ranges for the selected day
+                const effectiveAvailableRanges = getEffectiveDayAvailabilityRanges(
+                  selectedDate,
+                  recurringTemplates || [],
+                  exceptions || []
+                );
 
-                // Get availability for this exact day (checking for exceptions first)
-                const availabilityForThisDay = finalAvailabilityMap.get(currentDay) || finalAvailabilityMap.get(dayOfWeekLowercase);
-                const isFullDayUnavailable = availabilityForThisDay?.type === 'unavailable' && availabilityForThisDay.ranges.length === 0;
-                const availableRanges = availabilityForThisDay?.ranges || [];
+                // Check if it's a full day unavailable exception
+                const isFullDayUnavailable = (exceptions || []).some(ex =>
+                  format(new Date(ex.exception_date), 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') &&
+                  ex.exception_type === 'unavailable_full_day'
+                );
 
                 // Determine if this specific slot is available
                 const slotStart = parse(slotTime, 'HH:mm', selectedDate);
                 const slotEnd = addMinutes(slotStart, 30);
-                const isSlotAvailable = !isFullDayUnavailable && availableRanges.some(block =>
+                const isSlotAvailable = !isFullDayUnavailable && effectiveAvailableRanges.some(block =>
                   isWithinInterval(slotStart, { start: block.start, end: block.end }) &&
                   (isBefore(slotEnd, block.end) || slotEnd.getTime() === block.end.getTime())
                 );
@@ -412,83 +413,98 @@ export default function ViewSchedule() {
                 </div>
               ))}
 
-              {/* Week days with time slots */}
+              {/* Week days with FILTERED time slots */}
               {eachDayOfInterval({ start: periodStart, end: periodEnd }).map(day => {
                 const dateKey = format(day, 'yyyy-MM-dd');
-                const dayOfWeekLowercase = format(day, 'EEEE').toLowerCase();
                 const sessionsForDay = groupedSessionsByDay[dateKey] || [];
                 const isCurrentDay = isSameDay(day, new Date());
                 const isWeekend = day.getDay() === 0 || day.getDay() === 6;
 
+                // Get effective available ranges for THIS specific day in the week
+                const effectiveAvailableRangesForDay = getEffectiveDayAvailabilityRanges(
+                  day,
+                  recurringTemplates || [],
+                  exceptions || []
+                );
+
+                // Determine if it's a full day unavailable exception
+                const isFullDayUnavailable = (exceptions || []).some(ex =>
+                  format(new Date(ex.exception_date), 'yyyy-MM-dd') === dateKey &&
+                  ex.exception_type === 'unavailable_full_day'
+                );
+
+                // Generate 30-minute slots ONLY within the effective available ranges
+                const slotsToDisplay = effectiveAvailableRangesForDay.flatMap(range => {
+                  const rangeSlots = [];
+                  let currentSlotTime = range.start;
+                  // Generate slots as long as they are within the available block
+                  while (isBefore(currentSlotTime, range.end)) {
+                    rangeSlots.push(format(currentSlotTime, 'HH:mm'));
+                    currentSlotTime = addMinutes(currentSlotTime, 30);
+                  }
+                  return rangeSlots;
+                });
+
                 return (
                   <div key={dateKey} className={cn(
                     "bg-white border-b border-r last:border-r-0 sm:border-r-0 sm:border-b-0",
-                    { 'text-gray-400 bg-gray-50': isWeekend && !isCurrentDay },
+                    { 'bg-red-100 border-red-200': isFullDayUnavailable },
+                    { 'text-gray-400 bg-gray-50': isWeekend && !isCurrentDay && !isFullDayUnavailable },
                     { 'bg-blue-50 border-blue-200': isCurrentDay }
                   )}>
                     <h3 className="text-sm font-semibold text-center py-2">
                       {format(day, 'EEE dd')}
                     </h3>
                     <div className="space-y-px h-[calc(100%-30px)] overflow-y-auto">
-                      {allDayTimeSlots.map(slotTime => {
-                        // Get availability for this exact day (checking for exceptions first)
-                        const availabilityForThisDay = finalAvailabilityMap.get(dateKey) || finalAvailabilityMap.get(dayOfWeekLowercase);
-                        const isFullDayUnavailable = availabilityForThisDay?.type === 'unavailable' && availabilityForThisDay.ranges.length === 0;
-                        const availableRanges = availabilityForThisDay?.ranges || [];
+                      {slotsToDisplay.length > 0 ? (
+                        slotsToDisplay.map(slotTime => {
+                          const sessionsInSlot = sessionsForDay.filter((session: any) => {
+                            const sessionStart = new Date(session.session_date);
+                            const sessionEnd = addMinutes(sessionStart, 60);
+                            const slotStart = parse(slotTime, 'HH:mm', day);
+                            const slotEnd = addMinutes(slotStart, 30);
+                            return (sessionStart >= slotStart && sessionStart < slotEnd) ||
+                                   (slotStart >= sessionStart && slotStart < sessionEnd);
+                          });
 
-                        // Determine if this specific slot is available
-                        const slotStart = parse(slotTime, 'HH:mm', day);
-                        const slotEnd = addMinutes(slotStart, 30);
-                        const isSlotAvailable = !isFullDayUnavailable && availableRanges.some(block =>
-                          isWithinInterval(slotStart, { start: block.start, end: block.end }) &&
-                          (isBefore(slotEnd, block.end) || slotEnd.getTime() === block.end.getTime())
-                        );
-
-                        const sessionsInSlot = sessionsForDay.filter((session: any) => {
-                          const sessionStart = new Date(session.session_date);
-                          const sessionEnd = addMinutes(sessionStart, 60);
-                          const slotStart = parse(slotTime, 'HH:mm', day);
-                          const slotEnd = addMinutes(slotStart, 30);
-                          return (sessionStart >= slotStart && sessionStart < slotEnd) ||
-                                 (slotStart >= sessionStart && slotStart < sessionEnd);
-                        });
-
-                        return (
-                          <div
-                            key={slotTime}
-                            className={cn(
-                              "relative h-8 border-b border-gray-100 last:border-b-0",
-                              { 'bg-gray-50': !isSlotAvailable && !isWeekend && !isFullDayUnavailable },
-                              { 'bg-red-100 border-red-200': isFullDayUnavailable },
-                              { 'bg-blue-50': isSlotAvailable && !isWeekend },
-                              { 'bg-gray-100': isWeekend && !isSlotAvailable && !isFullDayUnavailable },
-                              { 'bg-blue-100': isWeekend && isSlotAvailable }
-                            )}
-                          >
-                            <span className="absolute left-1 top-0 text-[8px] text-gray-400">{slotTime}</span>
-                            {sessionsInSlot.map((session: any) => (
-                              <div
-                                key={session.id}
-                                className="absolute left-8 right-0 top-0 bottom-0 p-0.5 bg-blue-200 rounded-sm hover:bg-blue-300 cursor-pointer flex items-center justify-between"
-                                onClick={() => {
-                                  setSelectedSessionForModal(session);
-                                  setIsSessionDetailModalOpen(true);
-                                }}
-                              >
-                                <span className="text-[10px] font-medium truncate">{session.clients?.name}</span>
-                                <Badge className={cn(
-                                  "ml-auto h-3 px-1 text-[8px]",
-                                  { 'bg-green-500': session.status === 'scheduled' },
-                                  { 'bg-gray-500': session.status === 'completed' },
-                                  { 'bg-red-500': session.status.startsWith('cancelled') }
-                                )}>
-                                  {session.status.replace(/_/g, ' ').charAt(0).toUpperCase()}
-                                </Badge>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })}
+                          return (
+                            <div
+                              key={slotTime}
+                              className={cn(
+                                "relative h-8 border-b border-gray-100 last:border-b-0",
+                                { 'bg-blue-50': !isWeekend },
+                                { 'bg-blue-100': isWeekend }
+                              )}
+                            >
+                              <span className="absolute left-1 top-0 text-[8px] text-gray-400">{slotTime}</span>
+                              {sessionsInSlot.map((session: any) => (
+                                <div
+                                  key={session.id}
+                                  className="absolute left-8 right-0 top-0 bottom-0 p-0.5 bg-blue-200 rounded-sm hover:bg-blue-300 cursor-pointer flex items-center justify-between"
+                                  onClick={() => {
+                                    setSelectedSessionForModal(session);
+                                    setIsSessionDetailModalOpen(true);
+                                  }}
+                                >
+                                  <span className="text-[10px] font-medium truncate">{session.clients?.name}</span>
+                                  <Badge className={cn(
+                                    "ml-auto h-3 px-1 text-[8px]",
+                                    { 'bg-green-500': session.status === 'scheduled' },
+                                    { 'bg-gray-500': session.status === 'completed' },
+                                    { 'bg-red-500': session.status.startsWith('cancelled') }
+                                  )}>
+                                    {session.status.replace(/_/g, ' ').charAt(0).toUpperCase()}
+                                  </Badge>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="text-center py-2 text-gray-400 text-xs">
+                          {isFullDayUnavailable ? 'Unavailable' : 'No availability set'}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
