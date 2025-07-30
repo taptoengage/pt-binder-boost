@@ -99,7 +99,7 @@ export default function EditPayment() {
       const { data, error } = await supabase
         .from('payments')
         .select(`
-          *, 
+          *,
           clients(name), 
           service_types(name)
         `)
