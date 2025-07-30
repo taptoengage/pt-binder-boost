@@ -87,8 +87,8 @@ export default function RecordPayment() {
   // NEW: States for fetching active packs/subscriptions
   const [activeSessionPacks, setActiveSessionPacks] = useState<any[]>([]);
   const [activeClientSubscriptions, setActiveClientSubscriptions] = useState<any[]>([]);
-  const [isLoadingPacks, setIsLoadingPacks] = useState(false);
-  const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(false);
+  const [isLoadingPacks, setIsLoadingPacks] = useState(true);
+  const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(true);
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
