@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { CalendarIcon, ArrowLeft } from 'lucide-react';
+import { CalendarIcon, ArrowLeft, Loader2 } from 'lucide-react';
 import { DashboardNavigation } from '@/components/Navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,10 +17,11 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { useQueryClient } from '@tanstack/react-query';
 
 const paymentSchema = z.object({
   client_id: z.string().uuid('Please select a client'),
-  service_type_id: z.string().uuid('Please select a core service type'),
+  service_type_id: z.string().optional(),
   amount: z.number().min(0.01, 'Amount must be greater than 0'),
   due_date: z.date({
     message: 'Due date is required',
@@ -29,6 +30,34 @@ const paymentSchema = z.object({
   status: z.enum(['paid', 'due', 'overdue'], {
     message: 'Please select a status',
   }),
+  // NEW: Payment For fields
+  paymentForType: z.enum(['oneOff', 'pack', 'subscription'], { 
+    message: 'Payment type is required.' 
+  }),
+  packId: z.string().optional().nullable(),
+  subscriptionId: z.string().optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (data.paymentForType === 'oneOff' && !data.service_type_id) {
+    ctx.addIssue({ 
+      code: z.ZodIssueCode.custom, 
+      message: 'Service type is required for one-off payment.', 
+      path: ['service_type_id'] 
+    });
+  }
+  if (data.paymentForType === 'pack' && !data.packId) {
+    ctx.addIssue({ 
+      code: z.ZodIssueCode.custom, 
+      message: 'Pack is required for pack payment.', 
+      path: ['packId'] 
+    });
+  }
+  if (data.paymentForType === 'subscription' && !data.subscriptionId) {
+    ctx.addIssue({ 
+      code: z.ZodIssueCode.custom, 
+      message: 'Subscription is required for subscription payment.', 
+      path: ['subscriptionId'] 
+    });
+  }
 });
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
@@ -47,12 +76,19 @@ export default function RecordPayment() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const initialClientId = searchParams.get('clientId');
   const [clients, setClients] = useState<Client[]>([]);
   const [coreServiceTypes, setCoreServiceTypes] = useState<ServiceType[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
   const [loadingCoreServiceTypes, setLoadingCoreServiceTypes] = useState(true);
+  
+  // NEW: States for fetching active packs/subscriptions
+  const [activeSessionPacks, setActiveSessionPacks] = useState<any[]>([]);
+  const [activeClientSubscriptions, setActiveClientSubscriptions] = useState<any[]>([]);
+  const [isLoadingPacks, setIsLoadingPacks] = useState(false);
+  const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(false);
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
@@ -60,12 +96,20 @@ export default function RecordPayment() {
       client_id: initialClientId || '',
       amount: 0,
       status: 'due',
+      paymentForType: 'oneOff', // NEW: Default to one-off
+      packId: null,
+      subscriptionId: null,
+      service_type_id: '',
     },
   });
 
   const { watch, setValue } = form;
   const datePaid = watch('date_paid');
   const dueDate = watch('due_date');
+  
+  // NEW: Watch client_id and paymentForType for fetching related data
+  const watchedClientId = watch('client_id');
+  const watchedPaymentForType = watch('paymentForType');
 
   // Auto-update status based on date_paid
   useEffect(() => {
@@ -145,6 +189,80 @@ export default function RecordPayment() {
     }
   }, [initialClientId, clients, form]);
 
+  // NEW: Fetch active packs for selected client
+  useEffect(() => {
+    const fetchActivePacks = async () => {
+      if (!watchedClientId || !user?.id) {
+        setActiveSessionPacks([]);
+        setIsLoadingPacks(false);
+        return;
+      }
+      try {
+        setIsLoadingPacks(true);
+        const { data, error } = await supabase
+          .from('session_packs')
+          .select(`id, service_type_id, service_types(name), sessions_remaining`)
+          .eq('client_id', watchedClientId)
+          .eq('trainer_id', user.id)
+          .eq('status', 'active')
+          .gt('sessions_remaining', 0); // Only active packs with remaining sessions
+
+        if (error) throw error;
+        setActiveSessionPacks(data || []);
+      } catch (error) {
+        console.error("Error fetching active packs for payment form:", error);
+        toast({ 
+          title: "Error", 
+          description: "Failed to load client packs.", 
+          variant: "destructive" 
+        });
+      } finally {
+        setIsLoadingPacks(false);
+      }
+    };
+    fetchActivePacks();
+  }, [watchedClientId, user?.id, toast]);
+
+  // NEW: Fetch active subscriptions for selected client
+  useEffect(() => {
+    const fetchActiveSubscriptions = async () => {
+      if (!watchedClientId || !user?.id) {
+        setActiveClientSubscriptions([]);
+        setIsLoadingSubscriptions(false);
+        return;
+      }
+      try {
+        setIsLoadingSubscriptions(true);
+        const { data, error } = await supabase
+          .from('client_subscriptions')
+          .select(`id, billing_cycle, start_date, subscription_service_allocations(service_type_id, service_types(name))`)
+          .eq('client_id', watchedClientId)
+          .eq('trainer_id', user.id)
+          .in('status', ['active', 'paused']); // Only active/paused subscriptions
+
+        if (error) throw error;
+        setActiveClientSubscriptions(data || []);
+      } catch (error) {
+        console.error("Error fetching active subscriptions for payment form:", error);
+        toast({ 
+          title: "Error", 
+          description: "Failed to load client subscriptions.", 
+          variant: "destructive" 
+        });
+      } finally {
+        setIsLoadingSubscriptions(false);
+      }
+    };
+    fetchActiveSubscriptions();
+  }, [watchedClientId, user?.id, toast]);
+
+  // Reset pack/subscription/serviceType fields when paymentForType or client changes
+  useEffect(() => {
+    form.setValue('packId', null);
+    form.setValue('subscriptionId', null);
+    form.setValue('service_type_id', ''); // Reset service type as well
+  }, [watchedPaymentForType, watchedClientId, form]);
+
   const onSubmit = async (data: PaymentFormData) => {
     if (!user?.id) {
       toast({
@@ -166,20 +284,47 @@ export default function RecordPayment() {
         finalStatus = 'due';
       }
 
-      // Insert payment - directly using service_type_id from core service types
-      const { error: paymentError } = await supabase
-        .from('payments')
-        .insert({
-          trainer_id: user.id,
-          client_id: data.client_id,
-          service_type_id: data.service_type_id, // Now links directly to public.service_types.id
-          amount: data.amount,
-          due_date: data.due_date.toISOString().split('T')[0], // Format as YYYY-MM-DD
-          date_paid: data.date_paid ? data.date_paid.toISOString().split('T')[0] : null,
-          status: finalStatus,
-        });
+      // Determine service_type_id based on payment type selected
+      let finalServiceTypeId = data.service_type_id; // Default for one-off
 
-      if (paymentError) throw paymentError;
+      if (data.paymentForType === 'pack' && data.packId) {
+        const selectedPack = activeSessionPacks.find(p => p.id === data.packId);
+        if (selectedPack) finalServiceTypeId = selectedPack.service_type_id;
+      } else if (data.paymentForType === 'subscription' && data.subscriptionId) {
+        // Find any service type linked to this subscription for payment record
+        const selectedSub = activeClientSubscriptions.find(s => s.id === data.subscriptionId);
+        if (selectedSub && selectedSub.subscription_service_allocations?.length > 0) {
+            finalServiceTypeId = selectedSub.subscription_service_allocations[0].service_type_id;
+        }
+      }
+
+      if (!finalServiceTypeId) {
+        toast({ 
+          title: "Validation Error", 
+          description: "Could not determine service type for payment.", 
+          variant: "destructive" 
+        });
+        return;
+      }
+
+      const payload = {
+        trainer_id: user.id,
+        client_id: data.client_id,
+        amount: data.amount,
+        due_date: data.due_date.toISOString().split('T')[0],
+        date_paid: data.date_paid ? data.date_paid.toISOString().split('T')[0] : null,
+        status: finalStatus,
+        service_type_id: finalServiceTypeId,
+        // NEW: Include origin IDs
+        session_pack_id: data.paymentForType === 'pack' ? data.packId : null,
+        client_subscription_id: data.paymentForType === 'subscription' ? data.subscriptionId : null,
+      };
+
+      const { error } = await supabase
+        .from('payments')
+        .insert([payload]);
+
+      if (error) throw error;
 
       toast({
         title: 'Success',
@@ -187,6 +332,13 @@ export default function RecordPayment() {
       });
 
       form.reset();
+      navigate(`/clients/${data.client_id}`);
+      
+      // Invalidate relevant queries to ensure UI updates across app
+      queryClient.invalidateQueries({ queryKey: ['trainerPayments', user.id] });
+      queryClient.invalidateQueries({ queryKey: ['clientPayments', watchedClientId] });
+      queryClient.invalidateQueries({ queryKey: ['sessionPacks'] });
+      queryClient.invalidateQueries({ queryKey: ['activeClientSubscriptions'] });
     } catch (error: any) {
       console.error('Error recording payment:', error);
       toast({
@@ -229,55 +381,147 @@ export default function RecordPayment() {
           <CardContent>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Client Selection */}
+                {/* Client Selection */}
+                <FormField
+                  control={form.control}
+                  name="client_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Client</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger disabled={!!initialClientId}>
+                            <SelectValue placeholder={loadingClients ? "Loading clients..." : "Select a client"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {clients.length === 0 && !loadingClients && (
+                            <SelectItem value="no-clients" disabled>
+                              No clients found
+                            </SelectItem>
+                          )}
+                          {clients.map((client) => (
+                            <SelectItem key={client.id} value={client.id}>
+                              {client.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* NEW: Payment For Type Select */}
+                <FormField
+                  control={form.control}
+                  name="paymentForType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment For</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select payment type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="oneOff">One-Off Service</SelectItem>
+                          <SelectItem value="pack">Session Pack</SelectItem>
+                          <SelectItem value="subscription">Subscription</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Conditional Pack Select */}
+                {watchedPaymentForType === 'pack' && (
                   <FormField
                     control={form.control}
-                    name="client_id"
+                    name="packId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Client</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <FormLabel>Select Pack</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ''} disabled={!watchedClientId}>
                           <FormControl>
-                            <SelectTrigger disabled={!!initialClientId}>
-                              <SelectValue placeholder={loadingClients ? "Loading clients..." : "Select a client"} />
+                            <SelectTrigger>
+                              <SelectValue placeholder={isLoadingPacks ? "Loading packs..." : "Select an active pack"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {clients.length === 0 && !loadingClients && (
-                              <SelectItem value="no-clients" disabled>
-                                No clients found
-                              </SelectItem>
+                            {isLoadingPacks ? (
+                              <SelectItem value="loading" disabled>Loading packs...</SelectItem>
+                            ) : activeSessionPacks.length === 0 ? (
+                              <SelectItem value="no-packs" disabled>No active packs found</SelectItem>
+                            ) : (
+                              activeSessionPacks.map(pack => (
+                                <SelectItem key={pack.id} value={pack.id}>
+                                  {pack.service_types?.name} ({pack.sessions_remaining} remaining)
+                                </SelectItem>
+                              ))
                             )}
-                            {clients.map((client) => (
-                              <SelectItem key={client.id} value={client.id}>
-                                {client.name}
-                              </SelectItem>
-                            ))}
                           </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                )}
 
-                  {/* Service Type Selection */}
+                {/* Conditional Subscription Select */}
+                {watchedPaymentForType === 'subscription' && (
+                  <FormField
+                    control={form.control}
+                    name="subscriptionId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Select Subscription</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ''} disabled={!watchedClientId}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={isLoadingSubscriptions ? "Loading subscriptions..." : "Select an active subscription"} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {isLoadingSubscriptions ? (
+                              <SelectItem value="loading" disabled>Loading subscriptions...</SelectItem>
+                            ) : activeClientSubscriptions.length === 0 ? (
+                              <SelectItem value="no-subs" disabled>No active subscriptions found</SelectItem>
+                            ) : (
+                              activeClientSubscriptions.map(sub => (
+                                <SelectItem key={sub.id} value={sub.id}>
+                                  {`${sub.billing_cycle.charAt(0).toUpperCase() + sub.billing_cycle.slice(1)} (${format(new Date(sub.start_date), 'MMM yy')})`}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {/* Service Type (only for One-Off) */}
+                {watchedPaymentForType === 'oneOff' && (
                   <FormField
                     control={form.control}
                     name="service_type_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Core Service Type</FormLabel>
+                        <FormLabel>Service Type</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={loadingCoreServiceTypes ? "Loading core service types..." : "Select a core service type"} />
+                              <SelectValue placeholder={loadingCoreServiceTypes ? "Loading service types..." : "Select a service type"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
                             {coreServiceTypes.length === 0 && !loadingCoreServiceTypes && (
                               <SelectItem value="no-service-types" disabled>
-                                No core service types found
+                                No service types found
                               </SelectItem>
                             )}
                             {coreServiceTypes.map((serviceType) => (
@@ -291,6 +535,9 @@ export default function RecordPayment() {
                       </FormItem>
                     )}
                   />
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                   {/* Amount */}
                   <FormField
@@ -433,7 +680,14 @@ export default function RecordPayment() {
                     disabled={form.formState.isSubmitting}
                     className="w-full md:w-auto"
                   >
-                    {form.formState.isSubmitting ? 'Recording...' : 'Record Payment'}
+                    {form.formState.isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        Recording...
+                      </>
+                    ) : (
+                      'Record Payment'
+                    )}
                   </Button>
                 </div>
               </form>
