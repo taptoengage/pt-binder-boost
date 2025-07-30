@@ -23,6 +23,9 @@ interface Transaction {
   client_name: string;
   service_type_name: string;
   created_at: string;
+  session_pack_id?: string | null;
+  client_subscription_id?: string | null;
+  payment_type?: 'one-off' | 'pack' | 'subscription';
 }
 
 interface Client {
@@ -138,6 +141,7 @@ export default function FinanceDashboard() {
   const [clientSearch, setClientSearch] = useState('');
   const [selectedServiceType, setSelectedServiceType] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedPaymentType, setSelectedPaymentType] = useState('all');
 
   // Fetch clients and service types for filters
   useEffect(() => {
@@ -195,6 +199,8 @@ export default function FinanceDashboard() {
             date_paid,
             status,
             created_at,
+            session_pack_id,
+            client_subscription_id,
             clients!inner(name),
             service_types!inner(name)
           `)
@@ -251,19 +257,36 @@ export default function FinanceDashboard() {
 
         if (transactionsError) throw transactionsError;
 
-        // Transform data
-        const transformedTransactions = transactionsData?.map((payment: any) => ({
-          id: payment.id,
-          amount: payment.amount,
-          due_date: payment.due_date,
-          date_paid: payment.date_paid,
-          status: payment.status,
-          created_at: payment.created_at,
-          client_name: payment.clients.name,
-          service_type_name: payment.service_types.name,
-        })) || [];
+        // Transform data and classify payment type
+        const transformedTransactions = transactionsData?.map((payment: any) => {
+          let paymentType: 'one-off' | 'pack' | 'subscription' = 'one-off';
+          if (payment.session_pack_id) {
+            paymentType = 'pack';
+          } else if (payment.client_subscription_id) {
+            paymentType = 'subscription';
+          }
+          
+          return {
+            id: payment.id,
+            amount: payment.amount,
+            due_date: payment.due_date,
+            date_paid: payment.date_paid,
+            status: payment.status,
+            created_at: payment.created_at,
+            client_name: payment.clients.name,
+            service_type_name: payment.service_types.name,
+            session_pack_id: payment.session_pack_id,
+            client_subscription_id: payment.client_subscription_id,
+            payment_type: paymentType,
+          };
+        }) || [];
 
-        setTransactions(transformedTransactions);
+        // Filter by selectedPaymentType after fetching and transforming
+        const filteredByPaymentType = selectedPaymentType === 'all'
+          ? transformedTransactions
+          : transformedTransactions.filter(t => t.payment_type === selectedPaymentType);
+
+        setTransactions(filteredByPaymentType);
 
       } catch (error: any) {
         console.error('Error fetching transactions:', error);
@@ -278,7 +301,7 @@ export default function FinanceDashboard() {
     };
 
     fetchTransactions();
-  }, [user?.id, currentPage, startDate, endDate, clientSearch, selectedServiceType, selectedStatus, toast]);
+  }, [user?.id, currentPage, startDate, endDate, clientSearch, selectedServiceType, selectedStatus, selectedPaymentType, toast]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -308,6 +331,7 @@ export default function FinanceDashboard() {
     setClientSearch('');
     setSelectedServiceType('all');
     setSelectedStatus('all');
+    setSelectedPaymentType('all');
     setCurrentPage(1);
   };
 
@@ -519,6 +543,20 @@ export default function FinanceDashboard() {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Payment Type</label>
+                <Select value={selectedPaymentType} onValueChange={setSelectedPaymentType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All types</SelectItem>
+                    <SelectItem value="one-off">One-Off</SelectItem>
+                    <SelectItem value="pack">Pack</SelectItem>
+                    <SelectItem value="subscription">Subscription</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex items-end">
                 <Button variant="outline" onClick={clearFilters} className="w-full">
                   Clear Filters
@@ -543,6 +581,7 @@ export default function FinanceDashboard() {
                 <TableRow>
                   <TableHead>Client Name</TableHead>
                   <TableHead>Service Type</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Due Date</TableHead>
                   <TableHead>Date Paid</TableHead>
@@ -552,13 +591,13 @@ export default function FinanceDashboard() {
               <TableBody>
                 {loadingTransactions ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={7} className="text-center py-8">
                       Loading transactions...
                     </TableCell>
                   </TableRow>
                 ) : transactions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={7} className="text-center py-8">
                       No transactions found
                     </TableCell>
                   </TableRow>
@@ -569,6 +608,17 @@ export default function FinanceDashboard() {
                         {transaction.client_name}
                       </TableCell>
                       <TableCell>{transaction.service_type_name}</TableCell>
+                      <TableCell>
+                        <Badge variant={
+                          transaction.payment_type === 'one-off' ? 'secondary' :
+                          transaction.payment_type === 'pack' ? 'default' :
+                          'outline'
+                        }>
+                          {transaction.payment_type === 'one-off' ? 'One-Off' :
+                           transaction.payment_type === 'pack' ? 'Pack' :
+                           'Subscription'}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="font-semibold">
                         {formatCurrency(transaction.amount)}
                       </TableCell>
