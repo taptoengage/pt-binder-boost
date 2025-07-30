@@ -52,32 +52,32 @@ export default function Onboarding() {
 
   // Populate form default values from existing trainer data when available
   useEffect(() => {
-    if (trainer) {
+    // If user and trainer states are resolved (not undefined)
+    if (user !== undefined && trainer !== undefined) {
       form.reset({
-        business_name: trainer.business_name || '',
-        contact_email: trainer.contact_email || user?.email || '',
-        phone: (trainer as any).phone || '',
-        instagram_handle: (trainer as any).instagram_handle || '',
-        whatsapp_id: (trainer as any).whatsapp_id || '',
-        facebook_id: (trainer as any).facebook_id || '',
-        trainerize_id: (trainer as any).trainerize_id || '',
-        wechat_id: (trainer as any).wechat_id || '',
+        business_name: trainer?.business_name || '',
+        contact_email: trainer?.contact_email || user?.email || '',
+        phone: (trainer as any)?.phone || '',
+        instagram_handle: (trainer as any)?.instagram_handle || '',
+        whatsapp_id: (trainer as any)?.whatsapp_id || '',
+        facebook_id: (trainer as any)?.facebook_id || '',
+        trainerize_id: (trainer as any)?.trainerize_id || '',
+        wechat_id: (trainer as any)?.wechat_id || '',
       })
-      setInitialLoading(false)
-    } else if (!user && !trainer) {
       setInitialLoading(false)
     }
   }, [user, trainer, form])
 
   // onSubmit function using react-hook-form
   const onSubmit = async (data: OnboardingFormData) => {
-    if (!trainer?.id) {
-      toast({ title: "Error", description: "Trainer profile not found. Please try logging in again.", variant: "destructive" })
+    if (!user?.id) {
+      toast({ title: "Error", description: "You must be logged in to complete onboarding.", variant: "destructive" })
       return
     }
 
     try {
       const payload = {
+        id: user.id, // Use the user's auth ID
         business_name: data.business_name.trim(),
         contact_email: data.contact_email.trim() || null,
         phone: data.phone.trim() || null,
@@ -86,22 +86,23 @@ export default function Onboarding() {
         facebook_id: data.facebook_id.trim() || null,
         trainerize_id: data.trainerize_id.trim() || null,
         wechat_id: data.wechat_id.trim() || null,
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
 
-      const { error } = await supabase
-        .from('trainers')
-        .update(payload)
-        .eq('id', trainer.id)
+      // For new users, insert; for existing users, update
+      const { error } = trainer?.id 
+        ? await supabase.from('trainers').update(payload).eq('id', trainer.id)
+        : await supabase.from('trainers').insert([payload])
 
       if (error) {
-        console.error('Error updating profile:', error)
+        console.error('Error saving trainer profile:', error)
         throw error
       }
 
       toast({
         title: "Success",
-        description: "Business profile updated successfully!",
+        description: "Business profile saved successfully!",
       })
 
       navigate('/dashboard')
