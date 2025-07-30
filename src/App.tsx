@@ -19,7 +19,7 @@ import EditSession from "./pages/EditSession";
 import ScheduleSession from "./pages/ScheduleSession";
 import RecordPayment from "./pages/RecordPayment";
 import ServiceTypes from "./pages/ServiceTypes";
-import FinanceTransactions from "./pages/FinanceTransactions";
+import FinanceDashboard from "./pages/FinanceDashboard";
 import ViewSchedule from "./pages/ViewSchedule";
 import ClientDashboard from "./pages/ClientDashboard";
 import NotFound from "./pages/NotFound";
@@ -91,8 +91,8 @@ function AppRoutes() {
       <Route path="/schedule" element={<ViewSchedule />} />
       <Route path="/schedule/new" element={<ScheduleSession />} />
       <Route path="/payments/new" element={<RecordPayment />} />
-      <Route path="/finance" element={<FinanceTransactions />} />
-      <Route path="/finance/transactions" element={<FinanceTransactions />} />
+      <Route path="/finance" element={<FinanceDashboard />} />
+      <Route path="/finance/transactions" element={<FinanceDashboard />} />
       <Route path="/settings/service-types" element={<ServiceTypes />} />
       <Route path="/schedule/availability" element={<ManageAvailability />} />
       <Route path="/profile" element={<MyProfile />} />

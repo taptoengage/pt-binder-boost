@@ -33,7 +33,7 @@ interface ServiceType {
   name: string;
 }
 
-export default function FinanceTransactions() {
+export default function FinanceDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -245,7 +245,7 @@ export default function FinanceTransactions() {
         </div>
         
         <div className="mb-8">
-          <h1 className="text-heading-1 mb-2">Financial Transactions</h1>
+          <h1 className="text-heading-1 mb-2">Financial Dashboard</h1>
           <p className="text-body-large text-muted-foreground">
             View and manage all your payment transactions
           </p>
