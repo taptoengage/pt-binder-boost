@@ -62,6 +62,42 @@ export default function AddClient() {
     setIsLoading(true);
 
     try {
+      let userIdToLink: string | null = null;
+      
+      // Check if an auth user exists for this email
+      if (formData.email.trim()) {
+        try {
+          // Attempt to get user by email using Supabase's admin client
+          const { data: userData, error: userError } = await supabase.auth.admin.listUsers({
+            page: 1,
+            perPage: 1000
+          });
+          
+          if (userError) {
+            throw userError;
+          }
+          
+          // Find user with matching email
+          const matchingUser = userData?.users?.find((user: any) => user.email === formData.email.trim());
+          if (matchingUser?.id) {
+            userIdToLink = matchingUser.id;
+            toast({ 
+              title: "Info", 
+              description: "Client's email matches an existing user account. Linking profile.",
+              variant: "default" 
+            });
+          }
+        } catch (authError: any) {
+          console.error("Error checking for existing auth user:", authError);
+          toast({ 
+            title: "Warning", 
+            description: `Could not check existing user account for linking: ${authError.message}`,
+            variant: "destructive" 
+          });
+          // Proceed without linking if this check fails
+        }
+      }
+
       // Prepare data for insertion
       const clientData = {
         name: formData.name.trim(),
@@ -72,6 +108,7 @@ export default function AddClient() {
         rough_goals: formData.rough_goals.trim() || null,
         physical_activity_readiness: formData.physical_activity_readiness.trim() || null,
         trainer_id: user.id,
+        user_id: userIdToLink, // Link to existing user account if found
       };
 
       // Insert client into Supabase
