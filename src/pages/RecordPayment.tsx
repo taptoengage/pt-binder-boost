@@ -340,7 +340,6 @@ export default function RecordPayment() {
         service_type_id: finalServiceTypeId,
         session_pack_id: data.paymentForType === 'pack' ? data.packId : null,
         client_subscription_id: data.paymentForType === 'subscription' ? data.subscriptionId : null,
-        receipt_number: null,
       };
 
       const { error } = await supabase
