@@ -37,6 +37,16 @@ function AppRoutes() {
   useEffect(() => {
     if (loading) return; // Wait for auth state to be confirmed
 
+    const currentPath = window.location.pathname;
+
+    // Handle unassigned role specifically for onboarding
+    if (authStatus === 'unassigned_role') {
+      if (currentPath !== '/onboarding') { // If user is unassigned AND not on onboarding page
+        navigate('/onboarding'); // Redirect them to onboarding
+      }
+      return; // Stop further navigation attempts
+    }
+
     // Handle access denied state explicitly
     if (authStatus === 'access_denied_unregistered') {
       toast({
@@ -48,9 +58,7 @@ function AppRoutes() {
       return; // Stop further navigation attempts
     }
 
-    const currentPath = window.location.pathname;
-
-    if (user) { // User is authenticated (and not access_denied_unregistered)
+    if (user) { // User is authenticated (and not unassigned_role or access_denied_unregistered)
       if (trainer) { // User is a trainer
         if (currentPath === '/' || currentPath.startsWith('/client/')) {
           navigate('/dashboard');
@@ -60,7 +68,6 @@ function AppRoutes() {
           navigate('/client/dashboard');
         }
       }
-      // If user is logged in but somehow role is not trainer/client, just let them stay or redirect to default safe page if needed.
     } else { // User is not authenticated
       // Redirect from protected routes to landing
       if (currentPath !== '/' && !currentPath.startsWith('/auth/')) {

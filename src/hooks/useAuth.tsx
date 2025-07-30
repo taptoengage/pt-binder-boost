@@ -27,7 +27,7 @@ interface AuthContextType {
   trainer: Trainer | null
   client: Client | null
   loading: boolean
-  authStatus: 'loading' | 'authenticated' | 'unauthenticated' | 'access_denied_unregistered'
+  authStatus: 'loading' | 'authenticated' | 'unauthenticated' | 'access_denied_unregistered' | 'unassigned_role'
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
 }
@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [trainer, setTrainer] = useState<Trainer | null>(null)
   const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
-  const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated' | 'access_denied_unregistered'>('loading')
+  const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated' | 'access_denied_unregistered' | 'unassigned_role'>('loading')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -127,15 +127,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // If user is neither a trainer nor a registered client
       if (!existingTrainer && !existingClient) {
-        console.error('Access denied: User not registered as trainer or client. Email:', user.email)
-        // Sign out the unauthorized user
-        await supabase.auth.signOut()
-        // Update auth state to reflect denied access and completion of loading
+        // New user needs onboarding - don't sign them out
         setTrainer(null)
         setClient(null)
-        setAuthStatus('access_denied_unregistered')
+        setAuthStatus('unassigned_role')
         setLoading(false)
-        // Don't navigate here - let App.tsx handle navigation based on authStatus
         return
       }
     } catch (error) {
