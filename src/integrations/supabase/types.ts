@@ -121,6 +121,7 @@ export type Database = {
           trainer_id: string
           training_age: number | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -134,6 +135,7 @@ export type Database = {
           trainer_id: string
           training_age?: number | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -147,6 +149,7 @@ export type Database = {
           trainer_id?: string
           training_age?: number | null
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -162,11 +165,14 @@ export type Database = {
         Row: {
           amount: number
           client_id: string
+          client_subscription_id: string | null
           created_at: string
           date_paid: string | null
           due_date: string
           id: string
+          receipt_number: string | null
           service_type_id: string
+          session_pack_id: string | null
           status: string
           trainer_id: string
           updated_at: string
@@ -174,11 +180,14 @@ export type Database = {
         Insert: {
           amount: number
           client_id: string
+          client_subscription_id?: string | null
           created_at?: string
           date_paid?: string | null
           due_date: string
           id?: string
+          receipt_number?: string | null
           service_type_id: string
+          session_pack_id?: string | null
           status: string
           trainer_id: string
           updated_at?: string
@@ -186,16 +195,33 @@ export type Database = {
         Update: {
           amount?: number
           client_id?: string
+          client_subscription_id?: string | null
           created_at?: string
           date_paid?: string | null
           due_date?: string
           id?: string
+          receipt_number?: string | null
           service_type_id?: string
+          session_pack_id?: string | null
           status?: string
           trainer_id?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_payment_client_subscription"
+            columns: ["client_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "client_subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_payment_session_pack"
+            columns: ["session_pack_id"]
+            isOneToOne: false
+            referencedRelation: "session_packs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "payments_client_id_fkey"
             columns: ["client_id"]

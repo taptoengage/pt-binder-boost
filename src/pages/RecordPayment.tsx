@@ -30,12 +30,12 @@ const paymentSchema = z.object({
   status: z.enum(['paid', 'due', 'overdue'], {
     message: 'Please select a status',
   }),
-  // NEW: Payment For fields
   paymentForType: z.enum(['oneOff', 'pack', 'subscription'], { 
     message: 'Payment type is required.' 
   }),
   packId: z.string().optional().nullable(),
   subscriptionId: z.string().optional().nullable(),
+  receipt_number: z.string().optional().nullable(),
 }).superRefine((data, ctx) => {
   if (data.paymentForType === 'oneOff' && !data.service_type_id) {
     ctx.addIssue({ 
@@ -70,6 +70,7 @@ interface Client {
 interface ServiceType {
   id: string;
   name: string;
+  default_rate?: number;
 }
 
 export default function RecordPayment() {
@@ -84,7 +85,7 @@ export default function RecordPayment() {
   const [loadingClients, setLoadingClients] = useState(true);
   const [loadingCoreServiceTypes, setLoadingCoreServiceTypes] = useState(true);
   
-  // NEW: States for fetching active packs/subscriptions
+  // States for fetching active packs/subscriptions
   const [activeSessionPacks, setActiveSessionPacks] = useState<any[]>([]);
   const [activeClientSubscriptions, setActiveClientSubscriptions] = useState<any[]>([]);
   const [isLoadingPacks, setIsLoadingPacks] = useState(true);
@@ -96,10 +97,11 @@ export default function RecordPayment() {
       client_id: initialClientId || '',
       amount: 0,
       status: 'due',
-      paymentForType: 'oneOff', // NEW: Default to one-off
+      paymentForType: 'oneOff',
       packId: null,
       subscriptionId: null,
       service_type_id: '',
+      receipt_number: null,
     },
   });
 
@@ -107,9 +109,12 @@ export default function RecordPayment() {
   const datePaid = watch('date_paid');
   const dueDate = watch('due_date');
   
-  // NEW: Watch client_id and paymentForType for fetching related data
+  // Watch client_id and paymentForType for fetching related data
   const watchedClientId = watch('client_id');
   const watchedPaymentForType = watch('paymentForType');
+  const watchedPackId = watch('packId');
+  const watchedSubscriptionId = watch('subscriptionId');
+  const watchedServiceTypeId = watch('service_type_id');
 
   // Auto-update status based on date_paid
   useEffect(() => {
@@ -152,7 +157,7 @@ export default function RecordPayment() {
     fetchClients();
   }, [user?.id, toast]);
 
-  // Fetch core service types
+  // Fetch core service types (without default_rate for now)
   useEffect(() => {
     const fetchCoreServiceTypes = async () => {
       if (!user?.id) return;
@@ -189,7 +194,7 @@ export default function RecordPayment() {
     }
   }, [initialClientId, clients, form]);
 
-  // NEW: Fetch active packs for selected client
+  // Fetch active packs for selected client
   useEffect(() => {
     const fetchActivePacks = async () => {
       if (!watchedClientId || !user?.id) {
@@ -201,11 +206,11 @@ export default function RecordPayment() {
         setIsLoadingPacks(true);
         const { data, error } = await supabase
           .from('session_packs')
-          .select(`id, service_type_id, service_types(name), sessions_remaining`)
+          .select(`id, service_type_id, total_sessions, amount_paid, service_types(name), sessions_remaining`)
           .eq('client_id', watchedClientId)
           .eq('trainer_id', user.id)
           .eq('status', 'active')
-          .gt('sessions_remaining', 0); // Only active packs with remaining sessions
+          .gt('sessions_remaining', 0);
 
         if (error) throw error;
         setActiveSessionPacks(data || []);
@@ -223,7 +228,7 @@ export default function RecordPayment() {
     fetchActivePacks();
   }, [watchedClientId, user?.id, toast]);
 
-  // NEW: Fetch active subscriptions for selected client
+  // Fetch active subscriptions for selected client
   useEffect(() => {
     const fetchActiveSubscriptions = async () => {
       if (!watchedClientId || !user?.id) {
@@ -235,10 +240,10 @@ export default function RecordPayment() {
         setIsLoadingSubscriptions(true);
         const { data, error } = await supabase
           .from('client_subscriptions')
-          .select(`id, billing_cycle, start_date, subscription_service_allocations(service_type_id, service_types(name))`)
+          .select(`id, billing_amount, billing_cycle, start_date, subscription_service_allocations(service_type_id, service_types(name))`)
           .eq('client_id', watchedClientId)
           .eq('trainer_id', user.id)
-          .in('status', ['active', 'paused']); // Only active/paused subscriptions
+          .in('status', ['active', 'paused']);
 
         if (error) throw error;
         setActiveClientSubscriptions(data || []);
@@ -260,8 +265,27 @@ export default function RecordPayment() {
   useEffect(() => {
     form.setValue('packId', null);
     form.setValue('subscriptionId', null);
-    form.setValue('service_type_id', ''); // Reset service type as well
+    form.setValue('service_type_id', '');
   }, [watchedPaymentForType, watchedClientId, form]);
+
+  // Auto-populate amount based on selection
+  useEffect(() => {
+    let calculatedAmount = 0;
+    if (watchedPaymentForType === 'pack' && watchedPackId) {
+      const selectedPack = activeSessionPacks.find(p => p.id === watchedPackId);
+      if (selectedPack && selectedPack.amount_paid) {
+        calculatedAmount = selectedPack.amount_paid / selectedPack.total_sessions * selectedPack.sessions_remaining;
+      }
+    } else if (watchedPaymentForType === 'subscription' && watchedSubscriptionId) {
+      const selectedSub = activeClientSubscriptions.find(s => s.id === watchedSubscriptionId);
+      if (selectedSub && selectedSub.billing_amount) {
+        calculatedAmount = selectedSub.billing_amount;
+      }
+    }
+    if (calculatedAmount > 0) {
+      setValue('amount', parseFloat(calculatedAmount.toFixed(2)));
+    }
+  }, [watchedPaymentForType, watchedPackId, watchedSubscriptionId, watchedServiceTypeId, activeSessionPacks, activeClientSubscriptions, coreServiceTypes, setValue]);
 
   const onSubmit = async (data: PaymentFormData) => {
     if (!user?.id) {
@@ -285,13 +309,12 @@ export default function RecordPayment() {
       }
 
       // Determine service_type_id based on payment type selected
-      let finalServiceTypeId = data.service_type_id; // Default for one-off
+      let finalServiceTypeId = data.service_type_id;
 
       if (data.paymentForType === 'pack' && data.packId) {
         const selectedPack = activeSessionPacks.find(p => p.id === data.packId);
         if (selectedPack) finalServiceTypeId = selectedPack.service_type_id;
       } else if (data.paymentForType === 'subscription' && data.subscriptionId) {
-        // Find any service type linked to this subscription for payment record
         const selectedSub = activeClientSubscriptions.find(s => s.id === data.subscriptionId);
         if (selectedSub && selectedSub.subscription_service_allocations?.length > 0) {
             finalServiceTypeId = selectedSub.subscription_service_allocations[0].service_type_id;
@@ -315,9 +338,9 @@ export default function RecordPayment() {
         date_paid: data.date_paid ? data.date_paid.toISOString().split('T')[0] : null,
         status: finalStatus,
         service_type_id: finalServiceTypeId,
-        // NEW: Include origin IDs
         session_pack_id: data.paymentForType === 'pack' ? data.packId : null,
         client_subscription_id: data.paymentForType === 'subscription' ? data.subscriptionId : null,
+        receipt_number: null,
       };
 
       const { error } = await supabase
@@ -334,7 +357,6 @@ export default function RecordPayment() {
       form.reset();
       navigate(`/clients/${data.client_id}`);
       
-      // Invalidate relevant queries to ensure UI updates across app
       queryClient.invalidateQueries({ queryKey: ['trainerPayments', user.id] });
       queryClient.invalidateQueries({ queryKey: ['clientPayments', watchedClientId] });
       queryClient.invalidateQueries({ queryKey: ['sessionPacks'] });
@@ -412,7 +434,7 @@ export default function RecordPayment() {
                   )}
                 />
 
-                {/* NEW: Payment For Type Select */}
+                {/* Payment For Type Select */}
                 <FormField
                   control={form.control}
                   name="paymentForType"
@@ -537,8 +559,25 @@ export default function RecordPayment() {
                   />
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Receipt Number (read-only for new payments) */}
+                <FormField
+                  control={form.control}
+                  name="receipt_number"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Receipt Number</FormLabel>
+                      <FormControl>
+                        <Input {...field} readOnly value={field.value || 'N/A (Generated on success)'} />
+                      </FormControl>
+                      <FormDescription>
+                        A unique reference number generated upon successful payment.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Amount */}
                   <FormField
                     control={form.control}

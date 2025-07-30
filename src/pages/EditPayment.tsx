@@ -30,12 +30,12 @@ const paymentSchema = z.object({
   status: z.enum(['paid', 'due', 'overdue'], {
     message: 'Please select a status',
   }),
-  // NEW: Payment For fields
   paymentForType: z.enum(['oneOff', 'pack', 'subscription'], { 
     message: 'Payment type is required.' 
   }),
   packId: z.string().optional().nullable(),
   subscriptionId: z.string().optional().nullable(),
+  receipt_number: z.string().optional().nullable(),
 }).superRefine((data, ctx) => {
   if (data.paymentForType === 'oneOff' && !data.service_type_id) {
     ctx.addIssue({ 
@@ -85,7 +85,7 @@ export default function EditPayment() {
   const [loadingCoreServiceTypes, setLoadingCoreServiceTypes] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // NEW: States for fetching active packs/subscriptions
+  // States for fetching active packs/subscriptions
   const [activeSessionPacks, setActiveSessionPacks] = useState<any[]>([]);
   const [activeClientSubscriptions, setActiveClientSubscriptions] = useState<any[]>([]);
   const [isLoadingPacks, setIsLoadingPacks] = useState(true);
@@ -100,6 +100,9 @@ export default function EditPayment() {
         .from('payments')
         .select(`
           *,
+          session_pack_id,
+          client_subscription_id,
+          receipt_number,
           clients(name), 
           service_types(name)
         `)
@@ -118,8 +121,8 @@ export default function EditPayment() {
 
   // Determine initial paymentForType based on fetched data
   const initialPaymentForType = useMemo(() => {
-    if ((currentPayment as any)?.session_pack_id) return 'pack';
-    if ((currentPayment as any)?.client_subscription_id) return 'subscription';
+    if (currentPayment?.session_pack_id) return 'pack';
+    if (currentPayment?.client_subscription_id) return 'subscription';
     return 'oneOff';
   }, [currentPayment]);
 
@@ -133,6 +136,7 @@ export default function EditPayment() {
       packId: null,
       subscriptionId: null,
       service_type_id: '',
+      receipt_number: null,
     },
   });
 
@@ -143,6 +147,8 @@ export default function EditPayment() {
   // Watch client_id and paymentForType for fetching related data
   const watchedClientId = watch('client_id');
   const watchedPaymentForType = watch('paymentForType');
+  const watchedPackId = watch('packId');
+  const watchedSubscriptionId = watch('subscriptionId');
 
   // Update form when currentPayment is loaded
   useEffect(() => {
@@ -155,8 +161,9 @@ export default function EditPayment() {
         status: currentPayment.status as 'paid' | 'due' | 'overdue',
         service_type_id: currentPayment.service_type_id || '',
         paymentForType: initialPaymentForType,
-        packId: (currentPayment as any)?.session_pack_id || null,
-        subscriptionId: (currentPayment as any)?.client_subscription_id || null,
+        packId: currentPayment.session_pack_id || null,
+        subscriptionId: currentPayment.client_subscription_id || null,
+        receipt_number: currentPayment.receipt_number || null,
       });
     }
   }, [currentPayment, initialPaymentForType, form]);
@@ -244,7 +251,7 @@ export default function EditPayment() {
         setIsLoadingPacks(true);
         const { data, error } = await supabase
           .from('session_packs')
-          .select(`id, service_type_id, service_types(name), sessions_remaining`)
+          .select(`id, service_type_id, total_sessions, amount_paid, service_types(name), sessions_remaining`)
           .eq('client_id', watchedClientId)
           .eq('trainer_id', user.id)
           .eq('status', 'active')
@@ -278,7 +285,7 @@ export default function EditPayment() {
         setIsLoadingSubscriptions(true);
         const { data, error } = await supabase
           .from('client_subscriptions')
-          .select(`id, billing_cycle, start_date, subscription_service_allocations(service_type_id, service_types(name))`)
+          .select(`id, billing_amount, billing_cycle, start_date, subscription_service_allocations(service_type_id, service_types(name))`)
           .eq('client_id', watchedClientId)
           .eq('trainer_id', user.id)
           .in('status', ['active', 'paused']);
@@ -305,6 +312,25 @@ export default function EditPayment() {
     form.setValue('subscriptionId', null);
     form.setValue('service_type_id', '');
   }, [watchedPaymentForType, watchedClientId, form]);
+
+  // Auto-populate amount based on selection
+  useEffect(() => {
+    let calculatedAmount = 0;
+    if (watchedPaymentForType === 'pack' && watchedPackId) {
+      const selectedPack = activeSessionPacks.find(p => p.id === watchedPackId);
+      if (selectedPack && selectedPack.amount_paid) {
+        calculatedAmount = selectedPack.amount_paid / selectedPack.total_sessions * selectedPack.sessions_remaining;
+      }
+    } else if (watchedPaymentForType === 'subscription' && watchedSubscriptionId) {
+      const selectedSub = activeClientSubscriptions.find(s => s.id === watchedSubscriptionId);
+      if (selectedSub && selectedSub.billing_amount) {
+        calculatedAmount = selectedSub.billing_amount;
+      }
+    }
+    if (calculatedAmount > 0) {
+      setValue('amount', parseFloat(calculatedAmount.toFixed(2)));
+    }
+  }, [watchedPaymentForType, watchedPackId, watchedSubscriptionId, activeSessionPacks, activeClientSubscriptions, setValue]);
 
   const onSubmit = async (data: PaymentFormData) => {
     if (!user?.id || !paymentId) {
@@ -359,6 +385,7 @@ export default function EditPayment() {
         service_type_id: finalServiceTypeId,
         session_pack_id: data.paymentForType === 'pack' ? data.packId : null,
         client_subscription_id: data.paymentForType === 'subscription' ? data.subscriptionId : null,
+        receipt_number: data.receipt_number || null,
       };
 
       const { error } = await supabase
@@ -598,6 +625,24 @@ export default function EditPayment() {
                   />
                 )}
 
+                {/* Receipt Number */}
+                <FormField
+                  control={form.control}
+                  name="receipt_number"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Receipt Number</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value || ''} placeholder="Optional receipt reference" />
+                      </FormControl>
+                      <FormDescription>
+                        Optional unique reference number for this payment.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Amount */}
                   <FormField
@@ -607,17 +652,14 @@ export default function EditPayment() {
                       <FormItem>
                         <FormLabel>Amount</FormLabel>
                         <FormControl>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">$</span>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              placeholder="0.00"
-                              className="pl-8"
-                              {...field}
-                              onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                            />
-                          </div>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...field}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -668,17 +710,22 @@ export default function EditPayment() {
                                   !field.value && "text-muted-foreground"
                                 )}
                               >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                                {field.value ? (
+                                  format(field.value, "PPP")
+                                ) : (
+                                  <span>Pick a date</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
+                          <PopoverContent className="w-auto p-0" align="start">
                             <Calendar
                               mode="single"
-                              selected={field.value || undefined}
+                              selected={field.value}
                               onSelect={field.onChange}
                               initialFocus
+                              className="p-3 pointer-events-auto"
                             />
                           </PopoverContent>
                         </Popover>
@@ -704,23 +751,23 @@ export default function EditPayment() {
                                   !field.value && "text-muted-foreground"
                                 )}
                               >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                                {field.value ? (
+                                  format(field.value, "PPP")
+                                ) : (
+                                  <span>Pick a date</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
+                          <PopoverContent className="w-auto p-0" align="start">
                             <Calendar
                               mode="single"
-                              selected={field.value || undefined}
+                              selected={field.value}
                               onSelect={field.onChange}
                               initialFocus
+                              className="p-3 pointer-events-auto"
                             />
-                            <div className="p-2">
-                              <Button variant="ghost" onClick={() => field.onChange(null)} className="w-full">
-                                Clear Date
-                              </Button>
-                            </div>
                           </PopoverContent>
                         </Popover>
                         <FormDescription>
@@ -732,16 +779,22 @@ export default function EditPayment() {
                   />
                 </div>
 
-                <Button type="submit" className="w-full" disabled={isSubmitting || !form.formState.isValid}>
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      Saving...
-                    </>
-                  ) : (
-                    "Save Changes"
-                  )}
-                </Button>
+                <div className="flex justify-end">
+                  <Button 
+                    type="submit" 
+                    disabled={isSubmitting || !form.formState.isValid}
+                    className="w-full md:w-auto"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Changes'
+                    )}
+                  </Button>
+                </div>
               </form>
             </Form>
           </CardContent>
