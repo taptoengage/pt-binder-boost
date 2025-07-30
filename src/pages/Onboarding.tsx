@@ -105,7 +105,7 @@ export default function Onboarding() {
         description: "Business profile saved successfully!",
       })
 
-      navigate('/dashboard')
+      navigate('/profile')
     } catch (error: any) {
       console.error('Error in onSubmit:', error)
       toast({
