@@ -448,6 +448,57 @@ export type Database = {
           },
         ]
       }
+      subscription_billing_periods: {
+        Row: {
+          amount_due: number
+          client_subscription_id: string
+          created_at: string | null
+          id: string
+          payment_id: string | null
+          period_end_date: string
+          period_start_date: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          amount_due: number
+          client_subscription_id: string
+          created_at?: string | null
+          id?: string
+          payment_id?: string | null
+          period_end_date: string
+          period_start_date: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          amount_due?: number
+          client_subscription_id?: string
+          created_at?: string | null
+          id?: string
+          payment_id?: string | null
+          period_end_date?: string
+          period_start_date?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_billing_periods_client_subscription_id_fkey"
+            columns: ["client_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "client_subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_billing_periods_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_service_allocations: {
         Row: {
           cost_per_session: number
