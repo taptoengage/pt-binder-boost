@@ -65,7 +65,7 @@ function AppRoutes() {
           navigate('/dashboard');
         }
       } else if (client) { // User is a client
-        if (currentPath === '/' || !currentPath.startsWith('/client/')) {
+        if (!currentPath.startsWith('/client/')) {
           navigate('/client/dashboard');
         }
       }
