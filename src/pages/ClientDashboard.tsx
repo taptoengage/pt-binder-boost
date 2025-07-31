@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { Clock, CreditCard, Calendar, DollarSign, Loader2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { format } from 'date-fns';
+import ClientBookingCalendar from '@/components/ClientBookingCalendar';
 
 export default function ClientDashboard() {
   const { client, signOut } = useAuth();
@@ -241,6 +242,23 @@ export default function ClientDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Trainer Availability / Booking Calendar */}
+        {client?.trainer_id ? (
+          <ClientBookingCalendar trainerId={client.trainer_id} />
+        ) : (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Book a Session</CardTitle>
+              <CardDescription>No trainer linked</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">
+                You are not currently linked to a trainer. Please contact your administrator.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Upcoming Sessions */}
         <Card className="mb-8">
