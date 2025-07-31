@@ -8,11 +8,12 @@ import { useEffect, useState } from 'react';
 import { Clock, CreditCard, Calendar, DollarSign, Loader2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { format } from 'date-fns';
-import ClientBookingCalendar from '@/components/ClientBookingCalendar';
+import { useNavigate } from 'react-router-dom';
 
 export default function ClientDashboard() {
   const { client, signOut } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
   const [upcomingSession, setUpcomingSession] = useState<any | null>(null);
@@ -184,7 +185,14 @@ export default function ClientDashboard() {
               ) : (
                 <div>
                   <div className="text-2xl font-bold">None scheduled</div>
-                  <p className="text-xs text-muted-foreground">Contact your trainer</p>
+                  <p className="text-xs text-muted-foreground mb-4">Time to book your next session!</p>
+                  <Button
+                    onClick={() => navigate('/client/book-session')}
+                    variant="default"
+                    className="w-full mt-2"
+                  >
+                    Book a Session
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -243,22 +251,6 @@ export default function ClientDashboard() {
           </Card>
         </div>
 
-        {/* Trainer Availability / Booking Calendar */}
-        {client?.trainer_id ? (
-          <ClientBookingCalendar trainerId={client.trainer_id} />
-        ) : (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle>Book a Session</CardTitle>
-              <CardDescription>No trainer linked</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                You are not currently linked to a trainer. Please contact your administrator.
-              </p>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Upcoming Sessions */}
         <Card className="mb-8">

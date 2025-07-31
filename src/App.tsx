@@ -22,6 +22,7 @@ import ServiceTypes from "./pages/ServiceTypes";
 import FinanceDashboard from "./pages/FinanceDashboard";
 import ViewSchedule from "./pages/ViewSchedule";
 import ClientDashboard from "./pages/ClientDashboard";
+import ClientBookSessionPage from "./pages/ClientBookSessionPage";
 import NotFound from "./pages/NotFound";
 import ClientHistory from "./pages/ClientHistory";
 import MyProfile from "./pages/MyProfile";
@@ -97,6 +98,7 @@ function AppRoutes() {
       <Route path="/schedule/availability" element={<ManageAvailability />} />
       <Route path="/profile" element={<MyProfile />} />
       <Route path="/client/dashboard" element={<ClientDashboard />} />
+      <Route path="/client/book-session" element={<ClientBookSessionPage />} />
       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
       <Route path="*" element={<NotFound />} />
     </Routes>
