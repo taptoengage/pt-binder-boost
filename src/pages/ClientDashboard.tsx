@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from 'react';
-import { Clock, CreditCard, Calendar, DollarSign, Loader2 } from 'lucide-react';
+import { Clock, CreditCard, Calendar, DollarSign, Loader2, PlusCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
@@ -185,14 +185,7 @@ export default function ClientDashboard() {
               ) : (
                 <div>
                   <div className="text-2xl font-bold">None scheduled</div>
-                  <p className="text-xs text-muted-foreground mb-4">Time to book your next session!</p>
-                  <Button
-                    onClick={() => navigate('/client/book-session')}
-                    variant="default"
-                    className="w-full mt-2"
-                  >
-                    Book a Session
-                  </Button>
+                  <p className="text-xs text-muted-foreground">Time to book your next session!</p>
                 </div>
               )}
             </CardContent>
@@ -251,6 +244,22 @@ export default function ClientDashboard() {
           </Card>
         </div>
 
+        {/* Quick Actions Section */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold">Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center gap-4">
+            <Button
+              onClick={() => navigate('/client/book-session')}
+              variant="default"
+              className="flex items-center gap-2"
+            >
+              <PlusCircle className="w-4 h-4" />
+              Book a Session
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Upcoming Sessions */}
         <Card className="mb-8">
