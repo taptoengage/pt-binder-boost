@@ -33,6 +33,20 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
+  const getDayNumberFromString = (dayName: string): number | undefined => {
+    switch (dayName.toLowerCase()) {
+      case 'sunday': return 0;
+      case 'monday': return 1;
+      case 'tuesday': return 2;
+      case 'wednesday': return 3;
+      case 'thursday': return 4;
+      case 'friday': return 5;
+      case 'saturday': return 6;
+      default: return undefined; // Handle unexpected values
+    }
+  };
+
   // Helper function to parse 'HH:MM:SS' time string into hours and minutes
   const parseTime = (timeString: string) => {
     const [hours, minutes] = timeString.split(':').map(Number);
@@ -117,11 +131,18 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
 
         if (templatesError) throw templatesError;
 
-        // Convert day_of_week from string to number for templates
-        const templates = (templatesData || []).map(template => ({
-          ...template,
-          day_of_week: parseInt(template.day_of_week)
-        }));
+        // Convert day_of_week from string name to number for templates
+        const templates = (templatesData || []).map(template => {
+          const dayNumber = getDayNumberFromString(template.day_of_week);
+          if (dayNumber === undefined) {
+            console.warn(`Unknown day_of_week string in template: ${template.day_of_week}`);
+            return null; // Filter out invalid entries
+          }
+          return {
+            ...template,
+            day_of_week: dayNumber
+          };
+        }).filter(Boolean) as TrainerTemplate[]; // Filter out nulls and cast
 
         // 2. Fetch Exceptions for the given date range
         const { data: exceptions, error: exceptionsError } = await supabase
