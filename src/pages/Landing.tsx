@@ -22,9 +22,9 @@ import {
 export default function Landing() {
   const { signInWithGoogle } = useAuth();
   
-  // PT Binder pricing
-  const PT_BINDER_MONTHLY_COST = 60;
-  const PT_BINDER_WEEKLY_COST = PT_BINDER_MONTHLY_COST / 4;
+  // Optimised Trainer pricing
+  const OPTIMISED_TRAINER_MONTHLY_COST = 60;
+  const OPTIMISED_TRAINER_WEEKLY_COST = OPTIMISED_TRAINER_MONTHLY_COST / 4;
   
   // Calculator state
   const [hoursOnAdmin, setHoursOnAdmin] = useState<number>(10);
@@ -38,11 +38,11 @@ export default function Landing() {
     return hoursOnAdmin * hourlyRate;
   }, [hoursOnAdmin, hourlyRate]);
 
-  // Calculate net weekly savings after PT Binder cost
+  // Calculate net weekly savings after Optimised Trainer cost
   const netWeeklySavings = useMemo(() => {
-    const savings = potentialSavings - PT_BINDER_WEEKLY_COST;
+    const savings = potentialSavings - OPTIMISED_TRAINER_WEEKLY_COST;
     return savings > 0 ? savings : 0;
-  }, [potentialSavings, PT_BINDER_WEEKLY_COST]);
+  }, [potentialSavings, OPTIMISED_TRAINER_WEEKLY_COST]);
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
@@ -53,15 +53,14 @@ export default function Landing() {
         <div className="container mx-auto text-center">
           <div className="max-w-4xl mx-auto">
             <h1 className="text-display mb-6 bg-gradient-primary bg-clip-text text-transparent animate-fade-in-up">
-              Streamline Your Personal Training Business
+              Smarter Scheduling. More Sessions. Less Admin.
             </h1>
             <p className="text-body-large text-muted-foreground mb-8 max-w-2xl mx-auto animate-fade-in-up">
-              PT Binder helps independent personal trainers manage clients, schedules, and payments 
-              in one professional platform. Reduce admin time and focus on what you do best.
+              Optimised Trainer is the first client management system built to actively grow your revenue with an AI-powered scheduling assistant that fills your calendar for you.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up">
               <Button size="xl" variant="gradient" className="group" onClick={signInWithGoogle}>
-                Start Your Free Trial
+                Try the AI Scheduler
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
               <Button size="xl" variant="professional" onClick={signInWithGoogle}>
@@ -75,11 +74,61 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-16 px-4">
+      {/* AI Features Section */}
+      <section id="ai-features" className="py-16 px-4">
         <div className="container mx-auto">
           <div className="text-center mb-12">
-            <h2 className="text-heading-1 mb-4">Everything You Need to Run Your PT Business</h2>
+            <h2 className="text-heading-1 mb-4">Built-in AI That Works for You</h2>
+            <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
+              Our AI scheduling assistant actively grows your revenue by optimising your calendar and finding new opportunities.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8 mb-16">
+            <Card className="card-elevated hover-lift">
+              <CardHeader>
+                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                  <BarChart3 className="w-6 h-6 text-primary" />
+                </div>
+                <CardTitle>Smart Gap Filling</CardTitle>
+                <CardDescription>
+                  AI identifies calendar gaps and recommends sessions to fill them, maximising your earning potential.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card className="card-elevated hover-lift">
+              <CardHeader>
+                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                  <Clock className="w-6 h-6 text-primary" />
+                </div>
+                <CardTitle>Upsell with Last-Minute Offers</CardTitle>
+                <CardDescription>
+                  Trigger automatic discount notifications for out-of-sequence bookings to fill last-minute cancellations.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card className="card-elevated hover-lift">
+              <CardHeader>
+                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                  <CreditCard className="w-6 h-6 text-primary" />
+                </div>
+                <CardTitle>Revenue Optimisation Engine</CardTitle>
+                <CardDescription>
+                  Turn downtime into paid time with intelligent scheduling recommendations and pricing strategies.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* Core Features Section */}
+      <section id="features" className="py-16 px-4 bg-secondary/30">
+        <div className="container mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-heading-1 mb-4">Everything You Need to Run Your Business</h2>
             <p className="text-body-large text-muted-foreground max-w-2xl mx-auto">
               Built specifically for independent personal trainers who want to spend less time on admin 
               and more time training clients.
@@ -163,7 +212,7 @@ export default function Landing() {
       </section>
 
       {/* Benefits Section */}
-      <section className="py-16 px-4 bg-secondary/30">
+      <section className="py-16 px-4">
         <div className="container mx-auto">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
@@ -252,7 +301,7 @@ export default function Landing() {
                 </div>
                 <CardTitle className="text-heading-2">Calculate Your Potential Weekly Savings</CardTitle>
                 <CardDescription className="text-body-large">
-                  See how much more you could earn by reducing administrative time with PT Binder
+                  See how much more you could earn by reducing administrative time with Optimised Trainer
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -296,7 +345,7 @@ export default function Landing() {
                 
                 <div className="text-center p-6 bg-gradient-primary/10 rounded-lg border border-primary/20">
                   <p className="text-body-small text-muted-foreground mb-2">
-                    With PT Binder at ${PT_BINDER_MONTHLY_COST}/month, your net
+                    With Optimised Trainer at ${OPTIMISED_TRAINER_MONTHLY_COST}/month, your net
                   </p>
                   <p className="text-body-small text-muted-foreground mb-2">
                     Potential Weekly Earnings Gain:
@@ -326,7 +375,7 @@ export default function Landing() {
           <div className="max-w-3xl mx-auto">
             <h2 className="text-heading-1 mb-4">Ready to Transform Your PT Business?</h2>
             <p className="text-body-large text-muted-foreground mb-8">
-              Join hundreds of personal trainers who have streamlined their business with PT Binder.
+              Join hundreds of personal trainers who have grown their revenue with Optimised Trainer's AI scheduling assistant.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="xl" variant="gradient" className="group" onClick={signInWithGoogle}>
@@ -356,10 +405,10 @@ export default function Landing() {
             <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
               <BarChart3 className="w-5 h-5 text-white" />
             </div>
-            <span className="text-heading-4 font-bold">PT Binder</span>
+            <span className="text-heading-4 font-bold">Optimised Trainer</span>
           </div>
           <p className="text-background/70">
-            Streamlining personal training businesses worldwide
+            Growing personal training businesses worldwide with AI
           </p>
         </div>
       </footer>

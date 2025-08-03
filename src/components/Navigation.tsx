@@ -26,7 +26,7 @@ export function Navigation() {
             <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
               <BarChart3 className="w-5 h-5 text-white" />
             </div>
-            <span className="text-heading-4 font-bold">PT Binder</span>
+            <span className="text-heading-4 font-bold">Optimised Trainer</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -116,7 +116,7 @@ export function DashboardNavigation() {
             <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
               <BarChart3 className="w-5 h-5 text-white" />
             </div>
-            <span className="text-heading-4 font-bold">PT Binder</span>
+            <span className="text-heading-4 font-bold">Optimised Trainer</span>
           </Link>
 
           {/* Dashboard Navigation */}
