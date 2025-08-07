@@ -109,9 +109,14 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
 
   useEffect(() => {
     const fetchAndProcessAvailability = async () => {
+      // DEBUG LOG 1: Check the trainerId prop received
+      console.log('DEBUG: Calendar received trainerId:', trainerId);
+
       if (!trainerId) {
         setAvailableSlots([]);
         setIsLoadingAvailability(false);
+        // DEBUG LOG 2: Log if trainerId is null
+        console.log('DEBUG: Calendar received null trainerId, stopping availability fetch.');
         return;
       }
 
@@ -119,15 +124,20 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
       setError(null);
 
       try {
-        // Determine date range for fetching (e.g., entire current month)
         const startDate = startOfMonth(currentDisplayMonth);
         const endDate = endOfMonth(currentDisplayMonth);
+
+        // DEBUG LOG 3: Log the date range for the query
+        console.log('DEBUG: Fetching availability for date range:', { start: startDate.toISOString(), end: endDate.toISOString() });
 
         // 1. Fetch Templates
         const { data: templatesData, error: templatesError } = await supabase
           .from('trainer_availability_templates')
           .select('day_of_week, start_time, end_time')
           .eq('trainer_id', trainerId);
+
+        // DEBUG LOG 4: Log the results of the templates query
+        console.log('DEBUG: Templates query result:', { data: templatesData, error: templatesError });
 
         if (templatesError) throw templatesError;
 
@@ -152,6 +162,9 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
           .gte('exception_date', startDate.toISOString().split('T')[0])
           .lte('exception_date', endDate.toISOString().split('T')[0]);
 
+        // DEBUG LOG 5: Log the results of the exceptions query
+        console.log('DEBUG: Exceptions query result:', { data: exceptions, error: exceptionsError });
+
         if (exceptionsError) throw exceptionsError;
 
         // 3. Combine and Calculate Final Available Slots
@@ -163,6 +176,8 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
         );
 
         setAvailableSlots(processedSlots);
+        // DEBUG LOG 6: Log the final processed slots
+        console.log('DEBUG: Final processed available slots:', processedSlots);
 
       } catch (err: any) {
         console.error('Error fetching or processing trainer availability:', err.message);
