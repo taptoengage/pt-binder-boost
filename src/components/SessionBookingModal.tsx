@@ -256,39 +256,37 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
 
             <div className="space-y-2">
               <Label>How would you like to book?</Label>
-              {/* Single RadioGroup for all options */}
               <RadioGroup
                 value={selectedBookingOption || ''}
                 onValueChange={setSelectedBookingOption}
-                className="flex flex-col space-y-2"
+                className="flex flex-col space-y-3"
               >
-                {activeSessionPacks.length > 0 && (
-                  <Label className="font-semibold">From a Session Pack</Label>
-                )}
+                {/* Session Packs */}
                 {activeSessionPacks.map(pack => (
-                  <div key={pack.id} className="flex items-center space-x-2 ml-4">
+                  <div key={pack.id} className="flex items-center space-x-2">
                     <RadioGroupItem value={`pack:${pack.id}`} id={`pack-${pack.id}`} />
-                    <Label htmlFor={`pack-${pack.id}`}>
-                      Use Pack: {pack.service_types?.name} ({pack.sessions_remaining} remaining)
+                    <Label htmlFor={`pack-${pack.id}`} className="cursor-pointer">
+                      <span className="font-medium">Session Pack:</span> {pack.service_types?.name} ({pack.sessions_remaining} remaining)
                     </Label>
                   </div>
                 ))}
 
-                {activeSubscriptions.length > 0 && (
-                  <Label className="font-semibold">From an Active Subscription</Label>
-                )}
+                {/* Subscriptions */}
                 {activeSubscriptions.map(sub => (
-                  <div key={sub.id} className="flex items-center space-x-2 ml-4">
+                  <div key={sub.id} className="flex items-center space-x-2">
                     <RadioGroupItem value={`subscription:${sub.id}`} id={`subscription-${sub.id}`} />
-                    <Label htmlFor={`subscription-${sub.id}`}>
-                      Use Subscription: {sub.billing_cycle} ({sub.payment_frequency})
+                    <Label htmlFor={`subscription-${sub.id}`} className="cursor-pointer">
+                      <span className="font-medium">Subscription:</span> {sub.billing_cycle} ({sub.payment_frequency})
                     </Label>
                   </div>
                 ))}
 
+                {/* One-off option */}
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="one-off" id="one-off" />
-                  <Label htmlFor="one-off">Request One-Off Session (Trainer Approval Needed)</Label>
+                  <Label htmlFor="one-off" className="cursor-pointer">
+                    <span className="font-medium">One-off Session</span> (Trainer approval required)
+                  </Label>
                 </div>
               </RadioGroup>
             </div>
