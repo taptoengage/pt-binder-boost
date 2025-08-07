@@ -4,6 +4,11 @@ import { format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, addDays, s
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
+import { Calendar, momentLocalizer, View } from 'react-big-calendar';
+import moment from 'moment';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+
+const localizer = momentLocalizer(moment);
 
 interface AvailableSlot {
   start: Date;
@@ -29,9 +34,10 @@ interface ClientBookingCalendarProps {
 
 export default function ClientBookingCalendar({ trainerId }: ClientBookingCalendarProps) {
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
-  const [currentDisplayMonth, setCurrentDisplayMonth] = useState(new Date()); // Controls month shown on calendar
+  const [currentDisplayMonth, setCurrentDisplayMonth] = useState(new Date());
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<View>('week');
 
   // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
   const getDayNumberFromString = (dayName: string): number | undefined => {
@@ -191,12 +197,25 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
   }, [trainerId, currentDisplayMonth, combineAndCalculateAvailability]); // Dependencies for useEffect
 
   const handleNextMonth = () => {
-    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, 30)); // Simple month advance
+    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, 30));
   };
 
   const handlePrevMonth = () => {
-    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, -30)); // Simple month advance
+    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, -30));
   };
+
+  const handleViewChange = (newView: View) => {
+    setView(newView);
+  };
+
+  // Transform available slots into calendar events
+  const calendarEvents = availableSlots.map((slot, index) => ({
+    id: index,
+    title: 'Available',
+    start: slot.start,
+    end: slot.end,
+    resource: slot
+  }));
 
   if (isLoadingAvailability) {
     return (
@@ -226,28 +245,63 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
         <CardDescription>View your trainer's available time slots.</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex justify-between items-center mb-4">
-          <Button onClick={handlePrevMonth} variant="outline">Previous</Button>
-          <h3 className="text-xl font-semibold">{format(currentDisplayMonth, 'MMMM yyyy')}</h3>
-          <Button onClick={handleNextMonth} variant="outline">Next</Button>
+        {/* View toggles */}
+        <div className="flex justify-center gap-2 mb-4">
+          <Button 
+            onClick={() => handleViewChange('week')} 
+            variant={view === 'week' ? 'default' : 'outline'}
+            size="sm"
+          >
+            Week
+          </Button>
+          <Button 
+            onClick={() => handleViewChange('month')} 
+            variant={view === 'month' ? 'default' : 'outline'}
+            size="sm"
+          >
+            Month
+          </Button>
         </div>
 
-        <div className="space-y-4">
-          {availableSlots.length > 0 ? (
-            // This is a placeholder for your actual calendar UI.
-            // You would typically integrate react-calendar, react-big-calendar, etc. here.
-            // For now, it lists the slots.
-            availableSlots.map((slot, index) => (
-              <div key={index} className="border border-border p-2 rounded flex justify-between items-center">
-                <span>{format(slot.start, 'MMM dd, yyyy - h:mm a')} to {format(slot.end, 'h:mm a')}</span>
-                {/* Booking button will go here in a future prompt */}
-                <Button size="sm">Book</Button>
-              </div>
-            ))
-          ) : (
-            <p className="text-muted-foreground">No available slots for this month.</p>
-          )}
-        </div>
+        {/* Calendar display area */}
+        {isLoadingAvailability ? (
+          <div className="flex justify-center items-center h-48">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        ) : error ? (
+          <p className="text-destructive">{error}</p>
+        ) : (
+          <div style={{ height: '600px' }} className="mt-4">
+            <Calendar
+              localizer={localizer}
+              events={calendarEvents}
+              startAccessor="start"
+              endAccessor="end"
+              defaultDate={currentDisplayMonth}
+              date={currentDisplayMonth}
+              view={view}
+              onView={handleViewChange}
+              onNavigate={setCurrentDisplayMonth}
+              step={30}
+              timeslots={2}
+              views={['week', 'month']}
+              eventPropGetter={() => ({
+                style: {
+                  backgroundColor: 'hsl(var(--primary))',
+                  borderRadius: '4px',
+                  opacity: 0.8,
+                  color: 'white',
+                  border: '0px',
+                  display: 'block'
+                }
+              })}
+              onSelectEvent={(event) => {
+                // Future: Handle booking when event is clicked
+                console.log('Selected slot:', event);
+              }}
+            />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
