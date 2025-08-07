@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { addMinutes, parseISO, isSameDay, setHours, setMinutes } from 'https://esm.sh/date-fns@3.3.1'
+import { addMinutes, parseISO, addHours, getDay } from 'https://esm.sh/date-fns@3.3.1'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -83,12 +83,12 @@ Deno.serve(async (req) => {
     }
 
     // Parse session date and time (sessionDate now includes full datetime)
-    const sessionStartDate = parseISO(sessionDate);
-    const sessionEndDate = addMinutes(sessionStartDate, DEFAULT_SESSION_DURATION_MINUTES);
+    const bookingDateTime = parseISO(sessionDate);
+    const bookingEndDateTime = addHours(bookingDateTime, 1); // Assuming 1-hour sessions
 
     console.log('Parsed session times:', {
-      start: sessionStartDate.toISOString(),
-      end: sessionEndDate.toISOString()
+      start: bookingDateTime.toISOString(),
+      end: bookingEndDateTime.toISOString()
     });
 
     // --- VALIDATION LOGIC ---
@@ -98,26 +98,19 @@ Deno.serve(async (req) => {
       .from('sessions')
       .select('id, session_date')
       .eq('trainer_id', trainerId)
-      .in('status', ['scheduled', 'completed']);
+      .gte('session_date', bookingDateTime.toISOString())
+      .lt('session_date', bookingEndDateTime.toISOString())
+      .not('status', 'in', '("cancelled", "no-show")'); // Ignore cancelled sessions
 
     if (overlapError) {
       console.error('Error checking overlaps:', overlapError);
       throw overlapError;
     }
 
-    // Client-side filtering for actual time overlap
-    const hasOverlap = overlappingSessions?.some((existingSession: any) => {
-      const existingStart = new Date(existingSession.session_date);
-      const existingEnd = addMinutes(existingStart, DEFAULT_SESSION_DURATION_MINUTES);
-
-      // Check for overlap: [start1, end1) overlaps [start2, end2) if start1 < end2 AND end1 > start2
-      return sessionStartDate < existingEnd && sessionEndDate > existingStart;
-    });
-
-    if (hasOverlap) {
+    if (overlappingSessions && overlappingSessions.length > 0) {
       console.log('Time slot overlap detected');
       return new Response(
-        JSON.stringify({ error: 'This time slot overlaps with an existing session.' }), 
+        JSON.stringify({ error: 'Timeslot is already booked.' }), 
         { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -126,6 +119,8 @@ Deno.serve(async (req) => {
     let sessionPackId = null;
     let subscriptionId = null;
     let sessionStatus = 'scheduled'; // Default status
+    let sourcePack = null;
+    let sourceSubscription = null;
 
     switch (bookingMethod) {
       case 'pack':
@@ -160,6 +155,7 @@ Deno.serve(async (req) => {
           );
         }
 
+        // Check if the service type of the session matches the pack's service type
         if (pack.service_type_id !== serviceTypeId) {
           return new Response(
             JSON.stringify({ error: 'Service type does not match the selected pack.' }), 
@@ -168,6 +164,7 @@ Deno.serve(async (req) => {
         }
 
         sessionPackId = sourcePackId;
+        sourcePack = pack;
         console.log('Pack validated successfully:', pack);
         break;
 
@@ -179,7 +176,8 @@ Deno.serve(async (req) => {
           );
         }
 
-        const { data: subscription, error: subError } = await supabaseUserClient
+        // Check for weekly allocation limit and "in credit" sessions
+        const { data: subscriptionDetails, error: subError } = await supabaseUserClient
           .from('client_subscriptions')
           .select(`
             id, 
@@ -192,7 +190,7 @@ Deno.serve(async (req) => {
           .eq('status', 'active')
           .single();
 
-        if (subError || !subscription) {
+        if (subError || !subscriptionDetails) {
           console.error('Subscription validation error:', subError);
           return new Response(
             JSON.stringify({ error: 'Invalid or inactive subscription.' }), 
@@ -201,24 +199,27 @@ Deno.serve(async (req) => {
         }
 
         // Check if service type is allocated to subscription
-        const serviceTypeExists = subscription.subscription_service_allocations.some(
+        const serviceTypeExistsInSubscription = subscriptionDetails.subscription_service_allocations.some(
           (allocation: any) => allocation.service_type_id === serviceTypeId
         );
-        if (!serviceTypeExists) {
+        if (!serviceTypeExistsInSubscription) {
           return new Response(
             JSON.stringify({ error: 'Selected service type is not part of this subscription.' }), 
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
+        // TODO: Add logic to check weekly session limits and sessions "in credit"
+        // This is a complex check and will be added in a future prompt.
+
         subscriptionId = sourceSubscriptionId;
-        console.log('Subscription validated successfully:', subscription);
+        sourceSubscription = subscriptionDetails;
+        console.log('Subscription validated successfully:', subscriptionDetails);
         break;
 
       case 'one-off':
-        // One-off sessions require trainer approval - use 'scheduled' status for now
-        sessionStatus = 'scheduled';
-        console.log('One-off session booking, status set to scheduled (awaiting trainer approval)');
+        sessionStatus = 'pending_approval';
+        console.log('One-off session booking, status set to pending approval');
         break;
 
       default:
@@ -236,7 +237,7 @@ Deno.serve(async (req) => {
       .insert({
         trainer_id: trainerId,
         client_id: clientId,
-        session_date: sessionStartDate.toISOString(),
+        session_date: bookingDateTime.toISOString(),
         status: sessionStatus,
         service_type_id: serviceTypeId,
         session_pack_id: sessionPackId,
