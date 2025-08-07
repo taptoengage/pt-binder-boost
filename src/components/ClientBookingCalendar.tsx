@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, addDays, setHours, setMinutes, isSameDay } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, addDays, setHours, setMinutes, isSameDay, startOfWeek, isToday } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
@@ -37,7 +37,8 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
   const [currentDisplayMonth, setCurrentDisplayMonth] = useState(new Date());
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<View>('week');
+  const [view, setView] = useState<'week' | 'month' | 'day'>('week');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
   const getDayNumberFromString = (dayName: string): number | undefined => {
@@ -204,8 +205,87 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
     setCurrentDisplayMonth(prevMonth => addDays(prevMonth, -30));
   };
 
-  const handleViewChange = (newView: View) => {
+  const handleViewChange = (newView: 'week' | 'month' | 'day') => {
     setView(newView);
+  };
+
+  // Handler to switch to a specific day view
+  const handleDayClick = (date: Date) => {
+    setSelectedDate(date);
+    setView('day');
+  };
+
+  const renderWeekView = () => {
+    const weekStart = startOfWeek(currentDisplayMonth);
+    const daysOfWeek = eachDayOfInterval({ start: weekStart, end: addDays(weekStart, 6) });
+
+    return (
+      <div className="grid grid-cols-7 gap-2 h-96">
+        {daysOfWeek.map(day => (
+          <div key={format(day, 'yyyy-MM-dd')} className="border rounded-lg p-2 bg-card">
+            <div className={`text-sm font-medium mb-2 ${isToday(day) ? 'text-primary' : 'text-muted-foreground'}`}>
+              {format(day, 'E d')}
+            </div>
+            <div className="space-y-1">
+              {availableSlots
+                .filter(slot => isSameDay(slot.start, day))
+                .map((slot, index) => (
+                  <Button
+                    key={`${day.toISOString()}-${index}`}
+                    size="sm"
+                    variant="outline"
+                    className="w-full text-xs h-8"
+                    onClick={() => handleDayClick(day)}
+                  >
+                    {format(slot.start, 'h:mm a')}
+                  </Button>
+                ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderDayView = () => {
+    const daySlots = availableSlots.filter(slot => isSameDay(slot.start, selectedDate));
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Button 
+            variant="ghost" 
+            onClick={() => setView('week')}
+            className="text-sm"
+          >
+            ← Back to Week
+          </Button>
+          <h3 className="text-lg font-semibold">{format(selectedDate, 'EEEE, MMM dd, yyyy')}</h3>
+          <div></div>
+        </div>
+        <div className="grid gap-2 max-w-md mx-auto">
+          {daySlots.length > 0 ? (
+            daySlots.map((slot, index) => (
+              <Button
+                key={`${selectedDate.toISOString()}-${index}`}
+                className="w-full justify-between h-12"
+                onClick={() => {
+                  // Future: Handle booking logic
+                  console.log('Book slot:', slot);
+                }}
+              >
+                <span>{format(slot.start, 'h:mm a')} - {format(slot.end, 'h:mm a')}</span>
+                <span className="text-sm">Book</span>
+              </Button>
+            ))
+          ) : (
+            <p className="text-center text-muted-foreground py-8">
+              No available slots for this day.
+            </p>
+          )}
+        </div>
+      </div>
+    );
   };
 
   // Transform available slots into calendar events
@@ -261,6 +341,15 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
           >
             Month
           </Button>
+          {view === 'day' && (
+            <Button 
+              onClick={() => handleViewChange('day')} 
+              variant="default"
+              size="sm"
+            >
+              Day
+            </Button>
+          )}
         </div>
 
         {/* Calendar display area */}
@@ -271,35 +360,40 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
         ) : error ? (
           <p className="text-destructive">{error}</p>
         ) : (
-          <div style={{ height: '600px' }} className="mt-4">
-            <Calendar
-              localizer={localizer}
-              events={calendarEvents}
-              startAccessor="start"
-              endAccessor="end"
-              defaultDate={currentDisplayMonth}
-              date={currentDisplayMonth}
-              view={view}
-              onView={handleViewChange}
-              onNavigate={setCurrentDisplayMonth}
-              step={30}
-              timeslots={2}
-              views={['week', 'month']}
-              eventPropGetter={() => ({
-                style: {
-                  backgroundColor: 'hsl(var(--primary))',
-                  borderRadius: '4px',
-                  opacity: 0.8,
-                  color: 'white',
-                  border: '0px',
-                  display: 'block'
-                }
-              })}
-              onSelectEvent={(event) => {
-                // Future: Handle booking when event is clicked
-                console.log('Selected slot:', event);
-              }}
-            />
+          <div className="mt-4">
+            {view === 'month' && (
+              <div style={{ height: '600px' }}>
+                <Calendar
+                  localizer={localizer}
+                  events={calendarEvents}
+                  startAccessor="start"
+                  endAccessor="end"
+                  defaultDate={currentDisplayMonth}
+                  date={currentDisplayMonth}
+                  view="month"
+                  onNavigate={setCurrentDisplayMonth}
+                  step={30}
+                  timeslots={2}
+                  views={['month']}
+                  eventPropGetter={() => ({
+                    style: {
+                      backgroundColor: 'hsl(var(--primary))',
+                      borderRadius: '4px',
+                      opacity: 0.8,
+                      color: 'white',
+                      border: '0px',
+                      display: 'block'
+                    }
+                  })}
+                  onSelectEvent={(event) => {
+                    const slotDate = event.resource.start;
+                    handleDayClick(slotDate);
+                  }}
+                />
+              </div>
+            )}
+            {view === 'week' && renderWeekView()}
+            {view === 'day' && renderDayView()}
           </div>
         )}
       </CardContent>
