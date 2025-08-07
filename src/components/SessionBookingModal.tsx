@@ -157,8 +157,15 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
 
       console.log('Submitting booking:', bookingData);
 
+      // Get the current session to pass the JWT token
+      const { data: session } = await supabase.auth.getSession();
+      const token = session?.session?.access_token;
+
       const { data, error } = await supabase.functions.invoke('book-client-session', {
         body: bookingData,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       if (error) throw error;

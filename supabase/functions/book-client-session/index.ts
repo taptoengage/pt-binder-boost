@@ -25,6 +25,17 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   );
 
+  // Create a client with the user's JWT for RLS-enforced queries
+  const supabaseUserClient = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    {
+      global: {
+        headers: { Authorization: `Bearer ${token}` }
+      }
+    }
+  );
+
   try {
     const { 
       clientId, 
@@ -47,7 +58,7 @@ Deno.serve(async (req) => {
     });
 
     // 1. Verify user's identity and permissions (CRITICAL SECURITY CHECK)
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabaseUserClient.auth.getUser();
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'User not authenticated' }), 
@@ -83,7 +94,7 @@ Deno.serve(async (req) => {
     // --- VALIDATION LOGIC ---
 
     // 1. Check for timeslot overlap with trainer's existing sessions
-    const { data: overlappingSessions, error: overlapError } = await supabaseClient
+    const { data: overlappingSessions, error: overlapError } = await supabaseUserClient
       .from('sessions')
       .select('id, session_date')
       .eq('trainer_id', trainerId)
@@ -125,7 +136,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        const { data: pack, error: packError } = await supabaseClient
+        const { data: pack, error: packError } = await supabaseUserClient
           .from('session_packs')
           .select('id, sessions_remaining, service_type_id, status')
           .eq('id', sourcePackId)
@@ -168,7 +179,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        const { data: subscription, error: subError } = await supabaseClient
+        const { data: subscription, error: subError } = await supabaseUserClient
           .from('client_subscriptions')
           .select(`
             id, 
@@ -245,14 +256,14 @@ Deno.serve(async (req) => {
     // Update the source (pack remaining count) if booking from a pack
     if (bookingMethod === 'pack' && sessionPackId) {
       // Get current pack to decrement properly
-      const { data: currentPack } = await supabaseClient
+      const { data: currentPack } = await supabaseUserClient
         .from('session_packs')
         .select('sessions_remaining')
         .eq('id', sessionPackId)
         .single();
 
       if (currentPack) {
-        const { error: decrementError } = await supabaseClient
+        const { error: decrementError } = await supabaseUserClient
           .from('session_packs')
           .update({ sessions_remaining: currentPack.sessions_remaining - 1 })
           .eq('id', sessionPackId);
