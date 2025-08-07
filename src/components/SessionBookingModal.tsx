@@ -108,10 +108,56 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
     fetchClientEligibilityData();
   }, [isOpen, clientId, trainerId, toast]);
 
-  // This function will call the Edge Function in a future prompt
   const handleConfirmBooking = async () => {
-    console.log("DEBUG: Placeholder for booking confirmation logic.");
-    onClose(); // Just close the modal for now
+    if (!selectedSlot || !selectedServiceTypeId || !bookingMethod) {
+      toast({
+        title: "Error",
+        description: "Please select all required options.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const bookingData = {
+        clientId,
+        trainerId,
+        sessionDate: selectedSlot.start.toISOString().split('T')[0],
+        sessionTime: format(selectedSlot.start, 'HH:mm'),
+        serviceTypeId: selectedServiceTypeId,
+        bookingMethod,
+        sourcePackId: bookingMethod === 'pack' ? selectedPackId : null,
+        sourceSubscriptionId: bookingMethod === 'subscription' ? selectedSubscriptionId : null,
+      };
+
+      console.log('Submitting booking:', bookingData);
+
+      const { data, error } = await supabase.functions.invoke('book-client-session', {
+        body: bookingData,
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Success",
+          description: data.message || "Session booked successfully!",
+        });
+        onClose();
+      } else {
+        throw new Error(data.error || 'Booking failed');
+      }
+    } catch (error: any) {
+      console.error('Booking error:', error);
+      toast({
+        title: "Booking Failed",
+        description: error.message || "Failed to book session. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const isConfirmDisabled = isLoading || !selectedSlot || !bookingMethod || !selectedServiceTypeId;
