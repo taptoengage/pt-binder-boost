@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -6,7 +6,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { format } from 'date-fns';
+import { format, setHours, setMinutes, isBefore, addMinutes } from 'date-fns';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Define interfaces for data fetched from Supabase
 interface SessionPack {
@@ -41,12 +42,30 @@ interface SessionBookingModalProps {
 export default function SessionBookingModal({ isOpen, onClose, selectedSlot, clientId, trainerId }: SessionBookingModalProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
+  const [isBooking, setIsBooking] = useState(false);
   // New state to manage the selected booking option as a single string
   const [selectedBookingOption, setSelectedBookingOption] = useState<string | null>(null);
   const [activeSessionPacks, setActiveSessionPacks] = useState<SessionPack[]>([]);
   const [activeSubscriptions, setActiveSubscriptions] = useState<ClientSubscription[]>([]);
   const [availableServices, setAvailableServices] = useState<ServiceType[]>([]);
   const [selectedServiceTypeId, setSelectedServiceTypeId] = useState<string | null>(null);
+  const [selectedStartTime, setSelectedStartTime] = useState<string | null>(null);
+
+  // Helper to generate 30-minute time slots within an availability block
+  const generateBookableTimeSlots = useCallback((start: Date, end: Date) => {
+    const slots = [];
+    let currentTime = start;
+    while (isBefore(currentTime, end)) {
+      slots.push(currentTime);
+      currentTime = addMinutes(currentTime, 30); // Generate 30-minute increments
+    }
+    return slots;
+  }, []);
+
+  const bookableTimeSlots = useMemo(() => {
+    if (!selectedSlot) return [];
+    return generateBookableTimeSlots(selectedSlot.start, selectedSlot.end);
+  }, [selectedSlot, generateBookableTimeSlots]);
 
   const canUseSubscription = useMemo(() => activeSubscriptions.length > 0, [activeSubscriptions]);
   const canUsePack = useMemo(() => activeSessionPacks.length > 0, [activeSessionPacks]);
@@ -108,7 +127,7 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
   }, [isOpen, clientId, trainerId, toast]);
 
   const handleConfirmBooking = async () => {
-    if (!selectedSlot || !selectedServiceTypeId || !selectedBookingOption) {
+    if (!selectedSlot || !selectedStartTime || !selectedServiceTypeId || !selectedBookingOption) {
       toast({
         title: "Error",
         description: "Please select all required options.",
@@ -117,16 +136,19 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
       return;
     }
 
-    setIsLoading(true);
+    setIsBooking(true);
     try {
       // Parse the single selectedBookingOption string
       const [method, id] = selectedBookingOption.split(':');
 
+      // Get the final session date with the selected start time
+      const [hour, minute] = selectedStartTime.split(':').map(Number);
+      const sessionDateWithTime = setMinutes(setHours(selectedSlot.start, hour), minute);
+
       const bookingData = {
         clientId,
         trainerId,
-        sessionDate: selectedSlot.start.toISOString().split('T')[0],
-        sessionTime: format(selectedSlot.start, 'HH:mm'),
+        sessionDate: sessionDateWithTime.toISOString(),
         serviceTypeId: selectedServiceTypeId,
         bookingMethod: method,
         sourcePackId: method === 'pack' ? id : null,
@@ -158,11 +180,11 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      setIsBooking(false);
     }
   };
 
-  const isConfirmDisabled = isLoading || !selectedSlot || !selectedServiceTypeId || !selectedBookingOption;
+  const isConfirmDisabled = isLoading || isBooking || !selectedSlot || !selectedStartTime || !selectedServiceTypeId || !selectedBookingOption;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -181,9 +203,29 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
           <div className="grid gap-4 py-4">
             {selectedSlot && (
               <p className="text-sm font-medium">
-                Session Time: {format(selectedSlot.start, 'MMM dd, yyyy h:mm a')} - {format(selectedSlot.end, 'h:mm a')}
+                Session Date: {format(selectedSlot.start, 'MMM dd, yyyy')}
               </p>
             )}
+
+            {/* NEW: Time Slot Selection using a dropdown */}
+            <div className="space-y-2">
+              <Label htmlFor="startTime">Choose a Start Time</Label>
+              <Select
+                value={selectedStartTime || ''}
+                onValueChange={setSelectedStartTime}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a start time" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bookableTimeSlots.map((time, index) => (
+                    <SelectItem key={index} value={format(time, 'HH:mm')}>
+                      {format(time, 'h:mm a')}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             <div className="space-y-2">
               <Label>Service Type</Label>
@@ -246,9 +288,10 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
           </div>
         )}
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isLoading}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={isLoading || isBooking}>Cancel</Button>
           <Button type="submit" onClick={handleConfirmBooking} disabled={isConfirmDisabled}>
-            Confirm Booking
+            {isBooking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {isBooking ? 'Booking...' : 'Confirm Booking'}
           </Button>
         </DialogFooter>
       </DialogContent>

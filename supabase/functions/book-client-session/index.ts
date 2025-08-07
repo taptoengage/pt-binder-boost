@@ -30,7 +30,6 @@ Deno.serve(async (req) => {
       clientId, 
       trainerId, 
       sessionDate, 
-      sessionTime, 
       serviceTypeId, 
       bookingMethod, 
       sourcePackId, 
@@ -41,7 +40,6 @@ Deno.serve(async (req) => {
       clientId,
       trainerId,
       sessionDate,
-      sessionTime,
       serviceTypeId,
       bookingMethod,
       sourcePackId,
@@ -66,16 +64,15 @@ Deno.serve(async (req) => {
     }
 
     // Basic input validation
-    if (!clientId || !trainerId || !sessionDate || !sessionTime || !serviceTypeId || !bookingMethod) {
+    if (!clientId || !trainerId || !sessionDate || !serviceTypeId || !bookingMethod) {
       return new Response(
         JSON.stringify({ error: 'Missing required booking data.' }), 
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Parse session date and time
-    const [hours, minutes] = sessionTime.split(':').map(Number);
-    const sessionStartDate = setMinutes(setHours(parseISO(sessionDate), hours), minutes);
+    // Parse session date and time (sessionDate now includes full datetime)
+    const sessionStartDate = parseISO(sessionDate);
     const sessionEndDate = addMinutes(sessionStartDate, DEFAULT_SESSION_DURATION_MINUTES);
 
     console.log('Parsed session times:', {
@@ -128,13 +125,10 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Extract pack ID from the "pack-{id}" format
-        const packId = sourcePackId.replace('pack-', '');
-        
         const { data: pack, error: packError } = await supabaseClient
           .from('session_packs')
           .select('id, sessions_remaining, service_type_id, status')
-          .eq('id', packId)
+          .eq('id', sourcePackId)
           .eq('client_id', clientId)
           .eq('trainer_id', trainerId)
           .eq('status', 'active')
@@ -162,7 +156,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        sessionPackId = packId;
+        sessionPackId = sourcePackId;
         console.log('Pack validated successfully:', pack);
         break;
 
@@ -174,13 +168,14 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Extract subscription ID from the "subscription-{id}" format
-        const subId = sourceSubscriptionId.replace('subscription-', '');
-
         const { data: subscription, error: subError } = await supabaseClient
           .from('client_subscriptions')
-          .select('id, status')
-          .eq('id', subId)
+          .select(`
+            id, 
+            status,
+            subscription_service_allocations!inner(service_type_id, quantity_per_period)
+          `)
+          .eq('id', sourceSubscriptionId)
           .eq('client_id', clientId)
           .eq('trainer_id', trainerId)
           .eq('status', 'active')
@@ -194,7 +189,18 @@ Deno.serve(async (req) => {
           );
         }
 
-        subscriptionId = subId;
+        // Check if service type is allocated to subscription
+        const serviceTypeExists = subscription.subscription_service_allocations.some(
+          (allocation: any) => allocation.service_type_id === serviceTypeId
+        );
+        if (!serviceTypeExists) {
+          return new Response(
+            JSON.stringify({ error: 'Selected service type is not part of this subscription.' }), 
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        subscriptionId = sourceSubscriptionId;
         console.log('Subscription validated successfully:', subscription);
         break;
 
@@ -238,12 +244,7 @@ Deno.serve(async (req) => {
 
     // Update the source (pack remaining count) if booking from a pack
     if (bookingMethod === 'pack' && sessionPackId) {
-      const { error: updatePackError } = await supabaseClient
-        .from('session_packs')
-        .update({ sessions_remaining: supabaseClient.rpc('sessions_remaining', []) })
-        .eq('id', sessionPackId);
-
-      // Manual decrement approach
+      // Get current pack to decrement properly
       const { data: currentPack } = await supabaseClient
         .from('session_packs')
         .select('sessions_remaining')
