@@ -56,8 +56,8 @@ export default function ClientBookSessionPage() {
             <CardDescription>Select an available time slot below.</CardDescription>
           </CardHeader>
           <CardContent>
-            {trainerId ? (
-              <ClientBookingCalendar trainerId={trainerId} />
+            {trainerId && client?.id ? (
+              <ClientBookingCalendar trainerId={trainerId} clientId={client.id} />
             ) : (
               <p className="text-muted-foreground text-destructive">{error || "Unable to display calendar without a linked trainer."}</p>
             )}

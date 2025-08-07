@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 import { Calendar, momentLocalizer, View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
+import SessionBookingModal from '@/components/SessionBookingModal';
 
 const localizer = momentLocalizer(moment);
 
@@ -30,15 +31,18 @@ interface TrainerException {
 
 interface ClientBookingCalendarProps {
   trainerId: string;
+  clientId: string;
 }
 
-export default function ClientBookingCalendar({ trainerId }: ClientBookingCalendarProps) {
+export default function ClientBookingCalendar({ trainerId, clientId }: ClientBookingCalendarProps) {
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
   const [currentDisplayMonth, setCurrentDisplayMonth] = useState(new Date());
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'week' | 'month' | 'day'>('week');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedSlotForModal, setSelectedSlotForModal] = useState<{ start: Date; end: Date } | null>(null);
 
   // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
   const getDayNumberFromString = (dayName: string): number | undefined => {
@@ -215,6 +219,12 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
     setView('day');
   };
 
+  // Handler for clicking the "Book" button
+  const handleBookClick = (slot: AvailableSlot) => {
+    setSelectedSlotForModal(slot);
+    setIsModalOpen(true);
+  };
+
   const renderWeekView = () => {
     const weekStart = startOfWeek(currentDisplayMonth);
     const daysOfWeek = eachDayOfInterval({ start: weekStart, end: addDays(weekStart, 6) });
@@ -269,10 +279,7 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
               <Button
                 key={`${selectedDate.toISOString()}-${index}`}
                 className="w-full justify-between h-12"
-                onClick={() => {
-                  // Future: Handle booking logic
-                  console.log('Book slot:', slot);
-                }}
+                onClick={() => handleBookClick(slot)}
               >
                 <span>{format(slot.start, 'h:mm a')} - {format(slot.end, 'h:mm a')}</span>
                 <span className="text-sm">Book</span>
@@ -397,6 +404,13 @@ export default function ClientBookingCalendar({ trainerId }: ClientBookingCalend
           </div>
         )}
       </CardContent>
+      <SessionBookingModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        selectedSlot={selectedSlotForModal}
+        clientId={clientId}
+        trainerId={trainerId}
+      />
     </Card>
   );
 }
