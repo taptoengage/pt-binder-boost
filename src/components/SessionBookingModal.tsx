@@ -41,9 +41,8 @@ interface SessionBookingModalProps {
 export default function SessionBookingModal({ isOpen, onClose, selectedSlot, clientId, trainerId }: SessionBookingModalProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
-  const [bookingMethod, setBookingMethod] = useState<'pack' | 'subscription' | 'one-off' | ''>('');
-  const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
-  const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string | null>(null);
+  // New state to manage the selected booking option as a single string
+  const [selectedBookingOption, setSelectedBookingOption] = useState<string | null>(null);
   const [activeSessionPacks, setActiveSessionPacks] = useState<SessionPack[]>([]);
   const [activeSubscriptions, setActiveSubscriptions] = useState<ClientSubscription[]>([]);
   const [availableServices, setAvailableServices] = useState<ServiceType[]>([]);
@@ -109,7 +108,7 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
   }, [isOpen, clientId, trainerId, toast]);
 
   const handleConfirmBooking = async () => {
-    if (!selectedSlot || !selectedServiceTypeId || !bookingMethod) {
+    if (!selectedSlot || !selectedServiceTypeId || !selectedBookingOption) {
       toast({
         title: "Error",
         description: "Please select all required options.",
@@ -120,15 +119,18 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
 
     setIsLoading(true);
     try {
+      // Parse the single selectedBookingOption string
+      const [method, id] = selectedBookingOption.split(':');
+
       const bookingData = {
         clientId,
         trainerId,
         sessionDate: selectedSlot.start.toISOString().split('T')[0],
         sessionTime: format(selectedSlot.start, 'HH:mm'),
         serviceTypeId: selectedServiceTypeId,
-        bookingMethod,
-        sourcePackId: bookingMethod === 'pack' ? selectedPackId : null,
-        sourceSubscriptionId: bookingMethod === 'subscription' ? selectedSubscriptionId : null,
+        bookingMethod: method,
+        sourcePackId: method === 'pack' ? id : null,
+        sourceSubscriptionId: method === 'subscription' ? id : null,
       };
 
       console.log('Submitting booking:', bookingData);
@@ -160,7 +162,7 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
     }
   };
 
-  const isConfirmDisabled = isLoading || !selectedSlot || !bookingMethod || !selectedServiceTypeId;
+  const isConfirmDisabled = isLoading || !selectedSlot || !selectedServiceTypeId || !selectedBookingOption;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -205,46 +207,35 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
 
             <div className="space-y-2">
               <Label>How would you like to book?</Label>
+              {/* Single RadioGroup for all options */}
               <RadioGroup
-                value={bookingMethod}
-                onValueChange={(value) => {
-                  setBookingMethod(value as any);
-                  setSelectedPackId(null); // Clear selections on method change
-                  setSelectedSubscriptionId(null);
-                }}
-                className="flex flex-col space-y-1"
+                value={selectedBookingOption || ''}
+                onValueChange={setSelectedBookingOption}
+                className="flex flex-col space-y-2"
               >
-                {canUsePack && (
-                  <div className="flex flex-col space-y-2">
-                    <Label className="font-semibold">From a Session Pack</Label>
-                    <RadioGroup onValueChange={setSelectedPackId} value={selectedPackId || ''} className="space-y-1 ml-4">
-                      {activeSessionPacks.map(pack => (
-                        <div key={pack.id} className="flex items-center space-x-2">
-                          <RadioGroupItem value={`pack-${pack.id}`} id={`pack-${pack.id}`} disabled={bookingMethod !== 'pack'} />
-                          <Label htmlFor={`pack-${pack.id}`}>
-                            Use Pack: {pack.service_types?.name} ({pack.sessions_remaining} remaining)
-                          </Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
-                  </div>
+                {activeSessionPacks.length > 0 && (
+                  <Label className="font-semibold">From a Session Pack</Label>
                 )}
+                {activeSessionPacks.map(pack => (
+                  <div key={pack.id} className="flex items-center space-x-2 ml-4">
+                    <RadioGroupItem value={`pack:${pack.id}`} id={`pack-${pack.id}`} />
+                    <Label htmlFor={`pack-${pack.id}`}>
+                      Use Pack: {pack.service_types?.name} ({pack.sessions_remaining} remaining)
+                    </Label>
+                  </div>
+                ))}
 
-                {canUseSubscription && (
-                  <div className="flex flex-col space-y-2">
-                    <Label className="font-semibold">From an Active Subscription</Label>
-                    <RadioGroup onValueChange={setSelectedSubscriptionId} value={selectedSubscriptionId || ''} className="space-y-1 ml-4">
-                      {activeSubscriptions.map(sub => (
-                        <div key={sub.id} className="flex items-center space-x-2">
-                          <RadioGroupItem value={`subscription-${sub.id}`} id={`subscription-${sub.id}`} disabled={bookingMethod !== 'subscription'} />
-                          <Label htmlFor={`subscription-${sub.id}`}>
-                            Use Subscription: {sub.billing_cycle} ({sub.payment_frequency})
-                          </Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
-                  </div>
+                {activeSubscriptions.length > 0 && (
+                  <Label className="font-semibold">From an Active Subscription</Label>
                 )}
+                {activeSubscriptions.map(sub => (
+                  <div key={sub.id} className="flex items-center space-x-2 ml-4">
+                    <RadioGroupItem value={`subscription:${sub.id}`} id={`subscription-${sub.id}`} />
+                    <Label htmlFor={`subscription-${sub.id}`}>
+                      Use Subscription: {sub.billing_cycle} ({sub.payment_frequency})
+                    </Label>
+                  </div>
+                ))}
 
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="one-off" id="one-off" />

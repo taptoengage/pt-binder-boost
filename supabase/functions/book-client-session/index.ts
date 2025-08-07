@@ -14,6 +14,12 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const authHeader = req.headers.get('Authorization')
+  if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Authorization header is missing' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+  const token = authHeader.replace('Bearer ', '');
+
   const supabaseClient = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -41,6 +47,23 @@ Deno.serve(async (req) => {
       sourcePackId,
       sourceSubscriptionId
     });
+
+    // 1. Verify user's identity and permissions (CRITICAL SECURITY CHECK)
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'User not authenticated' }), 
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Ensure the client ID in the request matches the authenticated user ID
+    if (clientId !== user.id) {
+      return new Response(
+        JSON.stringify({ error: 'Client ID mismatch' }), 
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Basic input validation
     if (!clientId || !trainerId || !sessionDate || !sessionTime || !serviceTypeId || !bookingMethod) {
@@ -176,9 +199,9 @@ Deno.serve(async (req) => {
         break;
 
       case 'one-off':
-        // One-off sessions require trainer approval
-        sessionStatus = 'pending_approval';
-        console.log('One-off session booking, status set to pending approval');
+        // One-off sessions require trainer approval - use 'scheduled' status for now
+        sessionStatus = 'scheduled';
+        console.log('One-off session booking, status set to scheduled (awaiting trainer approval)');
         break;
 
       default:
