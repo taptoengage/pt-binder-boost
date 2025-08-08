@@ -66,10 +66,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Ensure the client ID in the request matches the authenticated user ID
-    if (clientId !== user.id) {
+    // Verify that the client exists and belongs to the authenticated user via email lookup
+    const { data: clientData, error: clientError } = await supabaseUserClient
+      .from('clients')
+      .select('id, email')
+      .eq('id', clientId)
+      .eq('email', user.email)
+      .single();
+
+    if (clientError || !clientData) {
+      console.error('Client verification error:', clientError);
       return new Response(
-        JSON.stringify({ error: 'Client ID mismatch' }), 
+        JSON.stringify({ error: 'Client not found or access denied' }), 
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
