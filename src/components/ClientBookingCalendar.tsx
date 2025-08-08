@@ -219,10 +219,12 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
         if (exceptionsError) throw exceptionsError;
 
-        // 3. Fetch all booked sessions for the trainer
+        // 3. Fetch all booked sessions for the trainer (across ALL clients)
+        // This now works due to the new RLS policy that allows clients to see
+        // basic session timing data for their trainer's sessions
         const { data: sessions, error: sessionsError } = await supabase
           .from('sessions')
-          .select('session_date')
+          .select('session_date, status')
           .eq('trainer_id', trainerId)
           .not('status', 'in', '("cancelled", "no-show")')
           .gte('session_date', startDate.toISOString())
