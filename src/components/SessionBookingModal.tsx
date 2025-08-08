@@ -189,50 +189,60 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
         },
       });
 
-      if (error) throw error;
+      // Handle Edge Function responses properly
+      if (error) {
+        console.error('FunctionsHttpError details:', error);
+        
+        // For FunctionsHttpError (non-2xx responses), the actual error message 
+        // from the Edge Function is in the response body, not the error object
+        let errorMessage = "Failed to book session. Please try again.";
+        
+        if (error.name === 'FunctionsHttpError') {
+          // The response body should contain our Edge Function's error message
+          // Let's check for the error in multiple possible locations
+          try {
+            // Check if we can access the response body directly
+            if (data && data.error) {
+              errorMessage = data.error;
+            } else if (error.context?.body) {
+              // Parse the body if it's a string
+              const bodyData = typeof error.context.body === 'string' 
+                ? JSON.parse(error.context.body) 
+                : error.context.body;
+              
+              if (bodyData.error) {
+                errorMessage = bodyData.error;
+              }
+            }
+          } catch (parseError) {
+            console.error('Failed to parse error response:', parseError);
+          }
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        throw new Error(errorMessage);
+      }
 
-      if (data.success) {
+      // Handle successful response
+      if (data?.success) {
         toast({
           title: "Success",
           description: data.message || "Session booked successfully!",
         });
         onClose();
+      } else if (data?.error) {
+        // Handle error responses that come back in data (for some edge cases)
+        throw new Error(data.error);
       } else {
-        throw new Error(data.error || 'Booking failed');
+        throw new Error('Booking failed - unexpected response format');
       }
     } catch (error: any) {
-      console.error('Booking error:', error);
-      console.error('Error structure:', JSON.stringify(error, null, 2));
-      console.error('Error properties:', Object.keys(error));
+      console.error('Booking failed:', error);
       
-      // Extract specific error message from FunctionsHttpError
-      let userMessage = "Failed to book session. Please try again.";
-      
-      // Try multiple possible error message locations
-      if (error.name === 'FunctionsHttpError') {
-        // Log the complete error to understand its structure
-        console.log('FunctionsHttpError detected, investigating structure...');
-        console.log('error.details:', error.details);
-        console.log('error.context:', error.context);
-        console.log('error.message:', error.message);
-        
-        // Try different possible paths for the error message
-        if (error.details?.error) {
-          userMessage = error.details.error;
-        } else if (error.context?.body?.error) {
-          userMessage = error.context.body.error;
-        } else if (error.details?.message) {
-          userMessage = error.details.message;
-        } else if (error.context?.response?.error) {
-          userMessage = error.context.response.error;
-        }
-      } else if (error.message) {
-        userMessage = error.message;
-      }
-
       toast({
         title: "Booking Failed",
-        description: userMessage,
+        description: error.message || "Failed to book session. Please try again.",
         variant: "destructive",
       });
     } finally {
