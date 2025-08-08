@@ -94,21 +94,25 @@ Deno.serve(async (req) => {
     if (!doPenalize) {
       // If from pack, increment sessions_remaining back by 1
       if (session.session_pack_id) {
-        const { error: incErr } = await supabaseService
+        // Fetch current remaining and increment
+        const { data: packRow, error: packErr } = await supabaseService
           .from('session_packs')
-          .update({ sessions_remaining: (await (async () => {
-            const { data } = await supabaseService
-              .from('session_packs')
-              .select('sessions_remaining')
-              .eq('id', session.session_pack_id)
-              .eq('trainer_id', session.trainer_id)
-              .single();
-            return (data?.sessions_remaining ?? 0) + 1;
-          })(), updated_at: new Date().toISOString() })
+          .select('sessions_remaining')
           .eq('id', session.session_pack_id)
-          .eq('trainer_id', session.trainer_id);
-        if (incErr) {
-          console.error('Error incrementing pack sessions:', incErr);
+          .eq('trainer_id', session.trainer_id)
+          .single();
+        if (!packErr && packRow) {
+          const newRemaining = (packRow.sessions_remaining ?? 0) + 1;
+          const { error: incErr } = await supabaseService
+            .from('session_packs')
+            .update({ sessions_remaining: newRemaining, updated_at: new Date().toISOString() })
+            .eq('id', session.session_pack_id)
+            .eq('trainer_id', session.trainer_id);
+          if (incErr) {
+            console.error('Error incrementing pack sessions:', incErr);
+          }
+        } else if (packErr) {
+          console.error('Error fetching pack sessions_remaining:', packErr);
         }
       }
 
