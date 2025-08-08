@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import EditSessionModal from '@/components/EditSessionModal';
 
 export default function ClientDashboard() {
@@ -34,6 +35,7 @@ export default function ClientDashboard() {
   const [isLoadingPacks, setIsLoadingPacks] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedSessionForEdit, setSelectedSessionForEdit] = useState<any | null>(null);
+  const [isCancellingId, setIsCancellingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (client?.id && client?.trainer_id) {
@@ -195,6 +197,23 @@ export default function ClientDashboard() {
 
   const handleSessionUpdated = () => {
     fetchClientDashboardData();
+  };
+
+  const handleCancelWithin24 = async (session: any) => {
+    setIsCancellingId(session.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-client-session', {
+        body: { sessionId: session.id, penalize: true },
+      });
+      if (error) throw error;
+      toast({ title: 'Session cancelled', description: 'Cancellation processed with penalty.' });
+      fetchClientDashboardData();
+    } catch (error: any) {
+      console.error('Error cancelling session within 24h:', error);
+      toast({ title: 'Error', description: error.message || 'Failed to cancel session.', variant: 'destructive' });
+    } finally {
+      setIsCancellingId(null);
+    }
   };
 
   if (isLoadingDashboard) {

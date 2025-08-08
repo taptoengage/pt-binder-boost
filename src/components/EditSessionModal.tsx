@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
@@ -11,6 +10,8 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { useSessionOverlapCheck } from '@/hooks/useSessionOverlapCheck';
 
 interface EditSessionModalProps {
   isOpen: boolean;
@@ -25,6 +26,23 @@ export default function EditSessionModal({ isOpen, onClose, session, onSessionUp
   const [selectedTime, setSelectedTime] = useState('');
   const [notes, setNotes] = useState('');
   const { toast } = useToast();
+
+  // Generate 30-min time options starting on the hour
+  const timeOptions = Array.from({ length: 24 * 2 }, (_, i) => {
+    const hours = Math.floor(i / 2).toString().padStart(2, '0');
+    const minutes = i % 2 === 0 ? '00' : '30';
+    return `${hours}:${minutes}`;
+  });
+
+  // Overlap check against trainer calendar
+  const { isLoadingOverlaps, overlappingSessionsCount } = useSessionOverlapCheck({
+    trainerId: session?.trainer_id,
+    proposedDate: selectedDate,
+    proposedTime: selectedTime || undefined,
+    proposedStatus: 'scheduled',
+    sessionIdToExclude: session?.id,
+    enabled: Boolean(isOpen && session?.trainer_id && selectedDate && selectedTime),
+  });
 
   useEffect(() => {
     if (session && isOpen) {
@@ -81,6 +99,32 @@ export default function EditSessionModal({ isOpen, onClose, session, onSessionUp
     }
   };
 
+  const handleCancelSession = async () => {
+    if (!session?.id) return;
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-client-session', {
+        body: {
+          sessionId: session.id,
+          penalize: false,
+        },
+      });
+      if (error) throw error;
+      toast({ title: "Session cancelled", description: "Your session has been cancelled." });
+      onSessionUpdated();
+      onClose();
+    } catch (error: any) {
+      console.error('Error cancelling session:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to cancel session. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleClose = () => {
     setSelectedDate(undefined);
     setSelectedTime('');
@@ -124,12 +168,23 @@ export default function EditSessionModal({ isOpen, onClose, session, onSessionUp
 
           <div className="grid gap-2">
             <Label htmlFor="time">Time</Label>
-            <Input
-              id="time"
-              type="time"
-              value={selectedTime}
-              onChange={(e) => setSelectedTime(e.target.value)}
-            />
+            <Select value={selectedTime} onValueChange={setSelectedTime}>
+              <SelectTrigger id="time">
+                <SelectValue placeholder="Select time" />
+              </SelectTrigger>
+              <SelectContent>
+                {timeOptions.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {format(new Date(`1970-01-01T${t}:00`), 'h:mm a')}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isLoadingOverlaps ? (
+              <p className="text-xs text-muted-foreground">Checking for overlaps...</p>
+            ) : overlappingSessionsCount > 0 ? (
+              <p className="text-xs text-destructive">This time overlaps with another session.</p>
+            ) : null}
           </div>
 
           <div className="grid gap-2">
@@ -146,9 +201,13 @@ export default function EditSessionModal({ isOpen, onClose, session, onSessionUp
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>
-            Cancel
+            Close
           </Button>
-          <Button onClick={handleSave} disabled={isLoading}>
+          <Button variant="destructive" onClick={handleCancelSession} disabled={isLoading}>
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Cancel Session
+          </Button>
+          <Button onClick={handleSave} disabled={isLoading || isLoadingOverlaps || (overlappingSessionsCount ?? 0) > 0}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save Changes
           </Button>

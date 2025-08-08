@@ -107,6 +107,38 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Check for overlapping sessions for this trainer (1-hour duration)
+    const proposedStart = new Date(sessionDate);
+    const proposedEnd = new Date(proposedStart.getTime() + 60 * 60 * 1000);
+
+    const { data: possibleOverlaps, error: overlapError } = await supabaseUserClient
+      .from('sessions')
+      .select('id, session_date, status')
+      .eq('trainer_id', existingSession.trainer_id)
+      .neq('id', sessionId)
+      .in('status', ['scheduled', 'completed']);
+
+    if (overlapError) {
+      console.error('Overlap check error:', overlapError);
+      return new Response(JSON.stringify({ error: 'Failed to validate timeslot' }), { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const hasOverlap = (possibleOverlaps || []).some((s: any) => {
+      const start = new Date(s.session_date);
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      return proposedStart < end && proposedEnd > start;
+    });
+
+    if (hasOverlap) {
+      return new Response(JSON.stringify({ error: 'This timeslot overlaps with another session.' }), { 
+        status: 409, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     // Update the session using service role key for reliable updates
     const { data: updatedSession, error: updateError } = await supabaseClient
       .from('sessions')
