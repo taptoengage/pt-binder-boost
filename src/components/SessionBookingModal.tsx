@@ -202,9 +202,18 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
       }
     } catch (error: any) {
       console.error('Booking error:', error);
+      
+      // Extract specific error message from FunctionsHttpError
+      let userMessage = "Failed to book session. Please try again.";
+      if (error.name === 'FunctionsHttpError' && error.details?.error) {
+        userMessage = error.details.error; // Extract the specific message from the backend
+      } else if (error.message) {
+        userMessage = error.message;
+      }
+
       toast({
         title: "Booking Failed",
-        description: error.message || "Failed to book session. Please try again.",
+        description: userMessage,
         variant: "destructive",
       });
     } finally {
