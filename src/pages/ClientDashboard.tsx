@@ -5,10 +5,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from 'react';
-import { Clock, CreditCard, Calendar, DollarSign, Loader2, PlusCircle } from 'lucide-react';
+import { Clock, CreditCard, Calendar, DollarSign, Loader2, User } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function ClientDashboard() {
   const { client, signOut } = useAuth();
@@ -186,9 +194,28 @@ export default function ClientDashboard() {
             <h1 className="text-3xl font-bold">Welcome, {client?.name}!</h1>
             <p className="text-muted-foreground">Your Personal Training Dashboard</p>
           </div>
-          <Button onClick={signOut} variant="outline">
-            Sign Out
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Profile
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{client?.name}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => navigate('/client/book-session')}>
+                Book a Session
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => toast({ title: "My Profile clicked", description: "Functionality to be added later." })}>
+                My Profile
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={signOut}>
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Overview Cards */}
@@ -270,22 +297,6 @@ export default function ClientDashboard() {
           </Card>
         </div>
 
-        {/* Quick Actions Section */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center gap-4">
-            <Button
-              onClick={() => navigate('/client/book-session')}
-              variant="default"
-              className="flex items-center gap-2"
-            >
-              <PlusCircle className="w-4 h-4" />
-              Book a Session
-            </Button>
-          </CardContent>
-        </Card>
 
         {/* Upcoming Sessions */}
         <Card className="mb-8">
