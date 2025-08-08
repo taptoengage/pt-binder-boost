@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from 'react';
-import { Clock, CreditCard, Calendar, DollarSign, Loader2, User } from 'lucide-react';
+import { Clock, CreditCard, Calendar, DollarSign, Loader2, User, Edit } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
@@ -17,6 +17,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import EditSessionModal from '@/components/EditSessionModal';
 
 export default function ClientDashboard() {
   const { client, signOut } = useAuth();
@@ -30,6 +32,8 @@ export default function ClientDashboard() {
   const [clientSessions, setClientSessions] = useState<any[]>([]);
   const [clientSessionPacks, setClientSessionPacks] = useState<any[]>([]);
   const [isLoadingPacks, setIsLoadingPacks] = useState(true);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedSessionForEdit, setSelectedSessionForEdit] = useState<any | null>(null);
 
   useEffect(() => {
     if (client?.id && client?.trainer_id) {
@@ -178,6 +182,21 @@ export default function ClientDashboard() {
     return 'text-muted-foreground';
   };
 
+  const isWithin24Hours = (sessionDate: Date) => {
+    const now = new Date();
+    const hoursUntilSession = (sessionDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+    return hoursUntilSession <= 24;
+  };
+
+  const handleEditSession = (session: any) => {
+    setSelectedSessionForEdit(session);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSessionUpdated = () => {
+    fetchClientDashboardData();
+  };
+
   if (isLoadingDashboard) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -306,30 +325,51 @@ export default function ClientDashboard() {
           </CardHeader>
           <CardContent>
             {clientSessions.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Service</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {clientSessions.map((session) => (
-                    <TableRow key={session.id}>
-                      <TableCell>
-                        {format(new Date(session.session_date), 'MMM dd, yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(session.session_date), 'h:mm a')}
-                      </TableCell>
-                      <TableCell>{session.service_types?.name}</TableCell>
-                      <TableCell className="capitalize">{session.status}</TableCell>
+              <TooltipProvider>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Service</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {clientSessions.map((session) => (
+                      <TableRow key={session.id}>
+                        <TableCell>
+                          {format(new Date(session.session_date), 'MMM dd, yyyy')}
+                        </TableCell>
+                        <TableCell>
+                          {format(new Date(session.session_date), 'h:mm a')}
+                        </TableCell>
+                        <TableCell>{session.service_types?.name}</TableCell>
+                        <TableCell className="capitalize">{session.status}</TableCell>
+                        <TableCell className="text-right">
+                          {isWithin24Hours(new Date(session.session_date)) ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button size="sm" variant="ghost" disabled>
+                                  <Edit className="h-4 w-4 text-muted-foreground" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Cannot edit within 24 hours of session</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <Button size="sm" variant="ghost" onClick={() => handleEditSession(session)}>
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TooltipProvider>
             ) : (
               <p className="text-muted-foreground">No upcoming sessions scheduled.</p>
             )}
@@ -374,6 +414,13 @@ export default function ClientDashboard() {
           </CardContent>
         </Card>
       </div>
+      
+      <EditSessionModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        session={selectedSessionForEdit}
+        onSessionUpdated={handleSessionUpdated}
+      />
     </div>
   );
 }
