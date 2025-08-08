@@ -743,7 +743,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      decrement_pack_sessions: {
+        Args: {
+          pack_id: string
+          trainer_id: string
+          expected_remaining: number
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       client_subscription_status_enum:
