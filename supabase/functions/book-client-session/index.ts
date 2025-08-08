@@ -129,6 +129,7 @@ Deno.serve(async (req) => {
     let sessionStatus = 'scheduled'; // Default status
     let sourcePack = null;
     let sourceSubscription = null;
+    let creditToUse = null;
 
     switch (bookingMethod) {
       case 'pack':
@@ -279,22 +280,9 @@ Deno.serve(async (req) => {
             );
           }
 
-          // Mark this session as using credit
-          const creditToUse = availableCredits[0];
-          const { error: updateCreditError } = await supabaseClient
-            .from('subscription_session_credits')
-            .update({ 
-              status: 'used',
-              used_at: new Date().toISOString()
-            })
-            .eq('id', creditToUse.id);
-
-          if (updateCreditError) throw updateCreditError;
-
-          // Set additional session metadata
-          newSession.is_from_credit = true;
-          newSession.credit_id_consumed = creditToUse.id;
-          console.log('Using subscription credit for session:', creditToUse.id);
+          // Store credit info to use after session creation
+          creditToUse = availableCredits[0];
+          console.log('Will use subscription credit for session:', creditToUse.id);
         }
 
         subscriptionId = sourceSubscriptionId;
@@ -339,27 +327,56 @@ Deno.serve(async (req) => {
 
     console.log('Session created successfully:', newSession);
 
+    // Handle credit usage after session creation
+    if (creditToUse && bookingMethod === 'subscription') {
+      const { error: updateCreditError } = await supabaseClient
+        .from('subscription_session_credits')
+        .update({ 
+          status: 'used',
+          used_at: new Date().toISOString()
+        })
+        .eq('id', creditToUse.id);
+
+      if (updateCreditError) {
+        console.error('Error updating credit status:', updateCreditError);
+        // Rollback session creation
+        await supabaseClient.from('sessions').delete().eq('id', newSession.id);
+        throw updateCreditError;
+      }
+
+      // Update session with credit metadata
+      const { error: updateSessionError } = await supabaseClient
+        .from('sessions')
+        .update({
+          is_from_credit: true,
+          credit_id_consumed: creditToUse.id
+        })
+        .eq('id', newSession.id);
+
+      if (updateSessionError) {
+        console.error('Error updating session credit metadata:', updateSessionError);
+        // Note: Don't rollback here as the core booking succeeded
+      }
+
+      console.log('Credit used successfully for session:', creditToUse.id);
+    }
+
     // Update the source (pack remaining count) if booking from a pack - ATOMIC OPERATION
     if (bookingMethod === 'pack' && sessionPackId) {
-      // Atomic decrement to prevent race conditions
-      const { data: updatedPack, error: decrementError } = await supabaseClient
-        .from('session_packs')
-        .update({ 
-          sessions_remaining: sourcePack.sessions_remaining - 1,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', sessionPackId)
-        .eq('trainer_id', trainerId)
-        .eq('sessions_remaining', sourcePack.sessions_remaining) // Optimistic locking
-        .select('sessions_remaining')
-        .single();
+      // Use SQL function for atomic decrement to prevent race conditions
+      const { data: updateResult, error: decrementError } = await supabaseClient
+        .rpc('decrement_pack_sessions', {
+          pack_id: sessionPackId,
+          trainer_id: trainerId,
+          expected_remaining: sourcePack.sessions_remaining
+        });
 
       if (decrementError) {
-        console.error('Error updating pack sessions (possible race condition):', decrementError);
+        console.error('Error updating pack sessions:', decrementError);
         // Rollback session creation
         await supabaseClient.from('sessions').delete().eq('id', newSession.id);
         
-        if (decrementError.code === 'PGRST116') {
+        if (decrementError.message?.includes('concurrent modification') || decrementError.code === 'P0001') {
           return new Response(
             JSON.stringify({ error: 'Session pack was modified by another booking. Please try again.' }), 
             { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -368,7 +385,7 @@ Deno.serve(async (req) => {
         throw decrementError;
       }
 
-      console.log('Pack sessions remaining decremented from', sourcePack.sessions_remaining, 'to', updatedPack.sessions_remaining);
+      console.log('Pack sessions remaining decremented from', sourcePack.sessions_remaining, 'to', sourcePack.sessions_remaining - 1);
     }
 
     return new Response(
