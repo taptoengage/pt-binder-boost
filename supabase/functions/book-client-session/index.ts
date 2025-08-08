@@ -6,6 +6,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Enhanced error response helper
+function createErrorResponse(message: string, status: number, details?: any) {
+  console.error(`Error ${status}: ${message}`, details ? JSON.stringify(details) : '');
+  return new Response(
+    JSON.stringify({ error: message, details }), 
+    { 
+      status, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    }
+  );
+}
+
 const DEFAULT_SESSION_DURATION_MINUTES = 60
 
 // This Edge Function is secured and requires a JWT
@@ -37,6 +49,15 @@ Deno.serve(async (req) => {
   );
 
   try {
+    // Enhanced input parsing with validation
+    let bookingData;
+    try {
+      bookingData = await req.json();
+    } catch (parseError) {
+      console.error('JSON parsing error:', parseError);
+      return createErrorResponse('Invalid JSON request body', 400, { parseError: parseError.message });
+    }
+
     const { 
       clientId, 
       trainerId, 
@@ -45,7 +66,7 @@ Deno.serve(async (req) => {
       bookingMethod, 
       sourcePackId, 
       sourceSubscriptionId 
-    } = await req.json();
+    } = bookingData;
 
     console.log('Booking request received:', {
       clientId,
@@ -54,7 +75,8 @@ Deno.serve(async (req) => {
       serviceTypeId,
       bookingMethod,
       sourcePackId,
-      sourceSubscriptionId
+      sourceSubscriptionId,
+      timestamp: new Date().toISOString()
     });
 
     // 1. Verify user's identity and permissions (CRITICAL SECURITY CHECK)
@@ -90,29 +112,55 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Parse session date and time (sessionDate now includes full datetime)
-    const bookingDateTime = parseISO(sessionDate);
-    const bookingEndDateTime = addHours(bookingDateTime, 1); // Assuming 1-hour sessions
+    // Parse session date and time with enhanced validation
+    let bookingDateTime, bookingEndDateTime;
+    try {
+      bookingDateTime = parseISO(sessionDate);
+      if (isNaN(bookingDateTime.getTime())) {
+        throw new Error('Invalid date format');
+      }
+      bookingEndDateTime = addHours(bookingDateTime, 1); // Assuming 1-hour sessions
+    } catch (dateError) {
+      console.error('Date parsing error:', dateError);
+      return createErrorResponse('Invalid session date format', 400, { 
+        sessionDate, 
+        error: dateError.message 
+      });
+    }
 
     console.log('Parsed session times:', {
       start: bookingDateTime.toISOString(),
-      end: bookingEndDateTime.toISOString()
+      end: bookingEndDateTime.toISOString(),
+      inputDate: sessionDate
     });
 
     // --- VALIDATION LOGIC ---
 
     // 1. Check for timeslot overlap with trainer's existing sessions (ALL clients)
-    const { data: overlappingSessions, error: overlapError } = await supabaseClient
-      .from('sessions')
-      .select('id, session_date')
-      .eq('trainer_id', trainerId)
-      .gte('session_date', bookingDateTime.toISOString())
-      .lt('session_date', bookingEndDateTime.toISOString())
-      .not('status', 'in', '("cancelled", "no-show")'); // Ignore cancelled sessions
+    let overlappingSessions;
+    try {
+      const { data, error: overlapError } = await supabaseClient
+        .from('sessions')
+        .select('id, session_date')
+        .eq('trainer_id', trainerId)
+        .gte('session_date', bookingDateTime.toISOString())
+        .lt('session_date', bookingEndDateTime.toISOString())
+        .not('status', 'in', '("cancelled", "no-show")'); // Ignore cancelled sessions
 
-    if (overlapError) {
-      console.error('Error checking overlaps:', overlapError);
-      throw overlapError;
+      if (overlapError) {
+        console.error('Database error checking overlaps:', overlapError);
+        return createErrorResponse('Failed to check time slot availability', 500, { 
+          operation: 'overlap_check',
+          error: overlapError 
+        });
+      }
+      overlappingSessions = data;
+    } catch (error) {
+      console.error('Unexpected error checking overlaps:', error);
+      return createErrorResponse('Unexpected error checking time slot availability', 500, { 
+        operation: 'overlap_check',
+        error: error.message 
+      });
     }
 
     if (overlappingSessions && overlappingSessions.length > 0) {
@@ -363,29 +411,63 @@ Deno.serve(async (req) => {
 
     // Update the source (pack remaining count) if booking from a pack - ATOMIC OPERATION
     if (bookingMethod === 'pack' && sessionPackId) {
-      // Use SQL function for atomic decrement to prevent race conditions
-      const { data: updateResult, error: decrementError } = await supabaseClient
-        .rpc('decrement_pack_sessions', {
+      try {
+        console.log('Attempting to decrement pack sessions:', {
           pack_id: sessionPackId,
           trainer_id: trainerId,
           expected_remaining: sourcePack.sessions_remaining
         });
 
-      if (decrementError) {
-        console.error('Error updating pack sessions:', decrementError);
-        // Rollback session creation
-        await supabaseClient.from('sessions').delete().eq('id', newSession.id);
-        
-        if (decrementError.message?.includes('concurrent modification') || decrementError.code === 'P0001') {
-          return new Response(
-            JSON.stringify({ error: 'Session pack was modified by another booking. Please try again.' }), 
-            { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        throw decrementError;
-      }
+        // Use SQL function for atomic decrement to prevent race conditions
+        const { data: updateResult, error: decrementError } = await supabaseClient
+          .rpc('decrement_pack_sessions', {
+            pack_id: sessionPackId,
+            trainer_id: trainerId,
+            expected_remaining: sourcePack.sessions_remaining
+          });
 
-      console.log('Pack sessions remaining decremented from', sourcePack.sessions_remaining, 'to', sourcePack.sessions_remaining - 1);
+        if (decrementError) {
+          console.error('Error updating pack sessions:', {
+            error: decrementError,
+            pack_id: sessionPackId,
+            trainer_id: trainerId,
+            expected_remaining: sourcePack.sessions_remaining
+          });
+          
+          // Rollback session creation
+          try {
+            await supabaseClient.from('sessions').delete().eq('id', newSession.id);
+            console.log('Session rollback completed for session:', newSession.id);
+          } catch (rollbackError) {
+            console.error('Failed to rollback session:', rollbackError);
+          }
+          
+          if (decrementError.message?.includes('concurrent modification') || decrementError.code === 'P0001') {
+            return createErrorResponse('Session pack was modified by another booking. Please try again.', 409, {
+              operation: 'pack_decrement',
+              pack_id: sessionPackId
+            });
+          }
+          
+          return createErrorResponse('Failed to update session pack', 500, {
+            operation: 'pack_decrement',
+            error: decrementError
+          });
+        }
+
+        console.log('Pack sessions remaining decremented successfully:', {
+          pack_id: sessionPackId,
+          from: sourcePack.sessions_remaining,
+          to: sourcePack.sessions_remaining - 1,
+          result: updateResult
+        });
+      } catch (error) {
+        console.error('Unexpected error during pack decrement:', error);
+        return createErrorResponse('Unexpected error updating session pack', 500, {
+          operation: 'pack_decrement',
+          error: error.message
+        });
+      }
     }
 
     return new Response(
@@ -403,15 +485,20 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Booking failed:', error.message);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message || 'An unexpected error occurred during booking.' 
-      }), 
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    console.error('Booking failed - Unhandled error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      timestamp: new Date().toISOString()
+    });
+    
+    return createErrorResponse(
+      error.message || 'An unexpected error occurred during booking.',
+      500,
+      {
+        operation: 'booking_process',
+        error_type: error.name,
+        timestamp: new Date().toISOString()
       }
     );
   }
