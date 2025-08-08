@@ -103,10 +103,19 @@ export default function EditSessionModal({ isOpen, onClose, session, onSessionUp
     if (!session?.id) return;
     setIsLoading(true);
     try {
+      // Explicitly include JWT to ensure edge function auth
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+
+      console.log('Invoking cancel-client-session for', session.id);
       const { data, error } = await supabase.functions.invoke('cancel-client-session', {
         body: {
           sessionId: session.id,
           penalize: false,
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
         },
       });
       if (error) throw error;

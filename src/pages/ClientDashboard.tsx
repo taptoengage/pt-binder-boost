@@ -202,8 +202,14 @@ export default function ClientDashboard() {
   const handleCancelWithin24 = async (session: any) => {
     setIsCancellingId(session.id);
     try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+
+      console.log('Invoking cancel-client-session (penalize) for', session.id);
       const { data, error } = await supabase.functions.invoke('cancel-client-session', {
         body: { sessionId: session.id, penalize: true },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (error) throw error;
       toast({ title: 'Session cancelled', description: 'Cancellation processed with penalty.' });
