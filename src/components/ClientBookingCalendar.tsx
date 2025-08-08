@@ -43,6 +43,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSlotForModal, setSelectedSlotForModal] = useState<{ start: Date; end: Date } | null>(null);
+  const [bookedSessions, setBookedSessions] = useState<any[]>([]);
 
   // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
   const getDayNumberFromString = (dayName: string): number | undefined => {
@@ -68,6 +69,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   const combineAndCalculateAvailability = useCallback((
     templates: TrainerTemplate[],
     exceptions: TrainerException[],
+    sessions: any[],
     startDate: Date,
     endDate: Date
   ): AvailableSlot[] => {
@@ -106,6 +108,45 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
           dailySlots.push({ start: startDateTime, end: endDateTime });
         }
       });
+
+      // 3. Subtract booked sessions from available slots
+      const sessionsForDay = sessions.filter(s => isSameDay(new Date(s.session_date), day));
+      
+      if (sessionsForDay.length > 0) {
+        let updatedSlots: AvailableSlot[] = [];
+        
+        dailySlots.forEach(availableSlot => {
+          let currentSlots = [availableSlot];
+          
+          sessionsForDay.forEach(bookedSession => {
+            const bookedStart = new Date(bookedSession.session_date);
+            const bookedEnd = new Date(bookedStart.getTime() + 60 * 60 * 1000); // 1 hour sessions
+            
+            const newCurrentSlots: AvailableSlot[] = [];
+            
+            currentSlots.forEach(slot => {
+              // If booked session doesn't overlap with this slot, keep it
+              if (bookedEnd <= slot.start || bookedStart >= slot.end) {
+                newCurrentSlots.push(slot);
+              } else {
+                // Split the slot around the booked session
+                if (slot.start < bookedStart) {
+                  newCurrentSlots.push({ start: slot.start, end: bookedStart });
+                }
+                if (bookedEnd < slot.end) {
+                  newCurrentSlots.push({ start: bookedEnd, end: slot.end });
+                }
+              }
+            });
+            
+            currentSlots = newCurrentSlots;
+          });
+          
+          updatedSlots.push(...currentSlots);
+        });
+        
+        dailySlots = updatedSlots;
+      }
 
       // Filter out slots that end before they start or are invalid
       dailySlots = dailySlots.filter(slot => slot.start < slot.end);
@@ -178,10 +219,23 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
         if (exceptionsError) throw exceptionsError;
 
-        // 3. Combine and Calculate Final Available Slots
+        // 3. Fetch all booked sessions for the trainer
+        const { data: sessions, error: sessionsError } = await supabase
+          .from('sessions')
+          .select('session_date')
+          .eq('trainer_id', trainerId)
+          .not('status', 'in', '("cancelled", "no-show")')
+          .gte('session_date', startDate.toISOString())
+          .lte('session_date', endDate.toISOString());
+
+        if (sessionsError) throw sessionsError;
+        setBookedSessions(sessions || []);
+
+        // 4. Combine and Calculate Final Available Slots
         const processedSlots = combineAndCalculateAvailability(
           templates,
           exceptions || [],
+          sessions || [],
           startDate,
           endDate
         );

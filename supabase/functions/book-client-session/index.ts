@@ -101,8 +101,8 @@ Deno.serve(async (req) => {
 
     // --- VALIDATION LOGIC ---
 
-    // 1. Check for timeslot overlap with trainer's existing sessions
-    const { data: overlappingSessions, error: overlapError } = await supabaseUserClient
+    // 1. Check for timeslot overlap with trainer's existing sessions (ALL clients)
+    const { data: overlappingSessions, error: overlapError } = await supabaseClient
       .from('sessions')
       .select('id, session_date')
       .eq('trainer_id', trainerId)
