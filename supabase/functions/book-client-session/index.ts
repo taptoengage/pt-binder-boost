@@ -264,10 +264,12 @@ Deno.serve(async (req) => {
 
     // Update the source (pack remaining count) if booking from a pack
     if (bookingMethod === 'pack' && sessionPackId) {
-      // Use service role client to safely decrement pack sessions
+      // Use the validated pack data to safely decrement pack sessions
+      const newSessionsRemaining = sourcePack.sessions_remaining - 1;
+      
       const { error: decrementError } = await supabaseClient
         .from('session_packs')
-        .update({ sessions_remaining: supabaseClient.raw('sessions_remaining - 1') })
+        .update({ sessions_remaining: newSessionsRemaining })
         .eq('id', sessionPackId)
         .eq('trainer_id', trainerId); // Additional security check
 
@@ -278,7 +280,7 @@ Deno.serve(async (req) => {
         throw decrementError;
       }
 
-      console.log('Pack sessions remaining decremented');
+      console.log('Pack sessions remaining decremented from', sourcePack.sessions_remaining, 'to', newSessionsRemaining);
     }
 
     return new Response(
