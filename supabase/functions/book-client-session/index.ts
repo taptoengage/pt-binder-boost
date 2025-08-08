@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { addMinutes, parseISO, addHours, getDay } from 'https://esm.sh/date-fns@3.3.1'
+import { addMinutes, parseISO, addHours, getDay, startOfWeek, endOfWeek } from 'https://esm.sh/date-fns@3.3.1'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -229,8 +229,73 @@ Deno.serve(async (req) => {
           );
         }
 
-        // TODO: Add logic to check weekly session limits and sessions "in credit"
-        // This is a complex check and will be added in a future prompt.
+        // Check weekly allocation limits for subscription bookings
+        const serviceTypeAllocation = subscriptionDetails.subscription_service_allocations.find(
+          (allocation: any) => allocation.service_type_id === serviceTypeId
+        );
+        
+        if (!serviceTypeAllocation) {
+          return new Response(
+            JSON.stringify({ error: 'Service type allocation not found for subscription.' }), 
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Get current week boundaries
+        const weekStart = startOfWeek(bookingDateTime, { weekStartsOn: 1 }); // Monday start
+        const weekEnd = endOfWeek(bookingDateTime, { weekStartsOn: 1 });
+
+        // Count existing sessions for this service type in the current week
+        const { data: weekSessions, error: weekSessionsError } = await supabaseClient
+          .from('sessions')
+          .select('id')
+          .eq('client_id', clientId)
+          .eq('subscription_id', sourceSubscriptionId)
+          .eq('service_type_id', serviceTypeId)
+          .gte('session_date', weekStart.toISOString())
+          .lte('session_date', weekEnd.toISOString())
+          .in('status', ['scheduled', 'completed']);
+
+        if (weekSessionsError) throw weekSessionsError;
+
+        const sessionsThisWeek = weekSessions?.length || 0;
+        if (sessionsThisWeek >= serviceTypeAllocation.quantity_per_period) {
+          // Check for available credits
+          const { data: availableCredits, error: creditsError } = await supabaseClient
+            .from('subscription_session_credits')
+            .select('id, credit_amount')
+            .eq('subscription_id', sourceSubscriptionId)
+            .eq('service_type_id', serviceTypeId)
+            .eq('status', 'available')
+            .gte('expires_at', bookingDateTime.toISOString())
+            .limit(1);
+
+          if (creditsError) throw creditsError;
+
+          if (!availableCredits || availableCredits.length === 0) {
+            return new Response(
+              JSON.stringify({ error: 'Weekly session limit reached and no credits available.' }), 
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          // Mark this session as using credit
+          const creditToUse = availableCredits[0];
+          const { error: updateCreditError } = await supabaseClient
+            .from('subscription_session_credits')
+            .update({ 
+              status: 'used',
+              used_at: new Date().toISOString()
+            })
+            .eq('id', creditToUse.id);
+
+          if (updateCreditError) throw updateCreditError;
+
+          // Set additional session metadata
+          newSession.is_from_credit = true;
+          newSession.credit_id_consumed = creditToUse.id;
+          console.log('Using subscription credit for session:', creditToUse.id);
+        }
 
         subscriptionId = sourceSubscriptionId;
         sourceSubscription = subscriptionDetails;
@@ -274,25 +339,36 @@ Deno.serve(async (req) => {
 
     console.log('Session created successfully:', newSession);
 
-    // Update the source (pack remaining count) if booking from a pack
+    // Update the source (pack remaining count) if booking from a pack - ATOMIC OPERATION
     if (bookingMethod === 'pack' && sessionPackId) {
-      // Use the validated pack data to safely decrement pack sessions
-      const newSessionsRemaining = sourcePack.sessions_remaining - 1;
-      
-      const { error: decrementError } = await supabaseClient
+      // Atomic decrement to prevent race conditions
+      const { data: updatedPack, error: decrementError } = await supabaseClient
         .from('session_packs')
-        .update({ sessions_remaining: newSessionsRemaining })
+        .update({ 
+          sessions_remaining: sourcePack.sessions_remaining - 1,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', sessionPackId)
-        .eq('trainer_id', trainerId); // Additional security check
+        .eq('trainer_id', trainerId)
+        .eq('sessions_remaining', sourcePack.sessions_remaining) // Optimistic locking
+        .select('sessions_remaining')
+        .single();
 
       if (decrementError) {
-        console.error('Error updating pack sessions:', decrementError);
+        console.error('Error updating pack sessions (possible race condition):', decrementError);
         // Rollback session creation
         await supabaseClient.from('sessions').delete().eq('id', newSession.id);
+        
+        if (decrementError.code === 'PGRST116') {
+          return new Response(
+            JSON.stringify({ error: 'Session pack was modified by another booking. Please try again.' }), 
+            { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
         throw decrementError;
       }
 
-      console.log('Pack sessions remaining decremented from', sourcePack.sessions_remaining, 'to', newSessionsRemaining);
+      console.log('Pack sessions remaining decremented from', sourcePack.sessions_remaining, 'to', updatedPack.sessions_remaining);
     }
 
     return new Response(
