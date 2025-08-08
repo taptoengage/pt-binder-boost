@@ -751,6 +751,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_pack_sessions: {
+        Args: { pack_id: string; trainer_id: string; inc?: number }
+        Returns: boolean
+      }
     }
     Enums: {
       client_subscription_status_enum:
