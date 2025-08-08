@@ -104,14 +104,42 @@ export default function ClientDashboard() {
       }
       setClientSessions(sessions || []);
 
-      // Fetch client session packs
+      // Fetch client session packs with scheduled sessions count
       const { data: sessionPacks, error: sessionPacksError } = await supabase
         .from('session_packs')
-        .select('total_sessions, sessions_remaining, status, service_types(name)')
+        .select(`
+          id,
+          total_sessions, 
+          sessions_remaining, 
+          status, 
+          service_types(name)
+        `)
         .eq('client_id', client.id)
         .eq('trainer_id', client.trainer_id)
         .eq('status', 'active')
         .order('purchase_date', { ascending: false });
+
+      if (sessionPacks) {
+        // Calculate actual remaining sessions by subtracting scheduled sessions
+        const packsWithActualRemaining = await Promise.all(
+          sessionPacks.map(async (pack) => {
+            const { data: scheduledSessions } = await supabase
+              .from('sessions')
+              .select('id')
+              .eq('session_pack_id', pack.id)
+              .in('status', ['scheduled', 'completed']);
+            
+            const usedSessions = scheduledSessions?.length || 0;
+            const actualRemaining = Math.max(0, pack.total_sessions - usedSessions);
+            
+            return {
+              ...pack,
+              sessions_remaining: actualRemaining
+            };
+          })
+        );
+        setClientSessionPacks(packsWithActualRemaining);
+      }
 
       if (sessionPacksError) {
         console.error('Error fetching session packs:', sessionPacksError);
@@ -120,8 +148,6 @@ export default function ClientDashboard() {
           description: "Failed to load session pack data. Please try again.",
           variant: "destructive",
         });
-      } else {
-        setClientSessionPacks(sessionPacks || []);
       }
 
     } catch (error) {

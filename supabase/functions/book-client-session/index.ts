@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
 
         const { data: pack, error: packError } = await supabaseUserClient
           .from('session_packs')
-          .select('id, sessions_remaining, service_type_id, status')
+          .select('id, total_sessions, sessions_remaining, service_type_id, status')
           .eq('id', sourcePackId)
           .eq('client_id', clientId)
           .eq('trainer_id', trainerId)
@@ -156,9 +156,21 @@ Deno.serve(async (req) => {
           );
         }
 
-        if (pack.sessions_remaining <= 0) {
+        // Check actual sessions used (completed + scheduled) vs total sessions
+        const { data: usedSessions, error: usedSessionsError } = await supabaseClient
+          .from('sessions')
+          .select('id')
+          .eq('session_pack_id', sourcePackId)
+          .in('status', ['scheduled', 'completed']);
+
+        if (usedSessionsError) throw usedSessionsError;
+        
+        const totalUsedSessions = usedSessions?.length || 0;
+        const actualRemainingSessions = pack.total_sessions - totalUsedSessions;
+        
+        if (actualRemainingSessions <= 0) {
           return new Response(
-            JSON.stringify({ error: 'No sessions remaining in pack.' }), 
+            JSON.stringify({ error: 'No sessions remaining in pack. All sessions have been used or scheduled.' }), 
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }

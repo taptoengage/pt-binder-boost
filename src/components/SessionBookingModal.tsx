@@ -79,15 +79,36 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
         // Fetch active session packs for the client
         const { data: packs, error: packsError } = await supabase
           .from('session_packs')
-          .select('id, sessions_remaining, status, service_type_id, service_types(name)')
+          .select('id, total_sessions, sessions_remaining, status, service_type_id, service_types(name)')
           .eq('client_id', clientId)
           .eq('trainer_id', trainerId)
-          .eq('status', 'active')
-          .gt('sessions_remaining', 0); // Only show packs with remaining sessions
+          .eq('status', 'active');
 
         if (packsError) throw packsError;
-        setActiveSessionPacks(packs || []);
-        console.log("DEBUG: Fetched active session packs:", packs);
+        
+        // Calculate actual remaining sessions by subtracting scheduled sessions
+        const packsWithActualRemaining = await Promise.all(
+          (packs || []).map(async (pack) => {
+            const { data: scheduledSessions } = await supabase
+              .from('sessions')
+              .select('id')
+              .eq('session_pack_id', pack.id)
+              .in('status', ['scheduled', 'completed']);
+            
+            const usedSessions = scheduledSessions?.length || 0;
+            const actualRemaining = Math.max(0, pack.total_sessions - usedSessions);
+            
+            return {
+              ...pack,
+              sessions_remaining: actualRemaining
+            };
+          })
+        );
+        
+        // Only show packs with remaining sessions
+        const availablePacks = packsWithActualRemaining.filter(pack => pack.sessions_remaining > 0);
+        setActiveSessionPacks(availablePacks);
+        console.log("DEBUG: Fetched active session packs with actual remaining:", availablePacks);
 
         // Fetch active subscriptions for the client
         const { data: subscriptions, error: subscriptionsError } = await supabase
