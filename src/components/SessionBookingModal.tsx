@@ -202,11 +202,30 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
       }
     } catch (error: any) {
       console.error('Booking error:', error);
+      console.error('Error structure:', JSON.stringify(error, null, 2));
+      console.error('Error properties:', Object.keys(error));
       
       // Extract specific error message from FunctionsHttpError
       let userMessage = "Failed to book session. Please try again.";
-      if (error.name === 'FunctionsHttpError' && error.details?.error) {
-        userMessage = error.details.error; // Extract the specific message from the backend
+      
+      // Try multiple possible error message locations
+      if (error.name === 'FunctionsHttpError') {
+        // Log the complete error to understand its structure
+        console.log('FunctionsHttpError detected, investigating structure...');
+        console.log('error.details:', error.details);
+        console.log('error.context:', error.context);
+        console.log('error.message:', error.message);
+        
+        // Try different possible paths for the error message
+        if (error.details?.error) {
+          userMessage = error.details.error;
+        } else if (error.context?.body?.error) {
+          userMessage = error.context.body.error;
+        } else if (error.details?.message) {
+          userMessage = error.details.message;
+        } else if (error.context?.response?.error) {
+          userMessage = error.context.response.error;
+        }
       } else if (error.message) {
         userMessage = error.message;
       }
