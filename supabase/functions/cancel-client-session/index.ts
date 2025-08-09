@@ -90,6 +90,16 @@ Deno.serve(async (req) => {
       doPenalize = hoursUntil <= 24;
     }
 
+    // NEW DEBUG LOGS FOR PENALTY DETERMINATION
+    console.log(`DEBUG: Penalty check for session ${sessionId}:`);
+    console.log(`DEBUG:   Frontend 'penalize' param: ${penalize}`);
+    console.log(`DEBUG:   Calculated 'doPenalize' (before if): ${doPenalize}`);
+    console.log(`DEBUG:   Current time (now): ${new Date().toISOString()}`);
+    console.log(`DEBUG:   Session start time: ${new Date(session.session_date).toISOString()}`);
+    console.log(`DEBUG:   Hours until session: ${(new Date(session.session_date).getTime() - new Date().getTime()) / (1000 * 60 * 60)}`);
+    console.log(`DEBUG:   Session pack ID: ${session.session_pack_id}`);
+    console.log(`DEBUG:   Subscription ID: ${session.subscription_id}`);
+    
     console.log(`Processing cancellation for session ${sessionId}, penalize: ${doPenalize}`);
 
     // Handle penalty logic: when penalized, treat as completed (no refunds)
