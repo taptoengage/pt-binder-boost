@@ -20,6 +20,12 @@ Deno.serve(async (req) => {
 
   try {
     const { sessionId, penalize } = await req.json();
+    
+    // NEW DEBUG LOGS: Log the raw 'penalize' parameter and its type
+    console.log(`DEBUG: Raw 'penalize' received:`, penalize);
+    console.log(`DEBUG: Type of 'penalize':`, typeof penalize);
+    console.log(`DEBUG: SessionId received:`, sessionId);
+    
     if (!sessionId) {
       return new Response(JSON.stringify({ error: 'Session ID is required' }), {
         status: 400,
