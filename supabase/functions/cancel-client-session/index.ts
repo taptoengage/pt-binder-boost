@@ -90,8 +90,13 @@ Deno.serve(async (req) => {
       doPenalize = hoursUntil <= 24;
     }
 
-    // If not penalized, revert pack usage or grant credit
+    console.log(`Processing cancellation for session ${sessionId}, penalize: ${doPenalize}`);
+
+    // Handle penalty logic: when penalized, treat as completed (no refunds)
+    // When not penalized, refund pack/subscription credits
     if (!doPenalize) {
+      console.log('Non-penalty cancellation: processing refunds/credits');
+      
       // If from pack, increment sessions_remaining back by 1 using atomic RPC
       if (session.session_pack_id) {
         try {
@@ -123,6 +128,8 @@ Deno.serve(async (req) => {
             .eq('id', session.credit_id_consumed);
           if (creditRevertErr) {
             console.error('Error reverting used credit:', creditRevertErr);
+          } else {
+            console.log('Successfully reverted consumed credit:', session.credit_id_consumed);
           }
         } else {
           // Determine credit_value from allocation if available
@@ -149,9 +156,13 @@ Deno.serve(async (req) => {
             });
           if (insertCreditErr) {
             console.error('Error creating credit on cancellation:', insertCreditErr);
+          } else {
+            console.log('Successfully created cancellation credit for subscription:', session.subscription_id);
           }
         }
       }
+    } else {
+      console.log('Penalty cancellation: no refunds/credits processed - treating as completed session');
     }
 
     // Finally mark the session as cancelled
