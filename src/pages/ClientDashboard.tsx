@@ -20,6 +20,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import EditSessionModal from '@/components/EditSessionModal';
+import CancellationPenaltyModal from '@/components/CancellationPenaltyModal';
 
 export default function ClientDashboard() {
   const { client, signOut } = useAuth();
@@ -36,6 +37,8 @@ export default function ClientDashboard() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedSessionForEdit, setSelectedSessionForEdit] = useState<any | null>(null);
   const [isCancellingId, setIsCancellingId] = useState<string | null>(null);
+  const [isPenaltyCancelModalOpen, setIsPenaltyCancelModalOpen] = useState(false);
+  const [selectedSessionForPenaltyCancel, setSelectedSessionForPenaltyCancel] = useState<any | null>(null);
 
   useEffect(() => {
     if (client?.id && client?.trainer_id) {
@@ -199,27 +202,13 @@ export default function ClientDashboard() {
     fetchClientDashboardData();
   };
 
-  const handleCancelWithin24 = async (session: any) => {
-    setIsCancellingId(session.id);
-    try {
-      const { data: sess } = await supabase.auth.getSession();
-      const token = sess?.session?.access_token;
-      if (!token) throw new Error('Not authenticated');
+  const handlePenaltyCancelSession = (session: any) => {
+    setSelectedSessionForPenaltyCancel(session);
+    setIsPenaltyCancelModalOpen(true);
+  };
 
-      console.log('Invoking cancel-client-session (penalize) for', session.id);
-      const { data, error } = await supabase.functions.invoke('cancel-client-session', {
-        body: { sessionId: session.id, penalize: true },
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (error) throw error;
-      toast({ title: 'Session cancelled', description: 'Cancellation processed with penalty.' });
-      fetchClientDashboardData();
-    } catch (error: any) {
-      console.error('Error cancelling session within 24h:', error);
-      toast({ title: 'Error', description: error.message || 'Failed to cancel session.', variant: 'destructive' });
-    } finally {
-      setIsCancellingId(null);
-    }
+  const handlePenaltyCancelComplete = () => {
+    fetchClientDashboardData();
   };
 
   if (isLoadingDashboard) {
@@ -373,22 +362,44 @@ export default function ClientDashboard() {
                         <TableCell>{session.service_types?.name}</TableCell>
                         <TableCell className="capitalize">{session.status}</TableCell>
                         <TableCell className="text-right">
-                          {isWithin24Hours(new Date(session.session_date)) ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button size="sm" variant="ghost" disabled>
-                                  <Edit className="h-4 w-4 text-muted-foreground" />
+                          <div className="flex items-center gap-1">
+                            {isWithin24Hours(new Date(session.session_date)) ? (
+                              <>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button size="sm" variant="ghost" disabled>
+                                      <Edit className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Cannot edit within 24 hours of session</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  onClick={() => handlePenaltyCancelSession(session)}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  Cancel
                                 </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Cannot edit within 24 hours of session</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <Button size="sm" variant="ghost" onClick={() => handleEditSession(session)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          )}
+                              </>
+                            ) : (
+                              <>
+                                <Button size="sm" variant="ghost" onClick={() => handleEditSession(session)}>
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  onClick={() => handlePenaltyCancelSession(session)}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  Cancel
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -445,6 +456,13 @@ export default function ClientDashboard() {
         onClose={() => setIsEditModalOpen(false)}
         session={selectedSessionForEdit}
         onSessionUpdated={handleSessionUpdated}
+      />
+      
+      <CancellationPenaltyModal
+        isOpen={isPenaltyCancelModalOpen}
+        onClose={() => setIsPenaltyCancelModalOpen(false)}
+        session={selectedSessionForPenaltyCancel}
+        onSessionCancelled={handlePenaltyCancelComplete}
       />
     </div>
   );
