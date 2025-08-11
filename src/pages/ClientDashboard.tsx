@@ -144,7 +144,7 @@ export default function ClientDashboard() {
               .from('sessions')
               .select('id')
               .eq('session_pack_id', pack.id)
-              .in('status', ['scheduled', 'completed']);
+              .in('status', ['scheduled', 'completed', 'no-show']);
             
             const usedSessions = scheduledSessions?.length || 0;
             const actualRemaining = Math.max(0, pack.total_sessions - usedSessions);
