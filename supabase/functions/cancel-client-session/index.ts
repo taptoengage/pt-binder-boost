@@ -87,30 +87,42 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Determine penalty if not explicitly provided
-    let doPenalize = penalize;
-    if (doPenalize === undefined) {
+    // FIXED: Ensure proper boolean conversion for penalty determination
+    let doPenalize;
+    if (penalize !== undefined) {
+      // Explicit penalty decision from frontend - ensure it's a proper boolean
+      doPenalize = Boolean(penalize);
+    } else {
+      // Calculate penalty based on 24-hour rule when not explicitly provided
       const now = new Date();
       const start = new Date(session.session_date);
       const hoursUntil = (start.getTime() - now.getTime()) / (1000 * 60 * 60);
       doPenalize = hoursUntil <= 24;
     }
 
-    // NEW DEBUG LOGS FOR PENALTY DETERMINATION
+    // COMPREHENSIVE DEBUG LOGS FOR PENALTY DETERMINATION
     console.log(`DEBUG: Penalty check for session ${sessionId}:`);
     console.log(`DEBUG:   Frontend 'penalize' param: ${penalize}`);
-    console.log(`DEBUG:   Calculated 'doPenalize' (before if): ${doPenalize}`);
+    console.log(`DEBUG:   Type of 'penalize': ${typeof penalize}`);
+    console.log(`DEBUG:   Calculated 'doPenalize' (final value): ${doPenalize}`);
+    console.log(`DEBUG:   Type of 'doPenalize': ${typeof doPenalize}`);
     console.log(`DEBUG:   Current time (now): ${new Date().toISOString()}`);
     console.log(`DEBUG:   Session start time: ${new Date(session.session_date).toISOString()}`);
-    console.log(`DEBUG:   Hours until session: ${(new Date(session.session_date).getTime() - new Date().getTime()) / (1000 * 60 * 60)}`);
+    const calculatedHoursUntil = (new Date(session.session_date).getTime() - new Date().getTime()) / (1000 * 60 * 60);
+    console.log(`DEBUG:   Calculated hours until session: ${calculatedHoursUntil}`);
     console.log(`DEBUG:   Session pack ID: ${session.session_pack_id}`);
     console.log(`DEBUG:   Subscription ID: ${session.subscription_id}`);
     
     console.log(`Processing cancellation for session ${sessionId}, penalize: ${doPenalize}`);
 
-    // Handle penalty logic: when penalized, treat as completed (no refunds)
-    // When not penalized, refund pack/subscription credits
-    if (!doPenalize) {
+    // CRITICAL FIX: Clarified penalty logic
+    // doPenalize = true  -> Apply penalty (no refunds, treat as consumed)
+    // doPenalize = false -> No penalty (refund pack sessions or create credits)
+    if (doPenalize) {
+      // PENALTY CANCELLATION: Treat as completed session, no refunds
+      console.log('Penalty cancellation: no refunds/credits processed - treating as completed session');
+    } else {
+      // NON-PENALTY CANCELLATION: Process refunds/credits
       console.log('Non-penalty cancellation: processing refunds/credits');
       
       // If from pack, increment sessions_remaining back by 1 using atomic RPC
