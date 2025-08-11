@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
       .select('id')
       .eq('email', user.email)
       .single();
-
+    
     if (clientErr || !clientRow) {
       return new Response(JSON.stringify({ error: 'Client not found' }), {
         status: 404,
@@ -189,8 +189,6 @@ Deno.serve(async (req) => {
           }
         }
       }
-    } else {
-      console.log('Penalty cancellation: no refunds/credits processed - treating as completed session');
     }
 
     // Finally mark the session as cancelled
