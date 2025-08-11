@@ -755,6 +755,17 @@ export type Database = {
         Args: { pack_id: string; trainer_id: string; inc?: number }
         Returns: boolean
       }
+      validate_pack_integrity: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          pack_id: string
+          total_sessions: number
+          sessions_remaining: number
+          actual_used_sessions: number
+          calculated_remaining: number
+          has_integrity_issue: boolean
+        }[]
+      }
     }
     Enums: {
       client_subscription_status_enum:
