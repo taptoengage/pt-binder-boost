@@ -173,60 +173,87 @@ const ClientHistory: React.FC = () => {
 
             {allClientPacks && allClientPacks.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                {allClientPacks.map((pack) => (
-                  <Card
-                    key={pack.id}
-                    className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02]"
-                    onClick={() => handleViewPackDetail(pack)}
-                  >
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-lg">
-                        {pack.service_types?.name || 'Unknown Service'} - {pack.total_sessions} Pack
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Sessions:</span>
-                        <span className="font-semibold">
-                          {pack.sessions_remaining} / {pack.total_sessions} remaining
-                        </span>
-                      </div>
-                      
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Value:</span>
-                        <span className="font-semibold">${pack.amount_paid.toFixed(2)}</span>
-                      </div>
-                      
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Created:</span>
-                        <span className="text-sm">{format(new Date(pack.created_at), 'dd/MM/yyyy')}</span>
-                      </div>
-                      
-                      {pack.expiry_date && (
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-muted-foreground">Expires:</span>
-                          <span className="text-sm">{format(new Date(pack.expiry_date), 'dd/MM/yyyy')}</span>
-                        </div>
+                {allClientPacks.map((pack) => {
+                  const hasIntegrityIssue = pack.sessions_remaining < 0 || pack.sessions_remaining > pack.total_sessions;
+                  const usedSessions = pack.total_sessions - Math.max(0, pack.sessions_remaining);
+                  
+                  return (
+                    <Card
+                      key={pack.id}
+                      className={cn(
+                        "cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-[1.02]",
+                        hasIntegrityIssue && "border-destructive"
                       )}
-                      
-                      <div className="flex justify-center pt-2">
-                        {pack.sessions_remaining === 0 ? (
-                          <Badge variant="destructive">
-                            Consumed
-                          </Badge>
-                        ) : pack.status === 'active' ? (
-                          <Badge className="bg-green-500 hover:bg-green-600">
-                            Active
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">
-                            {pack.status}
+                      onClick={() => handleViewPackDetail(pack)}
+                    >
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-lg">
+                          {pack.service_types?.name || 'Unknown Service'} - {pack.total_sessions} Pack
+                        </CardTitle>
+                        {hasIntegrityIssue && (
+                          <Badge variant="destructive" className="text-xs w-fit">
+                            Data Issue
                           </Badge>
                         )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Sessions:</span>
+                          <span className={cn(
+                            "font-semibold",
+                            pack.sessions_remaining < 0 && "text-destructive"
+                          )}>
+                            {pack.sessions_remaining} / {pack.total_sessions} remaining
+                            {pack.sessions_remaining < 0 && (
+                              <span className="text-xs text-muted-foreground ml-1">
+                                (overused)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Value:</span>
+                          <span className="font-semibold">${pack.amount_paid.toFixed(2)}</span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Created:</span>
+                          <span className="text-sm">{format(new Date(pack.created_at), 'dd/MM/yyyy')}</span>
+                        </div>
+                        
+                        {pack.expiry_date && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-muted-foreground">Expires:</span>
+                            <span className="text-sm">{format(new Date(pack.expiry_date), 'dd/MM/yyyy')}</span>
+                          </div>
+                        )}
+                        
+                        {hasIntegrityIssue && (
+                          <div className="p-2 bg-destructive/10 rounded text-xs text-muted-foreground">
+                            Sessions Used: {usedSessions} | Manual review may be needed
+                          </div>
+                        )}
+                        
+                        <div className="flex justify-center pt-2">
+                          {pack.sessions_remaining <= 0 ? (
+                            <Badge variant="destructive">
+                              {pack.sessions_remaining < 0 ? 'Overused' : 'Consumed'}
+                            </Badge>
+                          ) : pack.status === 'active' ? (
+                            <Badge className="bg-green-500 hover:bg-green-600">
+                              Active
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">
+                              {pack.status}
+                            </Badge>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             ) : (
               <Card className="mb-8">
