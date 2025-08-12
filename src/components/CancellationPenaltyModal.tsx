@@ -148,7 +148,7 @@ export default function CancellationPenaltyModal({
                 </div>
                 
                 <p className="text-sm font-medium">
-                  Type "CANCEL" to confirm this irreversible action.
+                  Select "CANCEL" to confirm this irreversible action.
                 </p>
               </DialogDescription>
             </DialogHeader>
