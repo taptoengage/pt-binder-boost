@@ -137,25 +137,7 @@ export default function ClientDashboard() {
         .order('purchase_date', { ascending: false });
 
       if (sessionPacks) {
-        // Calculate actual remaining sessions by subtracting scheduled sessions
-        const packsWithActualRemaining = await Promise.all(
-          sessionPacks.map(async (pack) => {
-            const { data: scheduledSessions } = await supabase
-              .from('sessions')
-              .select('id')
-              .eq('session_pack_id', pack.id)
-              .in('status', ['scheduled', 'completed', 'no-show']);
-            
-            const usedSessions = scheduledSessions?.length || 0;
-            const actualRemaining = Math.max(0, pack.total_sessions - usedSessions);
-            
-            return {
-              ...pack,
-              sessions_remaining: actualRemaining
-            };
-          })
-        );
-        setClientSessionPacks(packsWithActualRemaining);
+        setClientSessionPacks(sessionPacks);
       }
 
       if (sessionPacksError) {
