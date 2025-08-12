@@ -39,6 +39,7 @@ export default function ClientDashboard() {
   const [isCancellingId, setIsCancellingId] = useState<string | null>(null);
   const [isPenaltyCancelModalOpen, setIsPenaltyCancelModalOpen] = useState(false);
   const [selectedSessionForPenaltyCancel, setSelectedSessionForPenaltyCancel] = useState<any | null>(null);
+  const [selectedSessionForRegularCancel, setSelectedSessionForRegularCancel] = useState<any | null>(null);
 
   useEffect(() => {
     if (client?.id && client?.trainer_id) {
@@ -191,6 +192,40 @@ export default function ClientDashboard() {
 
   const handlePenaltyCancelComplete = () => {
     fetchClientDashboardData();
+  };
+
+  const handleConfirmNonPenaltyCancel = async (session: any) => {
+    if (!session?.id) return;
+
+    setIsCancellingId(session.id);
+    try {
+      const { error } = await supabase.functions.invoke('cancel-client-session', {
+        body: {
+          sessionId: session.id,
+          penalize: false,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to cancel session');
+      }
+
+      toast({
+        title: "Session Cancelled",
+        description: "Your session has been successfully cancelled and credit added back to your pack/subscription.",
+      });
+      fetchClientDashboardData();
+
+    } catch (error: any) {
+      console.error('Error cancelling session without penalty:', error);
+      toast({
+        title: "Error",
+        description: `Failed to cancel session: ${error.message}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsCancellingId(null);
+    }
   };
 
   if (isLoadingDashboard) {
@@ -346,6 +381,7 @@ export default function ClientDashboard() {
                         <TableCell className="text-right">
                           <div className="flex items-center gap-1">
                             {isWithin24Hours(new Date(session.session_date)) ? (
+                              // Logic for sessions within 24 hours (penalty applies)
                               <>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -357,28 +393,48 @@ export default function ClientDashboard() {
                                     <p>Cannot edit within 24 hours of session</p>
                                   </TooltipContent>
                                 </Tooltip>
-                                <Button 
-                                  size="sm" 
-                                  variant="ghost" 
+                                {/* This button triggers the penalty cancellation modal */}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
                                   onClick={() => handlePenaltyCancelSession(session)}
                                   className="text-destructive hover:text-destructive"
+                                  disabled={isCancellingId === session.id}
                                 >
-                                  Cancel
+                                  {isCancellingId === session.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel'}
                                 </Button>
                               </>
                             ) : (
+                              // Logic for sessions outside 24 hours (no penalty)
                               <>
                                 <Button size="sm" variant="ghost" onClick={() => handleEditSession(session)}>
                                   <Edit className="h-4 w-4" />
                                 </Button>
-                                <Button 
-                                  size="sm" 
-                                  variant="ghost" 
-                                  onClick={() => handlePenaltyCancelSession(session)}
-                                  className="text-destructive hover:text-destructive"
-                                >
-                                  Cancel
-                                </Button>
+                                {/* This button triggers a standard confirmation dialog for non-penalty cancellation */}
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-destructive hover:text-destructive"
+                                      disabled={isCancellingId === session.id}
+                                    >
+                                      {isCancellingId === session.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel'}
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Confirm Session Cancellation</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to cancel this session? This action will add the session credit back to your active pack or subscription.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Keep Session</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleConfirmNonPenaltyCancel(session)}>Confirm Cancellation</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
                               </>
                             )}
                           </div>
