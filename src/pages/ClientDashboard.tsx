@@ -199,11 +199,16 @@ export default function ClientDashboard() {
 
     setIsCancellingId(session.id);
     try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) throw new Error('Not authenticated');
+
       const { error } = await supabase.functions.invoke('cancel-client-session', {
         body: {
           sessionId: session.id,
           penalize: false,
         },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (error) {
