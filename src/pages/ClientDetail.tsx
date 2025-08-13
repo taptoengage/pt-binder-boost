@@ -126,6 +126,8 @@ export default function ClientDetail() {
   // Session packs state
   const [sessionPacks, setSessionPacks] = useState<SessionPack[]>([]);
   const [isLoadingSessionPacks, setIsLoadingSessionPacks] = useState(true);
+  const [scheduledSessionsCount, setScheduledSessionsCount] = useState(0);
+  const [completedSessionsCount, setCompletedSessionsCount] = useState(0);
   
   // Pack detail modal state
   const [isPackDetailModalOpen, setIsPackDetailModalOpen] = useState(false);
@@ -394,6 +396,29 @@ export default function ClientDetail() {
           });
         } else {
           setSessionPacks(sessionPacksData || []);
+          
+          // Get session counts for all active packs
+          if (sessionPacksData && sessionPacksData.length > 0) {
+            const packIds = sessionPacksData.map(pack => pack.id);
+            
+            const { data: sessionCounts } = await supabase
+              .from('sessions')
+              .select('status')
+              .in('session_pack_id', packIds)
+              .eq('client_id', clientId)
+              .eq('trainer_id', user.id);
+            
+            if (sessionCounts) {
+              const scheduled = sessionCounts.filter(s => s.status === 'scheduled').length;
+              const completed = sessionCounts.filter(s => s.status === 'completed' || s.status === 'no-show').length;
+              
+              setScheduledSessionsCount(scheduled);
+              setCompletedSessionsCount(completed);
+            }
+          } else {
+            setScheduledSessionsCount(0);
+            setCompletedSessionsCount(0);
+          }
         }
 
       } catch (error) {
@@ -1456,6 +1481,11 @@ export default function ClientDetail() {
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-muted-foreground">Used:</span>
                           <span className="font-medium">{pack.total_sessions - pack.sessions_remaining} sessions</span>
+                        </div>
+                        
+                        <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                          <span>{scheduledSessionsCount} Scheduled</span>
+                          <span>{completedSessionsCount} Completed</span>
                         </div>
                         
                         <div className="flex justify-between items-center text-sm">
