@@ -34,6 +34,8 @@ export default function ClientDashboard() {
   const [clientSessions, setClientSessions] = useState<any[]>([]);
   const [clientSessionPacks, setClientSessionPacks] = useState<any[]>([]);
   const [isLoadingPacks, setIsLoadingPacks] = useState(true);
+  const [scheduledSessionsCount, setScheduledSessionsCount] = useState(0);
+  const [completedSessionsCount, setCompletedSessionsCount] = useState(0);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedSessionForEdit, setSelectedSessionForEdit] = useState<any | null>(null);
   const [isCancellingId, setIsCancellingId] = useState<string | null>(null);
@@ -139,6 +141,29 @@ export default function ClientDashboard() {
 
       if (sessionPacks) {
         setClientSessionPacks(sessionPacks);
+        
+        // Get session counts for all active packs
+        if (sessionPacks.length > 0) {
+          const packIds = sessionPacks.map(pack => pack.id);
+          
+          const { data: sessionCounts } = await supabase
+            .from('sessions')
+            .select('status')
+            .in('session_pack_id', packIds)
+            .eq('client_id', client.id)
+            .eq('trainer_id', client.trainer_id);
+          
+          if (sessionCounts) {
+            const scheduled = sessionCounts.filter(s => s.status === 'scheduled').length;
+            const completed = sessionCounts.filter(s => s.status === 'completed' || s.status === 'no-show').length;
+            
+            setScheduledSessionsCount(scheduled);
+            setCompletedSessionsCount(completed);
+          }
+        } else {
+          setScheduledSessionsCount(0);
+          setCompletedSessionsCount(0);
+        }
       }
 
       if (sessionPacksError) {
@@ -330,6 +355,10 @@ export default function ClientDashboard() {
                           <div className="flex justify-between text-xs text-muted-foreground">
                             <span>{Math.round(percentageRemaining)}% remaining</span>
                             <span>{clientSessionPacks.length} active pack{clientSessionPacks.length !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                            <span>{scheduledSessionsCount} Scheduled</span>
+                            <span>{completedSessionsCount} Completed</span>
                           </div>
                         </div>
                       </>
