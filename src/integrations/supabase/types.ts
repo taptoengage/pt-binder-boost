@@ -359,6 +359,7 @@ export type Database = {
       }
       sessions: {
         Row: {
+          cancellation_reason: string | null
           client_id: string
           created_at: string
           credit_id_consumed: string | null
@@ -374,6 +375,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cancellation_reason?: string | null
           client_id: string
           created_at?: string
           credit_id_consumed?: string | null
@@ -389,6 +391,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cancellation_reason?: string | null
           client_id?: string
           created_at?: string
           credit_id_consumed?: string | null

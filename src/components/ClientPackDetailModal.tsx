@@ -25,6 +25,7 @@ interface LinkedSession {
   status: string;
   notes: string | null;
   created_at: string;
+  cancellation_reason: string | null;
 }
 
 interface ClientPackDetailModalProps {
@@ -41,7 +42,7 @@ const ClientPackDetailModal: React.FC<ClientPackDetailModalProps> = ({ isOpen, o
       if (!pack?.id) return [];
       const { data, error } = await supabase
         .from('sessions')
-        .select('id, session_date, status, notes, created_at')
+        .select('id, session_date, status, notes, created_at, cancellation_reason')
         .eq('session_pack_id', pack.id)
         .order('session_date', { ascending: false });
 
@@ -192,6 +193,9 @@ const ClientPackDetailModal: React.FC<ClientPackDetailModalProps> = ({ isOpen, o
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 text-xs font-medium rounded-md border ${getStatusStyle(session.status)}`}>
                         {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                        {session.status === 'cancelled' && session.cancellation_reason === 'penalty' && (
+                          <span className="ml-1 font-bold text-red-500">(Penalty)</span>
+                        )}
                       </span>
                     </div>
                   </div>

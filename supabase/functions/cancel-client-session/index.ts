@@ -192,10 +192,16 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Finally mark the session as cancelled
+    // Finally mark the session as cancelled and add a reason
+    const cancellationReason = doPenalize ? 'penalty' : 'no-penalty';
+    
     const { data: updated, error: cancelErr } = await supabaseService
       .from('sessions')
-      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .update({ 
+        status: 'cancelled', 
+        cancellation_reason: cancellationReason,
+        updated_at: new Date().toISOString() 
+      })
       .eq('id', session.id)
       .select()
       .single();
