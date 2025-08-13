@@ -507,19 +507,23 @@ export default function ClientDetail() {
     try {
       setIsDeleting(true);
       
-      const { error } = await supabase
-        .from('clients')
-        .delete()
-        .eq('id', clientId)
-        .eq('trainer_id', user.id);
+      // Use the secure delete Edge Function instead of direct database deletion
+      const response = await supabase.functions.invoke('delete-client', {
+        body: { clientId }
+      });
 
-      if (error) {
-        throw error;
+      if (response.error) {
+        throw new Error(response.error.message || 'Failed to delete client');
+      }
+
+      const data = response.data;
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to delete client');
       }
 
       toast({
         title: "Client deleted",
-        description: "The client and all associated data have been deleted successfully.",
+        description: data.message || "The client and all associated data have been deleted successfully.",
       });
 
       navigate('/clients');
@@ -527,7 +531,7 @@ export default function ClientDetail() {
       console.error('Error deleting client:', error);
       toast({
         title: "Error",
-        description: "Failed to delete client. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to delete client. Please try again.",
         variant: "destructive",
       });
     } finally {
