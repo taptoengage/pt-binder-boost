@@ -127,6 +127,7 @@ Deno.serve(async (req) => {
       
       // If from pack, increment sessions_remaining back by 1 using atomic RPC
       if (session.session_pack_id) {
+        console.log(`DEBUG: Calling RPC with pack_id: ${session.session_pack_id}, trainer_id: ${session.trainer_id}, inc: 1`);
         try {
           const { data: incResult, error: rpcErr } = await supabaseService
             .rpc('increment_pack_sessions', {
