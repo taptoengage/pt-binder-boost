@@ -62,78 +62,46 @@ export default function AddClient() {
     setIsLoading(true);
 
     try {
-      let userIdToLink: string | null = null;
+      // Get the current session to pass authorization
+      const { data: { session } } = await supabase.auth.getSession();
       
-      // Check if an auth user exists for this email
-      if (formData.email.trim()) {
-        try {
-          // Attempt to get user by email using Supabase's admin client
-          const { data: userData, error: userError } = await supabase.auth.admin.listUsers({
-            page: 1,
-            perPage: 1000
-          });
-          
-          if (userError) {
-            throw userError;
-          }
-          
-          // Find user with matching email
-          const matchingUser = userData?.users?.find((user: any) => user.email === formData.email.trim());
-          if (matchingUser?.id) {
-            userIdToLink = matchingUser.id;
-            toast({ 
-              title: "Info", 
-              description: "Client's email matches an existing user account. Linking profile.",
-              variant: "default" 
-            });
-          }
-        } catch (authError: any) {
-          console.error("Error checking for existing auth user:", authError);
-          toast({ 
-            title: "Warning", 
-            description: `Could not check existing user account for linking: ${authError.message}`,
-            variant: "destructive" 
-          });
-          // Proceed without linking if this check fails
-        }
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
       }
 
-      // Prepare data for insertion
-      const clientData = {
-        name: formData.name.trim(),
-        phone_number: formData.phone_number.trim(),
-        email: formData.email.trim(),
-        default_session_rate: parseFloat(formData.default_session_rate),
-        training_age: formData.training_age ? parseInt(formData.training_age) : null,
-        rough_goals: formData.rough_goals.trim() || null,
-        physical_activity_readiness: formData.physical_activity_readiness.trim() || null,
-        trainer_id: user.id,
-        user_id: userIdToLink, // Link to existing user account if found
-      };
+      // Call the Edge Function to create client with auth account
+      const response = await supabase.functions.invoke('create-client-with-auth', {
+        body: {
+          name: formData.name.trim(),
+          phone_number: formData.phone_number.trim(),
+          email: formData.email.trim(),
+          default_session_rate: formData.default_session_rate,
+          training_age: formData.training_age || null,
+          rough_goals: formData.rough_goals.trim() || null,
+          physical_activity_readiness: formData.physical_activity_readiness.trim() || null,
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
 
-      // Insert client into Supabase
-      const { data, error } = await supabase
-        .from('clients')
-        .insert([clientData])
-        .select();
-
-      if (error) {
-        throw error;
+      if (response.error) {
+        throw new Error(response.error.message || 'Failed to create client');
       }
 
       // Show success toast
       toast({
         title: "Success!",
-        description: "Client added successfully.",
+        description: "Client created successfully with new user account. Password reset email sent to client.",
       });
 
       // Redirect to clients list
       navigate('/clients');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding client:', error);
       toast({
         title: "Error",
-        description: "Failed to add client. Please try again.",
+        description: error.message || "Failed to add client. Please try again.",
         variant: "destructive",
       });
     } finally {
