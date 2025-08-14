@@ -97,6 +97,21 @@ Deno.serve(async (req) => {
       doPenalize = hoursUntil <= 24;
     }
 
+    // ENFORCE TRAINER-ONLY PENALTY WAIVER
+    // If it's a late cancellation AND the final decision is to NOT penalize
+    // we must verify that the user is a trainer.
+    const now = new Date();
+    const start = new Date(session.session_date);
+    const hoursUntil = (start.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const isLateCancel = hoursUntil <= 24;
+
+    if (isLateCancel && doPenalize === false && !isTrainer) {
+      return new Response(JSON.stringify({ error: 'Permission denied: Only trainers can waive penalties for late cancellations.' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // COMPREHENSIVE DEBUG LOGS FOR PENALTY DETERMINATION
     console.log(`DEBUG: Penalty check for session ${sessionId}:`);
     console.log(`DEBUG:   Frontend 'penalize' param: ${penalize}`);
