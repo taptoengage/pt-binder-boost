@@ -481,6 +481,12 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="py-4 space-y-4">
             <p><strong>Session ID:</strong> {sessionData.id}</p>
+            {sessionData.session_pack_id && (
+              <p><strong>Pack ID:</strong> {sessionData.session_pack_id}</p>
+            )}
+            {sessionData.subscription_id && (
+              <p><strong>Subscription ID:</strong> {sessionData.subscription_id}</p>
+            )}
             <p><strong>Client:</strong> {sessionData.clients?.name || 'N/A'}</p>
 
             {/* Contact Buttons */}

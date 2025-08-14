@@ -97,6 +97,9 @@ const ClientPackDetailModal: React.FC<ClientPackDetailModalProps> = ({ isOpen, o
         
         <div className="space-y-6">
           {/* Pack Overview */}
+          <div className="space-y-2 mb-4">
+            <p className="text-xs text-muted-foreground">Pack ID: {pack.id}</p>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-4">
               <div>
