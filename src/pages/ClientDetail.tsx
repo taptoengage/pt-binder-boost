@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import ClientPackDetailModal from '@/components/ClientPackDetailModal';
 import ClientSubscriptionModal from '@/components/ClientSubscriptionModal';
 import SubscriptionDetailModal from '@/components/SubscriptionDetailModal';
+import { PackCard } from '@/components/PackCard';
 
 interface Client {
   id: string;
@@ -126,8 +127,6 @@ export default function ClientDetail() {
   // Session packs state
   const [sessionPacks, setSessionPacks] = useState<SessionPack[]>([]);
   const [isLoadingSessionPacks, setIsLoadingSessionPacks] = useState(true);
-  const [scheduledSessionsCount, setScheduledSessionsCount] = useState(0);
-  const [completedSessionsCount, setCompletedSessionsCount] = useState(0);
   
   // Pack detail modal state
   const [isPackDetailModalOpen, setIsPackDetailModalOpen] = useState(false);
@@ -368,7 +367,7 @@ export default function ClientDetail() {
 
         // Session fetching is now handled by a separate useEffect with pagination
 
-        // Fetch client session packs with service types
+        // Fetch client session packs with service types (include completed packs in history view)
         const { data: sessionPacksData, error: sessionPacksError } = await supabase
           .from('session_packs')
           .select(`
@@ -396,34 +395,6 @@ export default function ClientDetail() {
           });
         } else {
           setSessionPacks(sessionPacksData || []);
-          
-          // Get session counts for all active packs
-          if (sessionPacksData && sessionPacksData.length > 0) {
-            const packIds = sessionPacksData.map(pack => pack.id);
-            
-            const { data: sessionCounts } = await supabase
-              .from('sessions')
-              .select('status, cancellation_reason')
-              .in('session_pack_id', packIds)
-              .eq('client_id', clientId)
-              .eq('trainer_id', user.id);
-            
-            if (sessionCounts) {
-              const scheduled = sessionCounts.filter(s => s.status === 'scheduled').length;
-              // Include penalty cancellations as consumed sessions
-              const consumed = sessionCounts.filter(s => 
-                s.status === 'completed' || 
-                s.status === 'no-show' ||
-                (s.status === 'cancelled' && s.cancellation_reason === 'penalty')
-              ).length;
-              
-              setScheduledSessionsCount(scheduled);
-              setCompletedSessionsCount(consumed);
-            }
-          } else {
-            setScheduledSessionsCount(0);
-            setCompletedSessionsCount(0);
-          }
         }
 
       } catch (error) {
@@ -1458,60 +1429,15 @@ export default function ClientDetail() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Display Active Packs */}
-                {sessionPacks.map((pack) => {
-                  // Calculate sessions available to book for this specific pack
-                  const packScheduledSessions = scheduledSessionsCount;
-                  const packCompletedSessions = completedSessionsCount;
-                  const sessionsAvailableToBook = pack.total_sessions - (packScheduledSessions + packCompletedSessions);
-                  const progressPercentage = ((packScheduledSessions + packCompletedSessions) / pack.total_sessions) * 100;
-                  
-                  return (
-                    <Card
-                      key={pack.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow"
-                      onClick={() => handleViewPackDetail(pack)}
-                    >
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-lg">
-                          {pack.service_types?.name || 'Unknown Service'} - {pack.total_sessions} Pack
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div>
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm text-muted-foreground">Sessions Progress</span>
-                            <span className="text-sm font-medium">
-                              {Math.max(0, sessionsAvailableToBook)} / {pack.total_sessions} available to book
-                            </span>
-                          </div>
-                          <Progress value={progressPercentage} className="h-2" />
-                        </div>
-                        
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-muted-foreground">Used:</span>
-                          <span className="font-medium">{packScheduledSessions + packCompletedSessions} sessions</span>
-                        </div>
-                        
-                        <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                          <span>{scheduledSessionsCount} Scheduled</span>
-                          <span>{completedSessionsCount} Completed</span>
-                        </div>
-                        
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-muted-foreground">Value:</span>
-                          <span className="font-medium">${pack.amount_paid.toFixed(2)}</span>
-                        </div>
-                        
-                        {pack.expiry_date && (
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-muted-foreground">Expires:</span>
-                            <span className="font-medium">{format(new Date(pack.expiry_date), 'dd/MM/yyyy')}</span>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                {sessionPacks.map((pack) => (
+                  <PackCard
+                    key={pack.id}
+                    pack={pack}
+                    clientId={clientId!}
+                    trainerId={user!.id}
+                    onClick={() => handleViewPackDetail(pack)}
+                  />
+                ))}
 
                 {/* Display Active Subscriptions */}
                 {isLoadingActiveSubscriptions && <p>Loading active subscriptions...</p>}
