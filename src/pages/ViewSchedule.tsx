@@ -10,7 +10,7 @@ import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import SessionDetailModal from '@/components/SessionDetailModal';
+import UniversalSessionModal from '@/components/UniversalSessionModal';
 
 // Helper to generate 30-minute time slots for a day
 const generateDayTimeSlots = () => {
@@ -582,7 +582,8 @@ export default function ViewSchedule() {
         </div>
 
         {/* Render the session detail modal */}
-        <SessionDetailModal
+        <UniversalSessionModal
+          mode="view"
           isOpen={isSessionDetailModalOpen}
           onClose={() => {
             setIsSessionDetailModalOpen(false);

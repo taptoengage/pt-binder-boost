@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import SessionDetailModal from '@/components/SessionDetailModal';
+import UniversalSessionModal from '@/components/UniversalSessionModal';
 import { 
   Users, 
   Calendar, 
@@ -516,7 +516,8 @@ export default function Dashboard() {
       </main>
 
       {/* Session Detail Modal */}
-      <SessionDetailModal
+      <UniversalSessionModal
+        mode="view"
         isOpen={isSessionDetailModalOpen}
         onClose={() => setIsSessionDetailModalOpen(false)}
         session={selectedSessionForModal}
