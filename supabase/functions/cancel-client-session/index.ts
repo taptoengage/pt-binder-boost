@@ -52,19 +52,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Find client by email to validate ownership
+    // Add client lookup check to get the client's ID for unified validation
     const { data: clientRow, error: clientErr } = await supabaseUser
       .from('clients')
       .select('id')
-      .eq('email', user.email)
-      .single();
-    
-    if (clientErr || !clientRow) {
-      return new Response(JSON.stringify({ error: 'Client not found' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+      .eq('user_id', user.id) // CRITICAL: Match on user_id, not email
+      .maybeSingle(); // Use maybeSingle() to handle cases where user is a trainer
 
     // Fetch session details
     const { data: session, error: sessErr } = await supabaseUser
@@ -80,7 +73,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (session.client_id !== clientRow.id) {
+    // The user must be the trainer OR the client
+    const isTrainer = (user.id === session.trainer_id);
+    const isClient = (clientRow && clientRow.id === session.client_id);
+
+    if (!isTrainer && !isClient) {
       return new Response(JSON.stringify({ error: 'You do not have permission to cancel this session' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
