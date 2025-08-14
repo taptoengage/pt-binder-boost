@@ -355,13 +355,15 @@ export default function ClientDashboard() {
               ) : (
                 <div className="space-y-3">
                   {(() => {
-                    const totalSumRemaining = clientSessionPacks.reduce((sum, pack) => sum + pack.sessions_remaining, 0);
                     const totalSumTotal = clientSessionPacks.reduce((sum, pack) => sum + pack.total_sessions, 0);
-                    const percentageRemaining = totalSumTotal > 0 ? (totalSumRemaining / totalSumTotal) * 100 : 0;
+                    // CRITICAL: New calculation for sessions available to book
+                    const sessionsAvailableToBook = totalSumTotal - (scheduledSessionsCount + completedSessionsCount);
+                    const percentageUsed = totalSumTotal > 0 ? ((scheduledSessionsCount + completedSessionsCount) / totalSumTotal) * 100 : 0;
+                    const percentageRemaining = 100 - percentageUsed;
                     
                     return (
                       <>
-                        <div className="text-2xl font-bold">{totalSumRemaining} / {totalSumTotal}</div>
+                        <div className="text-2xl font-bold">{sessionsAvailableToBook} / {totalSumTotal}</div>
                         <div className="space-y-2">
                           <Progress value={percentageRemaining} className="h-2" />
                           <div className="flex justify-between text-xs text-muted-foreground">

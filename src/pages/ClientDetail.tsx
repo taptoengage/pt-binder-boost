@@ -1454,7 +1454,11 @@ export default function ClientDetail() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Display Active Packs */}
                 {sessionPacks.map((pack) => {
-                  const progressPercentage = ((pack.total_sessions - pack.sessions_remaining) / pack.total_sessions) * 100;
+                  // Calculate sessions available to book for this specific pack
+                  const packScheduledSessions = scheduledSessionsCount;
+                  const packCompletedSessions = completedSessionsCount;
+                  const sessionsAvailableToBook = pack.total_sessions - (packScheduledSessions + packCompletedSessions);
+                  const progressPercentage = ((packScheduledSessions + packCompletedSessions) / pack.total_sessions) * 100;
                   
                   return (
                     <Card
@@ -1472,7 +1476,7 @@ export default function ClientDetail() {
                           <div className="flex justify-between items-center mb-2">
                             <span className="text-sm text-muted-foreground">Sessions Progress</span>
                             <span className="text-sm font-medium">
-                              {pack.sessions_remaining} / {pack.total_sessions} remaining
+                              {Math.max(0, sessionsAvailableToBook)} / {pack.total_sessions} available to book
                             </span>
                           </div>
                           <Progress value={progressPercentage} className="h-2" />
@@ -1480,7 +1484,7 @@ export default function ClientDetail() {
                         
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-muted-foreground">Used:</span>
-                          <span className="font-medium">{pack.total_sessions - pack.sessions_remaining} sessions</span>
+                          <span className="font-medium">{packScheduledSessions + packCompletedSessions} sessions</span>
                         </div>
                         
                         <div className="flex justify-between text-xs text-muted-foreground mt-2">
