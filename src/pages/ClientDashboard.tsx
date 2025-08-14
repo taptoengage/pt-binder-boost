@@ -135,7 +135,8 @@ export default function ClientDashboard() {
           total_sessions, 
           sessions_remaining, 
           status, 
-          service_types(name)
+          service_types(name),
+          amount_paid
         `)
         .eq('client_id', client.id)
         .eq('trainer_id', client.trainer_id)
