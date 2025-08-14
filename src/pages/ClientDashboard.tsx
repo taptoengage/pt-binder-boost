@@ -9,6 +9,7 @@ import { Clock, CreditCard, Calendar, DollarSign, Loader2, User, Edit } from 'lu
 import { Progress } from '@/components/ui/progress';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +28,7 @@ export default function ClientDashboard() {
   const { client, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
   const [upcomingSession, setUpcomingSession] = useState<any | null>(null);
@@ -268,6 +270,13 @@ export default function ClientDashboard() {
       setSelectedPackForModal(clientSessionPacks[0]); // Selects the most recent pack
       setIsPackModalOpen(true);
     }
+  };
+
+  const handlePackModalClose = () => {
+    setIsPackModalOpen(false);
+    setSelectedPackForModal(null);
+    // CRITICAL: Invalidate queries to force a data re-fetch on the dashboard
+    fetchClientDashboardData();
   };
 
   if (isLoadingDashboard) {
@@ -553,7 +562,7 @@ export default function ClientDashboard() {
       
       <ClientPackDetailModal
         isOpen={isPackModalOpen}
-        onClose={() => setIsPackModalOpen(false)}
+        onClose={handlePackModalClose}
         pack={selectedPackForModal}
       />
     </div>
