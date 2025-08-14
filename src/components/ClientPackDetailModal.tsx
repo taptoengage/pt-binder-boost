@@ -127,7 +127,11 @@ const ClientPackDetailModal: React.FC<ClientPackDetailModalProps> = ({ isOpen, o
               
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground mb-1">Purchase Date</h3>
-                <p className="text-sm">{format(new Date(pack.purchase_date), 'dd/MM/yyyy')}</p>
+                {pack.purchase_date ? (
+                  <p className="text-sm">{format(new Date(pack.purchase_date), 'dd/MM/yyyy')}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Not specified</p>
+                )}
               </div>
               
               {pack.expiry_date && (
@@ -177,10 +181,10 @@ const ClientPackDetailModal: React.FC<ClientPackDetailModalProps> = ({ isOpen, o
                       {getStatusIcon(session.status)}
                       <div>
                         <p className="font-medium">
-                          {format(new Date(session.session_date), 'EEE, MMM dd, yyyy')}
+                          {session.session_date ? format(new Date(session.session_date), 'EEE, MMM dd, yyyy') : 'Date not specified'}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {format(new Date(session.session_date), 'h:mm a')}
+                          {session.session_date ? format(new Date(session.session_date), 'h:mm a') : ''}
                         </p>
                         {session.notes && (
                           <p className="text-xs text-muted-foreground mt-1 max-w-md truncate">
