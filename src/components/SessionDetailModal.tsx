@@ -50,7 +50,6 @@ interface SessionDetailModalProps {
 
 export default function SessionDetailModal({ isOpen, onClose, session }: SessionDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const [showCancelSessionConfirm, setShowCancelSessionConfirm] = useState(false);
   // NEW STATE for availability override modal
   const [showAvailabilityOverrideConfirm, setShowAvailabilityOverrideConfirm] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<EditSessionFormData | null>(null);
@@ -381,94 +380,51 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
   };
 
 
-  // Cancel session function with credit generation
-  const onConfirmCancelSession = async () => {
-    setShowCancelSessionConfirm(false); // Close confirmation dialog immediately
+  // New cancellation handler using the edge function
+  const handleCancellation = async (penalize: boolean) => {
+    if (!sessionData?.id || !user?.id) {
+      toast({ title: 'Error', description: 'Session ID or trainer ID is missing for cancellation.', variant: 'destructive' });
+      return;
+    }
 
-    if (!sessionData?.id) {
-      toast({ title: 'Error', description: 'Session ID is missing for cancellation.', variant: 'destructive' });
-      return;
-    }
-    if (!user?.id) {
-      toast({ title: 'Error', description: 'Trainer ID not available for cancellation.', variant: 'destructive' });
-      return;
-    }
+    const sessionStart = new Date(sessionData.session_date);
+    const isLateCancel = differenceInHours(sessionStart, new Date()) <= 24;
+
+    // Handle the override logic
+    const finalPenalize = isLateCancel && penalize; // Only penalize if it's a late cancel AND the override flag is true
 
     try {
-      const sessionDateTime = new Date(sessionData.session_date);
-      // For simplicity, let's use 'cancelled_late' for now.
-      // Logic for 'cancelled_early' would involve checking differenceInHours(sessionDateTime, new Date())
-      const cancellationStatus = 'cancelled_late';
+      // Prepare the payload for the Edge Function
+      const payload = {
+        sessionId: sessionData.id,
+        penalize: finalPenalize
+      };
 
-      // Step 1: Update the session status
-      const { error: sessionUpdateError } = await supabase
-        .from('sessions')
-        .update({ status: cancellationStatus })
-        .eq('id', sessionData.id)
-        .eq('trainer_id', user.id); // Ensure only trainer can cancel their own session
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) throw new Error('Not authenticated');
 
-      if (sessionUpdateError) throw new Error(`Failed to update session status: ${sessionUpdateError.message}`);
+      const { error } = await supabase.functions.invoke('cancel-client-session', {
+        body: payload,
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      let creditGenerated = false;
-
-      if (sessionData.subscription_id && sessionData.is_from_credit === false) {
-        try {
-          const { data: allocationData, error: allocationError } = await supabase
-            .from('subscription_service_allocations')
-            .select('cost_per_session')
-            .eq('subscription_id', sessionData.subscription_id)
-            .eq('service_type_id', sessionData.service_types?.id)
-            .single();
-
-          if (allocationError) throw new Error(`Failed to fetch allocation for credit generation: ${allocationError.message}`);
-          if (!allocationData) throw new Error("Service allocation not found for credit generation.");
-
-          const creditValue = allocationData.cost_per_session;
-
-          if (creditValue === undefined || creditValue === null) {
-            throw new Error("Credit value is invalid after fetching allocation data.");
-          }
-
-          const { error: creditInsertError } = await supabase
-            .from('subscription_session_credits')
-            .insert({
-              subscription_id: sessionData.subscription_id,
-              service_type_id: sessionData.service_types?.id,
-              credit_value: creditValue,
-              credit_reason: `Session cancelled (${cancellationStatus})`,
-              status: 'available',
-              originating_session_id: sessionData.id,
-            });
-
-          if (creditInsertError) throw new Error(`Failed to generate session credit: ${creditInsertError.message}`);
-          creditGenerated = true;
-
-        } catch (creditGenError: any) {
-          console.error("Error during credit generation:", creditGenError);
-          toast({
-            title: 'Warning',
-            description: `Session cancelled, but failed to generate credit: ${creditGenError.message}`,
-            variant: 'destructive',
-          });
-        }
-      }
+      if (error) throw new Error(error.message || 'Failed to cancel session');
 
       toast({
         title: 'Success',
-        description: `Session cancelled successfully${creditGenerated ? ' and credit generated!' : '.'}`,
+        description: 'Session cancelled successfully!',
       });
+
       onClose(); // Close the modal
       queryClient.invalidateQueries({ queryKey: ['trainerSessions', user.id] }); // Refresh schedule
-      // Invalidate available credits for this client if any part of the UI depends on it
-      queryClient.invalidateQueries({ queryKey: ['availableCredits', sessionData.clients?.id] });
-
     } catch (error: any) {
-      console.error("Error cancelling session:", error);
       toast({
         title: 'Error',
-        description: `Failed to cancel session: ${error.message || 'Unknown error'}`,
+        description: `Failed to cancel session: ${error.message}`,
         variant: 'destructive',
       });
+      console.error("Error cancelling session:", error);
     }
   };
 
@@ -687,31 +643,69 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
                     Edit Session
                   </Button>
 
-                  {/* Cancel Session Button with Confirmation */}
-                  <AlertDialog open={showCancelSessionConfirm} onOpenChange={setShowCancelSessionConfirm}>
-                    <AlertDialogTrigger asChild>
-                      <Button 
-                        type="button" 
-                        variant="destructive" 
-                        className="mb-2 sm:mb-0"
-                        disabled={sessionData.status === 'completed' || sessionData.status.startsWith('cancelled')}
-                      >
-                        Cancel Session
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Confirm Session Cancellation</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This action will cancel the session. If this session was part of a subscription and not booked with a credit, a session credit will be generated. This action cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>No, Keep Session</AlertDialogCancel>
-                        <AlertDialogAction onClick={onConfirmCancelSession}>Yes, Cancel Session</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                  {/* Conditional Cancellation Logic */}
+                  {(() => {
+                    const sessionStart = sessionData?.session_date ? new Date(sessionData.session_date) : null;
+                    const isLateCancel = sessionStart ? differenceInHours(sessionStart, new Date()) <= 24 : false;
+                    
+                    return isLateCancel ? (
+                      // UI for late cancellation (penalty applies by default)
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button 
+                            type="button" 
+                            variant="destructive" 
+                            className="mb-2 sm:mb-0"
+                            disabled={sessionData.status !== 'scheduled'}
+                          >
+                            Cancel Session
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Penalty Cancellation</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This session is within the 24-hour cancellation window. Cancelling it will result in a penalty, and the session will not be credited back.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Keep Session</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleCancellation(true)}>
+                              Confirm Penalty Cancellation
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    ) : (
+                      // UI for on-time cancellation (no penalty)
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button 
+                            type="button" 
+                            variant="destructive" 
+                            className="mb-2 sm:mb-0"
+                            disabled={sessionData.status !== 'scheduled'}
+                          >
+                            Cancel Session
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Confirm Cancellation</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to cancel this session? A session credit will be added back to the client's pack or subscription.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Keep Session</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleCancellation(false)}>
+                              Confirm Cancellation
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    );
+                  })()}
 
                   <Button type="button" onClick={onClose} className="mb-2 sm:mb-0">Close</Button>
                 </>
