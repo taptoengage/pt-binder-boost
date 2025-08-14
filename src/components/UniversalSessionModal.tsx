@@ -23,18 +23,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSessionOverlapCheck, validateOverlap } from '@/hooks/useSessionOverlapCheck';
 import ConfirmAvailabilityOverrideModal from '@/components/ConfirmAvailabilityOverrideModal';
 import { validatePackAvailability } from '@/lib/packValidation';
+import { generateTimeOptions } from '@/lib/availabilityUtils';
 
-// Generate time options with 30-minute intervals
-const generateTimeOptions = () => {
-  const times = [];
-  for (let hour = 0; hour < 24; hour++) {
-    for (let minute = 0; minute < 60; minute += 30) {
-      const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      times.push(timeString);
-    }
-  }
-  return times;
-};
 const timeOptions = generateTimeOptions();
 
 // Define Zod Schema for editing a session
