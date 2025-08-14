@@ -7,7 +7,7 @@ import { Loader2 } from 'lucide-react';
 import { Calendar, momentLocalizer, View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
-import SessionBookingModal from '@/components/SessionBookingModal';
+import UniversalSessionModal from '@/components/UniversalSessionModal';
 
 const localizer = momentLocalizer(moment);
 
@@ -460,7 +460,8 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
           </div>
         )}
       </CardContent>
-      <SessionBookingModal
+      <UniversalSessionModal
+        mode="book"
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         selectedSlot={selectedSlotForModal}
