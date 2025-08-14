@@ -7,7 +7,7 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
@@ -748,25 +748,25 @@ export type Database = {
     Functions: {
       decrement_pack_sessions: {
         Args: {
+          expected_remaining: number
           pack_id: string
           trainer_id: string
-          expected_remaining: number
         }
         Returns: boolean
       }
       increment_pack_sessions: {
-        Args: { pack_id: string; trainer_id: string; inc?: number }
+        Args: { inc?: number; pack_id: string; trainer_id: string }
         Returns: boolean
       }
       validate_pack_integrity: {
         Args: Record<PropertyKey, never>
         Returns: {
-          pack_id: string
-          total_sessions: number
-          sessions_remaining: number
           actual_used_sessions: number
           calculated_remaining: number
           has_integrity_issue: boolean
+          pack_id: string
+          sessions_remaining: number
+          total_sessions: number
         }[]
       }
     }
