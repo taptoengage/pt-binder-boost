@@ -999,18 +999,186 @@ export default function UniversalSessionModal({
     );
   }
 
-  // TODO: Implement MODE: EDIT
+  // MODE: EDIT - Session editing functionality (same as view but starts in editing mode)
   if (mode === 'edit') {
+    // Show loading state while fetching session data
+    if (isLoadingSession) {
+      return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+          <DialogContent className="sm:max-w-[425px] md:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Session</DialogTitle>
+              <DialogDescription>Loading session information...</DialogDescription>
+            </DialogHeader>
+            <div className="py-8 text-center">
+              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
+              <p className="mt-4 text-sm text-muted-foreground">Loading session details...</p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      );
+    }
+
+    // Show error state if session data failed to load
+    if (sessionError) {
+      return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+          <DialogContent className="sm:max-w-[425px] md:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Error</DialogTitle>
+              <DialogDescription>Failed to load session details.</DialogDescription>
+            </DialogHeader>
+            <div className="py-8 text-center">
+              <p className="text-sm text-destructive">Could not load session information. Please try again.</p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      );
+    }
+
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="sm:max-w-[425px] md:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Session</DialogTitle>
-            <DialogDescription>Edit mode implementation coming soon...</DialogDescription>
+            <DialogDescription>
+              Edit this session's details.
+            </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button onClick={onClose}>Close</Button>
-          </DialogFooter>
+
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="py-4 space-y-4">
+              <p><strong>Session ID:</strong> {sessionData.id}</p>
+              {sessionData.session_pack_id && (
+                <p><strong>Pack ID:</strong> {sessionData.session_pack_id}</p>
+              )}
+              {sessionData.subscription_id && (
+                <p><strong>Subscription ID:</strong> {sessionData.subscription_id}</p>
+              )}
+              <p><strong>Client:</strong> {sessionData.clients?.name || 'N/A'}</p>
+              <p><strong>Service:</strong> {sessionData.service_types?.name || 'N/A'}</p>
+
+              {/* Status Field */}
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="scheduled">Scheduled</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="cancelled_late">Cancelled Late</SelectItem>
+                        <SelectItem value="cancelled_early">Cancelled Early</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Session Date Field */}
+              <FormField
+                control={form.control}
+                name="session_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Session Date</FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full pl-3 text-left font-normal",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value ? (
+                              format(field.value, "PPP")
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value || undefined}
+                          onSelect={field.onChange}
+                          initialFocus
+                          className={cn("p-3 pointer-events-auto")}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Session Time Field */}
+              <FormField
+                control={form.control}
+                name="session_time"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Session Time</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select session time" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="max-h-[200px] overflow-y-auto">
+                        {timeOptions.map((time) => (
+                          <SelectItem key={time} value={time}>
+                            {time}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {sessionData.notes && (
+                <p><strong>Notes:</strong> {sessionData.notes}</p>
+              )}
+
+              <DialogFooter className="flex flex-col sm:flex-row sm:justify-between sm:space-x-2 mt-6">
+                <Button type="button" variant="outline" onClick={onClose} className="mb-2 sm:mb-0">
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={form.formState.isSubmitting || !form.formState.isValid || isLoadingOverlaps} className="mb-2 sm:mb-0">
+                  {form.formState.isSubmitting ? "Saving..." :
+                   isLoadingOverlaps ? "Checking Overlaps..." :
+                   "Save Changes"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+
+          {/* NEW: Render ConfirmAvailabilityOverrideModal */}
+          {showAvailabilityOverrideConfirm && (
+            <ConfirmAvailabilityOverrideModal
+              isOpen={showAvailabilityOverrideConfirm}
+              onClose={() => {
+                setShowAvailabilityOverrideConfirm(false);
+                setPendingSubmitData(null); // Clear pending data if user cancels
+              }}
+              onConfirm={handleConfirmAvailabilityOverride}
+              proposedDateTime={parse(form.watch('session_time'), 'HH:mm', form.watch('session_date') || new Date())}
+            />
+          )}
         </DialogContent>
       </Dialog>
     );
