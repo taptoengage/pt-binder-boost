@@ -3,6 +3,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { format, differenceInHours, isBefore, parse, addMinutes, isWithinInterval } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useForm } from 'react-hook-form';
@@ -50,6 +52,7 @@ interface SessionDetailModalProps {
 
 export default function SessionDetailModal({ isOpen, onClose, session }: SessionDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isPenaltyWaived, setIsPenaltyWaived] = useState(false);
   // NEW STATE for availability override modal
   const [showAvailabilityOverrideConfirm, setShowAvailabilityOverrideConfirm] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<EditSessionFormData | null>(null);
@@ -661,20 +664,28 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
                             Cancel Session
                           </Button>
                         </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Penalty Cancellation</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This session is within the 24-hour cancellation window. Cancelling it will result in a penalty, and the session will not be credited back.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Keep Session</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleCancellation(true)}>
-                              Confirm Penalty Cancellation
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
+                         <AlertDialogContent>
+                           <AlertDialogHeader>
+                             <AlertDialogTitle>Penalty Cancellation</AlertDialogTitle>
+                             <AlertDialogDescription>
+                               This session is within the 24-hour cancellation window. Cancelling it will result in a penalty, and the session will not be credited back.
+                             </AlertDialogDescription>
+                           </AlertDialogHeader>
+                           <div className="flex items-center space-x-2 p-4 border rounded-md my-4">
+                             <Checkbox
+                               id="waive-penalty"
+                               checked={isPenaltyWaived}
+                               onCheckedChange={(checked) => setIsPenaltyWaived(Boolean(checked))}
+                             />
+                             <Label htmlFor="waive-penalty">Waive penalty</Label>
+                           </div>
+                           <AlertDialogFooter>
+                             <AlertDialogCancel onClick={() => setIsPenaltyWaived(false)}>Keep Session</AlertDialogCancel>
+                             <AlertDialogAction onClick={() => handleCancellation(!isPenaltyWaived)}>
+                               Confirm Cancellation
+                             </AlertDialogAction>
+                           </AlertDialogFooter>
+                         </AlertDialogContent>
                       </AlertDialog>
                     ) : (
                       // UI for on-time cancellation (no penalty)
