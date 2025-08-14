@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import EditSessionModal from '@/components/EditSessionModal';
+import UniversalSessionModal from '@/components/UniversalSessionModal';
 import CancellationPenaltyModal from '@/components/CancellationPenaltyModal';
 import ClientPackDetailModal from '@/components/ClientPackDetailModal';
 
@@ -551,7 +551,8 @@ export default function ClientDashboard() {
         </Card>
       </div>
       
-      <EditSessionModal
+      <UniversalSessionModal
+        mode="edit"
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         session={selectedSessionForEdit}
