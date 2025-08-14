@@ -21,6 +21,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import EditSessionModal from '@/components/EditSessionModal';
 import CancellationPenaltyModal from '@/components/CancellationPenaltyModal';
+import ClientPackDetailModal from '@/components/ClientPackDetailModal';
 
 export default function ClientDashboard() {
   const { client, signOut } = useAuth();
@@ -42,6 +43,8 @@ export default function ClientDashboard() {
   const [isPenaltyCancelModalOpen, setIsPenaltyCancelModalOpen] = useState(false);
   const [selectedSessionForPenaltyCancel, setSelectedSessionForPenaltyCancel] = useState<any | null>(null);
   const [selectedSessionForRegularCancel, setSelectedSessionForRegularCancel] = useState<any | null>(null);
+  const [isPackModalOpen, setIsPackModalOpen] = useState(false);
+  const [selectedPackForModal, setSelectedPackForModal] = useState<any | null>(null);
 
   useEffect(() => {
     if (client?.id && client?.trainer_id) {
@@ -258,6 +261,14 @@ export default function ClientDashboard() {
     }
   };
 
+  const handlePackTileClick = () => {
+    // Show the most recent pack for this view
+    if (clientSessionPacks && clientSessionPacks.length > 0) {
+      setSelectedPackForModal(clientSessionPacks[0]); // Selects the most recent pack
+      setIsPackModalOpen(true);
+    }
+  };
+
   if (isLoadingDashboard) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -324,7 +335,7 @@ export default function ClientDashboard() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={handlePackTileClick}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Sessions Remaining</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
@@ -535,6 +546,12 @@ export default function ClientDashboard() {
         onClose={() => setIsPenaltyCancelModalOpen(false)}
         session={selectedSessionForPenaltyCancel}
         onSessionCancelled={handlePenaltyCancelComplete}
+      />
+      
+      <ClientPackDetailModal
+        isOpen={isPackModalOpen}
+        onClose={() => setIsPackModalOpen(false)}
+        pack={selectedPackForModal}
       />
     </div>
   );
