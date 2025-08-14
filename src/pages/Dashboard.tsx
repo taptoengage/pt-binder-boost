@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import EditSessionModal from '@/components/EditSessionModal';
 import { 
   Users, 
   Calendar, 
@@ -41,227 +42,236 @@ export default function Dashboard() {
   const [lowSessionClients, setLowSessionClients] = useState<any[]>([]);
   const [isLoadingLowSessions, setIsLoadingLowSessions] = useState(true);
 
-  // Data fetching effect
-  useEffect(() => {
+  // State for modal control
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedSessionForEdit, setSelectedSessionForEdit] = useState<any | null>(null);
+
+  // Move fetchDashboardData outside useEffect so it can be called from modal
+  const fetchDashboardData = async () => {
     if (!user?.id) return;
     
-    const fetchDashboardData = async () => {
-      try {
-        setIsLoadingDashboard(true);
-        
-        // Get date ranges
-        const now = new Date();
-        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-        
-        // Get start and end of current week (Monday to Sunday)
-        const startOfWeek = new Date(now);
-        startOfWeek.setDate(now.getDate() - now.getDay() + 1);
-        startOfWeek.setHours(0, 0, 0, 0);
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setDate(startOfWeek.getDate() + 6);
-        endOfWeek.setHours(23, 59, 59, 999);
+    try {
+      setIsLoadingDashboard(true);
+      
+      // Get date ranges
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      
+      // Get start and end of current week (Monday to Sunday)
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay() + 1);
+      startOfWeek.setHours(0, 0, 0, 0);
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      endOfWeek.setHours(23, 59, 59, 999);
 
-        // Fetch today's sessions
-        const { data: sessions, error: sessionsError } = await supabase
-          .from('sessions')
-          .select('*, clients(name)')
-          .eq('trainer_id', user.id)
-          .eq('status', 'scheduled')
-          .gte('session_date', startOfToday.toISOString())
-          .lte('session_date', endOfToday.toISOString())
-          .order('session_date', { ascending: true });
+      // Fetch today's sessions
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('sessions')
+        .select('*, clients(name)')
+        .eq('trainer_id', user.id)
+        .eq('status', 'scheduled')
+        .gte('session_date', startOfToday.toISOString())
+        .lte('session_date', endOfToday.toISOString())
+        .order('session_date', { ascending: true });
 
-        if (sessionsError) throw sessionsError;
-        
-        const formattedSessions = sessions?.map(session => ({
-          id: session.id,
-          client: session.clients?.name || 'Unknown Client',
-          time: new Date(session.session_date).toLocaleTimeString('en-US', { 
-            hour: 'numeric', 
-            minute: '2-digit',
-            hour12: true 
-          }),
-          type: 'Training Session',
-          status: session.status
-        })) || [];
-        
-        setTodaysSessions(formattedSessions);
+      if (sessionsError) throw sessionsError;
+      
+      const formattedSessions = sessions?.map(session => ({
+        id: session.id,
+        client: session.clients?.name || 'Unknown Client',
+        time: new Date(session.session_date).toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        }),
+        type: 'Training Session',
+        status: session.status,
+        session_date: session.session_date,
+        trainer_id: session.trainer_id,
+        notes: session.notes
+      })) || [];
+      
+      setTodaysSessions(formattedSessions);
 
-        // Fetch overdue payments
-        const { data: payments, error: paymentsError } = await supabase
-          .from('payments')
-          .select('*, clients(name)')
-          .eq('trainer_id', user.id)
-          .eq('status', 'overdue')
-          .order('due_date', { ascending: true });
+      // Fetch overdue payments
+      const { data: payments, error: paymentsError } = await supabase
+        .from('payments')
+        .select('*, clients(name)')
+        .eq('trainer_id', user.id)
+        .eq('status', 'overdue')
+        .order('due_date', { ascending: true });
 
-        if (paymentsError) throw paymentsError;
-        
-        const formattedPayments = payments?.map(payment => {
-          const daysOverdue = Math.floor(
-            (now.getTime() - new Date(payment.due_date).getTime()) / (1000 * 60 * 60 * 24)
-          );
-          return {
-            id: payment.id,
-            client: payment.clients?.name || 'Unknown Client',
-            amount: Number(payment.amount),
-            daysOverdue: Math.max(0, daysOverdue)
-          };
-        }) || [];
-        
-        setOverduePayments(formattedPayments);
+      if (paymentsError) throw paymentsError;
+      
+      const formattedPayments = payments?.map(payment => {
+        const daysOverdue = Math.floor(
+          (now.getTime() - new Date(payment.due_date).getTime()) / (1000 * 60 * 60 * 24)
+        );
+        return {
+          id: payment.id,
+          client: payment.clients?.name || 'Unknown Client',
+          amount: Number(payment.amount),
+          daysOverdue: Math.max(0, daysOverdue)
+        };
+      }) || [];
+      
+      setOverduePayments(formattedPayments);
 
-        // Calculate weekly earnings
-        const { data: weeklyPayments, error: weeklyEarningsError } = await supabase
-          .from('payments')
-          .select('amount')
-          .eq('trainer_id', user.id)
-          .eq('status', 'paid')
-          .gte('date_paid', startOfWeek.toISOString().split('T')[0])
-          .lte('date_paid', endOfWeek.toISOString().split('T')[0]);
+      // Calculate weekly earnings
+      const { data: weeklyPayments, error: weeklyEarningsError } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('trainer_id', user.id)
+        .eq('status', 'paid')
+        .gte('date_paid', startOfWeek.toISOString().split('T')[0])
+        .lte('date_paid', endOfWeek.toISOString().split('T')[0]);
 
-        if (weeklyEarningsError) throw weeklyEarningsError;
-        
-        const totalEarnings = weeklyPayments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
-        setWeeklyEarnings(totalEarnings);
+      if (weeklyEarningsError) throw weeklyEarningsError;
+      
+      const totalEarnings = weeklyPayments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
+      setWeeklyEarnings(totalEarnings);
 
-        // Calculate sessions this week
-        const { data: weeklySessions, error: weeklySessionsError } = await supabase
-          .from('sessions')
-          .select('id')
-          .eq('trainer_id', user.id)
-          .eq('status', 'completed')
-          .gte('session_date', startOfWeek.toISOString())
-          .lte('session_date', endOfWeek.toISOString());
+      // Calculate sessions this week
+      const { data: weeklySessions, error: weeklySessionsError } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('trainer_id', user.id)
+        .eq('status', 'completed')
+        .gte('session_date', startOfWeek.toISOString())
+        .lte('session_date', endOfWeek.toISOString());
 
-        if (weeklySessionsError) throw weeklySessionsError;
-        
-        setSessionsThisWeek(weeklySessions?.length || 0);
+      if (weeklySessionsError) throw weeklySessionsError;
+      
+      setSessionsThisWeek(weeklySessions?.length || 0);
 
-        // Get active clients count
-        const { count: clientsCount, error: clientsError } = await supabase
-          .from('clients')
-          .select('id', { count: 'exact' })
-          .eq('trainer_id', user.id);
+      // Get active clients count
+      const { count: clientsCount, error: clientsError } = await supabase
+        .from('clients')
+        .select('id', { count: 'exact' })
+        .eq('trainer_id', user.id);
 
-        if (clientsError) throw clientsError;
-        
-        setActiveClientsCount(clientsCount || 0);
+      if (clientsError) throw clientsError;
+      
+      setActiveClientsCount(clientsCount || 0);
 
-        // Calculate outstanding payments total
-        const { data: outstandingPayments, error: outstandingError } = await supabase
-          .from('payments')
-          .select('amount')
-          .eq('trainer_id', user.id)
-          .eq('status', 'overdue');
+      // Calculate outstanding payments total
+      const { data: outstandingPayments, error: outstandingError } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('trainer_id', user.id)
+        .eq('status', 'overdue');
 
-        if (outstandingError) throw outstandingError;
-        
-        const totalOutstanding = outstandingPayments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
-        setOutstandingPaymentsTotal(totalOutstanding);
+      if (outstandingError) throw outstandingError;
+      
+      const totalOutstanding = outstandingPayments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
+      setOutstandingPaymentsTotal(totalOutstanding);
 
-        // Calculate last week's date ranges for percentage changes
-        const startOfLastWeek = new Date(startOfWeek);
-        startOfLastWeek.setDate(startOfWeek.getDate() - 7);
-        const endOfLastWeek = new Date(endOfWeek);
-        endOfLastWeek.setDate(endOfWeek.getDate() - 7);
+      // Calculate last week's date ranges for percentage changes
+      const startOfLastWeek = new Date(startOfWeek);
+      startOfLastWeek.setDate(startOfWeek.getDate() - 7);
+      const endOfLastWeek = new Date(endOfWeek);
+      endOfLastWeek.setDate(endOfWeek.getDate() - 7);
 
-        // Fetch last week's earnings
-        const { data: lastWeekPayments, error: lastWeekEarningsError } = await supabase
-          .from('payments')
-          .select('amount')
-          .eq('trainer_id', user.id)
-          .eq('status', 'paid')
-          .gte('date_paid', startOfLastWeek.toISOString().split('T')[0])
-          .lte('date_paid', endOfLastWeek.toISOString().split('T')[0]);
+      // Fetch last week's earnings
+      const { data: lastWeekPayments, error: lastWeekEarningsError } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('trainer_id', user.id)
+        .eq('status', 'paid')
+        .gte('date_paid', startOfLastWeek.toISOString().split('T')[0])
+        .lte('date_paid', endOfLastWeek.toISOString().split('T')[0]);
 
-        if (lastWeekEarningsError) throw lastWeekEarningsError;
+      if (lastWeekEarningsError) throw lastWeekEarningsError;
 
-        const previousWeekEarnings = lastWeekPayments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
-        const earningsChange = (previousWeekEarnings === 0) 
-          ? (totalEarnings > 0 ? 100 : 0) 
-          : ((totalEarnings - previousWeekEarnings) / previousWeekEarnings) * 100;
-        setWeeklyEarningsChange(earningsChange);
+      const previousWeekEarnings = lastWeekPayments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+      const earningsChange = (previousWeekEarnings === 0) 
+        ? (totalEarnings > 0 ? 100 : 0) 
+        : ((totalEarnings - previousWeekEarnings) / previousWeekEarnings) * 100;
+      setWeeklyEarningsChange(earningsChange);
 
-        // Fetch last week's sessions
-        const { data: lastWeekSessions, error: lastWeekSessionsError } = await supabase
-          .from('sessions')
-          .select('id')
-          .eq('trainer_id', user.id)
-          .eq('status', 'completed')
-          .gte('session_date', startOfLastWeek.toISOString())
-          .lte('session_date', endOfLastWeek.toISOString());
+      // Fetch last week's sessions
+      const { data: lastWeekSessions, error: lastWeekSessionsError } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('trainer_id', user.id)
+        .eq('status', 'completed')
+        .gte('session_date', startOfLastWeek.toISOString())
+        .lte('session_date', endOfLastWeek.toISOString());
 
-        if (lastWeekSessionsError) throw lastWeekSessionsError;
+      if (lastWeekSessionsError) throw lastWeekSessionsError;
 
-        const previousWeekSessions = lastWeekSessions?.length || 0;
-        const sessionsCount = weeklySessions?.length || 0;
-        const sessionsChange = (previousWeekSessions === 0) 
-          ? (sessionsCount > 0 ? 100 : 0) 
-          : ((sessionsCount - previousWeekSessions) / previousWeekSessions) * 100;
-        setSessionsThisWeekChange(sessionsChange);
+      const previousWeekSessions = lastWeekSessions?.length || 0;
+      const sessionsCount = weeklySessions?.length || 0;
+      const sessionsChange = (previousWeekSessions === 0) 
+        ? (sessionsCount > 0 ? 100 : 0) 
+        : ((sessionsCount - previousWeekSessions) / previousWeekSessions) * 100;
+      setSessionsThisWeekChange(sessionsChange);
 
-        // Fetch all active session_packs for the trainer
-        const { data: allActivePacks, error: allPacksError } = await supabase
-          .from('session_packs')
-          .select('*, clients(id, name, phone_number), service_types(name)')
-          .eq('trainer_id', user.id)
-          .eq('status', 'active')
-          .gt('sessions_remaining', 0);
+      // Fetch all active session_packs for the trainer
+      const { data: allActivePacks, error: allPacksError } = await supabase
+        .from('session_packs')
+        .select('*, clients(id, name, phone_number), service_types(name)')
+        .eq('trainer_id', user.id)
+        .eq('status', 'active')
+        .gt('sessions_remaining', 0);
 
-        if (allPacksError) throw allPacksError;
+      if (allPacksError) throw allPacksError;
 
-        // Client-side aggregation to identify "running low" clients
-        const clientPackSummaries = new Map<string, { id: string; name: string; phone_number: string; total_remaining: number; total_initial: number; }>();
+      // Client-side aggregation to identify "running low" clients
+      const clientPackSummaries = new Map<string, { id: string; name: string; phone_number: string; total_remaining: number; total_initial: number; }>();
 
-        (allActivePacks || []).forEach(pack => {
-          const clientId = pack.clients?.id || 'unknown';
-          if (!clientPackSummaries.has(clientId)) {
-            clientPackSummaries.set(clientId, {
-              id: clientId,
-              name: pack.clients?.name || 'Unknown Client',
-              phone_number: pack.clients?.phone_number || 'N/A',
-              total_remaining: 0,
-              total_initial: 0,
-            });
-          }
-          const summary = clientPackSummaries.get(clientId)!;
-          summary.total_remaining += pack.sessions_remaining;
-          summary.total_initial += pack.total_sessions;
-        });
+      (allActivePacks || []).forEach(pack => {
+        const clientId = pack.clients?.id || 'unknown';
+        if (!clientPackSummaries.has(clientId)) {
+          clientPackSummaries.set(clientId, {
+            id: clientId,
+            name: pack.clients?.name || 'Unknown Client',
+            phone_number: pack.clients?.phone_number || 'N/A',
+            total_remaining: 0,
+            total_initial: 0,
+          });
+        }
+        const summary = clientPackSummaries.get(clientId)!;
+        summary.total_remaining += pack.sessions_remaining;
+        summary.total_initial += pack.total_sessions;
+      });
 
-        // Convert map to array, filter for 'low' status, and sort
-        const clientsByPackStatus = Array.from(clientPackSummaries.values()).filter(client => {
-          // Define 'running low' threshold here (≤ 5 sessions remaining)
-          return client.total_remaining <= 5;
-        }).sort((a, b) => a.total_remaining - b.total_remaining);
+      // Convert map to array, filter for 'low' status, and sort
+      const clientsByPackStatus = Array.from(clientPackSummaries.values()).filter(client => {
+        // Define 'running low' threshold here (≤ 5 sessions remaining)
+        return client.total_remaining <= 5;
+      }).sort((a, b) => a.total_remaining - b.total_remaining);
 
-        // Take top 3 as requested for the card
-        const topLowSessionClients = clientsByPackStatus.slice(0, 3).map(client => ({
-          id: client.id,
-          name: client.name,
-          phone: client.phone_number,
-          remaining: client.total_remaining,
-        }));
+      // Take top 3 as requested for the card
+      const topLowSessionClients = clientsByPackStatus.slice(0, 3).map(client => ({
+        id: client.id,
+        name: client.name,
+        phone: client.phone_number,
+        remaining: client.total_remaining,
+      }));
 
-        setLowSessionClients(topLowSessionClients);
+      setLowSessionClients(topLowSessionClients);
 
-      } catch (error: any) {
-        console.error('Error fetching dashboard data:', error);
-        toast({
-          title: "Error loading dashboard",
-          description: error.message || "Failed to load dashboard data",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoadingDashboard(false);
-        setIsLoadingLowSessions(false);
-      }
-    };
+    } catch (error: any) {
+      console.error('Error fetching dashboard data:', error);
+      toast({
+        title: "Error loading dashboard",
+        description: error.message || "Failed to load dashboard data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingDashboard(false);
+      setIsLoadingLowSessions(false);
+    }
+  };
 
+  // Data fetching effect
+  useEffect(() => {
     fetchDashboardData();
   }, [user?.id, toast]);
+
 
   const handleAddNewClient = () => {
     navigate('/clients/new');
@@ -281,6 +291,15 @@ export default function Dashboard() {
 
   const handleViewFinanceTransactions = () => {
     navigate('/finance/transactions');
+  };
+
+  const handleEditSession = (session: any) => {
+    setSelectedSessionForEdit(session);
+    setIsEditModalOpen(true);
+  };
+
+  const handleViewFullSchedule = () => {
+    navigate('/schedule');
   };
 
   // Show loading spinner while data is being fetched
@@ -359,14 +378,18 @@ export default function Dashboard() {
             icon={<Clock className="w-5 h-5 text-primary" />}
             action={{
               label: "View Full Schedule",
-              onClick: () => console.log("View schedule"),
+              onClick: handleViewFullSchedule,
               variant: "outline"
             }}
           >
             <div className="space-y-3">
               {todaysSessions.length > 0 ? (
                 todaysSessions.map((session) => (
-                  <div key={session.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                  <div 
+                    key={session.id} 
+                    className="flex items-center justify-between p-3 bg-secondary rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors"
+                    onClick={() => handleEditSession(session)}
+                  >
                     <div>
                       <p className="font-medium text-body-small">{session.client}</p>
                       <p className="text-body-small text-muted-foreground">
@@ -491,6 +514,14 @@ export default function Dashboard() {
           </Card>
         </div>
       </main>
+
+      {/* Edit Session Modal */}
+      <EditSessionModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        session={selectedSessionForEdit}
+        onSessionUpdated={fetchDashboardData}
+      />
     </div>
   );
 }
