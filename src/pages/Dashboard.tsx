@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import EditSessionModal from '@/components/EditSessionModal';
+import SessionDetailModal from '@/components/SessionDetailModal';
 import { 
   Users, 
   Calendar, 
@@ -43,8 +43,8 @@ export default function Dashboard() {
   const [isLoadingLowSessions, setIsLoadingLowSessions] = useState(true);
 
   // State for modal control
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [selectedSessionForEdit, setSelectedSessionForEdit] = useState<any | null>(null);
+  const [isSessionDetailModalOpen, setIsSessionDetailModalOpen] = useState(false);
+  const [selectedSessionForModal, setSelectedSessionForModal] = useState<any | null>(null);
 
   // Move fetchDashboardData outside useEffect so it can be called from modal
   const fetchDashboardData = async () => {
@@ -293,9 +293,9 @@ export default function Dashboard() {
     navigate('/finance/transactions');
   };
 
-  const handleEditSession = (session: any) => {
-    setSelectedSessionForEdit(session);
-    setIsEditModalOpen(true);
+  const handleViewSessionDetails = (session: any) => {
+    setSelectedSessionForModal(session);
+    setIsSessionDetailModalOpen(true);
   };
 
   const handleViewFullSchedule = () => {
@@ -388,7 +388,7 @@ export default function Dashboard() {
                   <div 
                     key={session.id} 
                     className="flex items-center justify-between p-3 bg-secondary rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors"
-                    onClick={() => handleEditSession(session)}
+                    onClick={() => handleViewSessionDetails(session)}
                   >
                     <div>
                       <p className="font-medium text-body-small">{session.client}</p>
@@ -515,12 +515,11 @@ export default function Dashboard() {
         </div>
       </main>
 
-      {/* Edit Session Modal */}
-      <EditSessionModal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        session={selectedSessionForEdit}
-        onSessionUpdated={fetchDashboardData}
+      {/* Session Detail Modal */}
+      <SessionDetailModal
+        isOpen={isSessionDetailModalOpen}
+        onClose={() => setIsSessionDetailModalOpen(false)}
+        session={selectedSessionForModal}
       />
     </div>
   );
