@@ -61,33 +61,48 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
   
   const DEFAULT_SESSION_DURATION_MINUTES = 60;
 
-  // Fetch client contact details
-  const { data: clientContact, isLoading: isLoadingContact, error: contactError } = useQuery({
-    queryKey: ['clientContact', session?.clients?.id],
+  // Fetch complete session data with joins
+  const { data: fullSessionData, isLoading: isLoadingSession, error: sessionError } = useQuery({
+    queryKey: ['sessionDetail', session?.id],
     queryFn: async () => {
-      if (!session?.clients?.id) return null;
+      if (!session?.id) return null;
       const { data, error } = await supabase
-        .from('clients')
-        .select('phone_number, email')
-        .eq('id', session.clients.id)
+        .from('sessions')
+        .select(`
+          *,
+          clients:client_id (
+            id,
+            name,
+            phone_number,
+            email
+          ),
+          service_types:service_type_id (
+            id,
+            name
+          )
+        `)
+        .eq('id', session.id)
         .single();
 
       if (error) {
-        console.error("Error fetching client contact:", error);
+        console.error("Error fetching session details:", error);
         throw error;
       }
-      return data ? { phone: data.phone_number, email: data.email } : null;
+      return data;
     },
-    enabled: !!session?.clients?.id && !isEditing, // Only fetch when ID exists and not in edit mode
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    enabled: isOpen && !!session?.id,
+    staleTime: 30 * 1000, // Cache for 30 seconds
   });
+
+  // Use the fetched data or fallback to the session prop
+  const sessionData = fullSessionData || session;
 
   const form = useForm<EditSessionFormData>({
     resolver: zodResolver(EditSessionSchema),
     defaultValues: {
-      status: session?.status || 'scheduled',
-      session_date: session?.session_date ? new Date(session.session_date) : new Date(),
-      session_time: session?.session_date ? format(new Date(session.session_date), 'HH:mm') : '09:00',
+      status: 'scheduled',
+      session_date: new Date(),
+      session_time: '09:00',
     },
     mode: 'onChange'
   });
@@ -147,21 +162,21 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
     proposedDate: watchedSessionDate,
     proposedTime: watchedSessionTime,
     proposedStatus: watchedSessionStatus,
-    sessionIdToExclude: session?.id, // Pass current session ID to exclude!
+    sessionIdToExclude: sessionData?.id, // Pass current session ID to exclude!
     enabled: isEditing, // Only enable this hook when in edit mode
   });
 
-  // Reset form when modal opens or session changes to ensure correct default values
+  // Reset form when modal opens or session data changes to ensure correct default values
   useEffect(() => {
-    if (isOpen && session) {
+    if (isOpen && sessionData) {
       form.reset({
-        status: session.status || 'scheduled',
-        session_date: session.session_date ? new Date(session.session_date) : new Date(),
-        session_time: session.session_date ? format(new Date(session.session_date), 'HH:mm') : '09:00',
+        status: sessionData.status || 'scheduled',
+        session_date: sessionData.session_date ? new Date(sessionData.session_date) : new Date(),
+        session_time: sessionData.session_date ? format(new Date(sessionData.session_date), 'HH:mm') : '09:00',
       });
       setIsEditing(false); // Always start in view mode
     }
-  }, [isOpen, session, form]);
+  }, [isOpen, sessionData, form]);
 
   // Add a useEffect to trigger validation when overlap data changes
   useEffect(() => {
@@ -310,7 +325,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
       const { error } = await supabase
         .from('sessions')
         .update(payload)
-        .eq('id', session.id);
+        .eq('id', sessionData.id);
 
       if (error) throw error;
 
@@ -370,7 +385,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
   const onConfirmCancelSession = async () => {
     setShowCancelSessionConfirm(false); // Close confirmation dialog immediately
 
-    if (!session?.id) {
+    if (!sessionData?.id) {
       toast({ title: 'Error', description: 'Session ID is missing for cancellation.', variant: 'destructive' });
       return;
     }
@@ -380,7 +395,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
     }
 
     try {
-      const sessionDateTime = new Date(session.session_date);
+      const sessionDateTime = new Date(sessionData.session_date);
       // For simplicity, let's use 'cancelled_late' for now.
       // Logic for 'cancelled_early' would involve checking differenceInHours(sessionDateTime, new Date())
       const cancellationStatus = 'cancelled_late';
@@ -389,20 +404,20 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
       const { error: sessionUpdateError } = await supabase
         .from('sessions')
         .update({ status: cancellationStatus })
-        .eq('id', session.id)
+        .eq('id', sessionData.id)
         .eq('trainer_id', user.id); // Ensure only trainer can cancel their own session
 
       if (sessionUpdateError) throw new Error(`Failed to update session status: ${sessionUpdateError.message}`);
 
       let creditGenerated = false;
 
-      if (session.subscription_id && session.is_from_credit === false) {
+      if (sessionData.subscription_id && sessionData.is_from_credit === false) {
         try {
           const { data: allocationData, error: allocationError } = await supabase
             .from('subscription_service_allocations')
             .select('cost_per_session')
-            .eq('subscription_id', session.subscription_id)
-            .eq('service_type_id', session.service_types?.id)
+            .eq('subscription_id', sessionData.subscription_id)
+            .eq('service_type_id', sessionData.service_types?.id)
             .single();
 
           if (allocationError) throw new Error(`Failed to fetch allocation for credit generation: ${allocationError.message}`);
@@ -417,12 +432,12 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
           const { error: creditInsertError } = await supabase
             .from('subscription_session_credits')
             .insert({
-              subscription_id: session.subscription_id,
-              service_type_id: session.service_types?.id,
+              subscription_id: sessionData.subscription_id,
+              service_type_id: sessionData.service_types?.id,
               credit_value: creditValue,
               credit_reason: `Session cancelled (${cancellationStatus})`,
               status: 'available',
-              originating_session_id: session.id,
+              originating_session_id: sessionData.id,
             });
 
           if (creditInsertError) throw new Error(`Failed to generate session credit: ${creditInsertError.message}`);
@@ -445,7 +460,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
       onClose(); // Close the modal
       queryClient.invalidateQueries({ queryKey: ['trainerSessions', user.id] }); // Refresh schedule
       // Invalidate available credits for this client if any part of the UI depends on it
-      queryClient.invalidateQueries({ queryKey: ['availableCredits', session.clients?.id] });
+      queryClient.invalidateQueries({ queryKey: ['availableCredits', sessionData.clients?.id] });
 
     } catch (error: any) {
       console.error("Error cancelling session:", error);
@@ -459,6 +474,41 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
 
   if (!isOpen || !session) return null; // Don't render if not open or no session
 
+  // Show loading state while fetching session data
+  if (isLoadingSession) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[425px] md:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Session Details</DialogTitle>
+            <DialogDescription>Loading session information...</DialogDescription>
+          </DialogHeader>
+          <div className="py-8 text-center">
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
+            <p className="mt-4 text-sm text-muted-foreground">Loading session details...</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Show error state if session data failed to load
+  if (sessionError) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[425px] md:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Error</DialogTitle>
+            <DialogDescription>Failed to load session details.</DialogDescription>
+          </DialogHeader>
+          <div className="py-8 text-center">
+            <p className="text-sm text-destructive">Could not load session information. Please try again.</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px] md:max-w-md">
@@ -471,19 +521,19 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="py-4 space-y-4">
-            <p><strong>Session ID:</strong> {session.id}</p>
-            <p><strong>Client:</strong> {session.clients?.name || 'N/A'}</p>
+            <p><strong>Session ID:</strong> {sessionData.id}</p>
+            <p><strong>Client:</strong> {sessionData.clients?.name || 'N/A'}</p>
 
             {/* Contact Buttons */}
-            {!isEditing && clientContact && (
+            {!isEditing && sessionData.clients && (
               <div className="flex space-x-2 mb-4">
                 <Button
                   variant="outline"
                   size="sm"
                   asChild
-                  disabled={isLoadingContact || !clientContact.phone}
+                  disabled={!sessionData.clients.phone_number}
                 >
-                  <a href={`tel:${clientContact.phone}`}>
+                  <a href={`tel:${sessionData.clients.phone_number}`}>
                     <Phone className="w-4 h-4 mr-2" /> Call Client
                   </a>
                 </Button>
@@ -491,22 +541,16 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
                   variant="outline"
                   size="sm"
                   asChild
-                  disabled={isLoadingContact || !clientContact.email}
+                  disabled={!sessionData.clients.email}
                 >
-                  <a href={`mailto:${clientContact.email}`}>
+                  <a href={`mailto:${sessionData.clients.email}`}>
                     <Mail className="w-4 h-4 mr-2" /> Email Client
                   </a>
                 </Button>
               </div>
             )}
-            {!isEditing && isLoadingContact && (
-              <p className="text-sm text-muted-foreground">Loading client contact...</p>
-            )}
-            {!isEditing && contactError && (
-              <p className="text-sm text-destructive">Could not load client contact.</p>
-            )}
 
-            <p><strong>Service:</strong> {session.service_types?.name || 'N/A'}</p>
+            <p><strong>Service:</strong> {sessionData.service_types?.name || 'N/A'}</p>
 
             {/* Status Field */}
             <FormField
@@ -531,13 +575,13 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
                     </Select>
                   ) : (
                     <div className="text-sm font-medium">
-                      <Badge className={cn(
-                        { 'bg-green-500': session.status === 'scheduled' },
-                        { 'bg-gray-500': session.status === 'completed' },
-                        { 'bg-red-500': session.status === 'cancelled' || session.status === 'cancelled_late' },
-                        { 'bg-orange-500': session.status === 'cancelled_early' }
-                      )}>
-                        {session.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                       <Badge className={cn(
+                         { 'bg-green-500': sessionData.status === 'scheduled' },
+                         { 'bg-gray-500': sessionData.status === 'completed' },
+                         { 'bg-red-500': sessionData.status === 'cancelled' || sessionData.status === 'cancelled_late' },
+                         { 'bg-orange-500': sessionData.status === 'cancelled_early' }
+                       )}>
+                         {sessionData.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                       </Badge>
                     </div>
                   )}
@@ -584,7 +628,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
                       </PopoverContent>
                     </Popover>
                   ) : (
-                    <div className="text-sm font-medium">{format(new Date(session.session_date), 'PPP')}</div>
+                    <div className="text-sm font-medium">{format(new Date(sessionData.session_date), 'PPP')}</div>
                   )}
                   <FormMessage />
                 </FormItem>
@@ -614,15 +658,15 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
                       </SelectContent>
                     </Select>
                   ) : (
-                    <div className="text-sm font-medium">{format(new Date(session.session_date), 'p')}</div>
+                    <div className="text-sm font-medium">{format(new Date(sessionData.session_date), 'p')}</div>
                   )}
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {session.notes && (
-              <p><strong>Notes:</strong> {session.notes}</p>
+            {sessionData.notes && (
+              <p><strong>Notes:</strong> {sessionData.notes}</p>
             )}
 
             <DialogFooter className="flex flex-col sm:flex-row sm:justify-between sm:space-x-2 mt-6">
@@ -650,7 +694,7 @@ export default function SessionDetailModal({ isOpen, onClose, session }: Session
                         type="button" 
                         variant="destructive" 
                         className="mb-2 sm:mb-0"
-                        disabled={session.status === 'completed' || session.status.startsWith('cancelled')}
+                        disabled={sessionData.status === 'completed' || sessionData.status.startsWith('cancelled')}
                       >
                         Cancel Session
                       </Button>
