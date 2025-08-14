@@ -409,66 +409,10 @@ Deno.serve(async (req) => {
       console.log('Credit used successfully for session:', creditToUse.id);
     }
 
-    // Update the source (pack remaining count) if booking from a pack - ATOMIC OPERATION
-    if (bookingMethod === 'pack' && sessionPackId) {
-      try {
-        console.log('Attempting to decrement pack sessions:', {
-          pack_id: sessionPackId,
-          trainer_id: trainerId,
-          expected_remaining: sourcePack.sessions_remaining
-        });
-
-        // Use SQL function for atomic decrement to prevent race conditions
-        const { data: updateResult, error: decrementError } = await supabaseClient
-          .rpc('decrement_pack_sessions', {
-            pack_id: sessionPackId,
-            trainer_id: trainerId,
-            expected_remaining: sourcePack.sessions_remaining
-          });
-
-        if (decrementError) {
-          console.error('Error updating pack sessions:', {
-            error: decrementError,
-            pack_id: sessionPackId,
-            trainer_id: trainerId,
-            expected_remaining: sourcePack.sessions_remaining
-          });
-          
-          // Rollback session creation
-          try {
-            await supabaseClient.from('sessions').delete().eq('id', newSession.id);
-            console.log('Session rollback completed for session:', newSession.id);
-          } catch (rollbackError) {
-            console.error('Failed to rollback session:', rollbackError);
-          }
-          
-          if (decrementError.message?.includes('concurrent modification') || decrementError.code === 'P0001') {
-            return createErrorResponse('Session pack was modified by another booking. Please try again.', 409, {
-              operation: 'pack_decrement',
-              pack_id: sessionPackId
-            });
-          }
-          
-          return createErrorResponse('Failed to update session pack', 500, {
-            operation: 'pack_decrement',
-            error: decrementError
-          });
-        }
-
-        console.log('Pack sessions remaining decremented successfully:', {
-          pack_id: sessionPackId,
-          from: sourcePack.sessions_remaining,
-          to: sourcePack.sessions_remaining - 1,
-          result: updateResult
-        });
-      } catch (error) {
-        console.error('Unexpected error during pack decrement:', error);
-        return createErrorResponse('Unexpected error updating session pack', 500, {
-          operation: 'pack_decrement',
-          error: error.message
-        });
-      }
-    }
+    // NOTE: Pack sessions are NOT decremented here during booking
+    // They are only decremented when sessions are completed/no-show via the database trigger
+    // This prevents double-decrementing issues
+    console.log('Session booked successfully - pack count will be decremented upon session completion');
 
     return new Response(
       JSON.stringify({ 
