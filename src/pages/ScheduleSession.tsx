@@ -20,6 +20,7 @@ import { ArrowLeft, CalendarIcon, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionOverlapCheck, validateOverlap } from '@/hooks/useSessionOverlapCheck';
+import { validatePackAvailability } from '@/lib/packValidation';
 import ConfirmAvailabilityOverrideModal from '@/components/ConfirmAvailabilityOverrideModal';
 
 // Create the base schema with dynamic validation using context
@@ -727,6 +728,24 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
       return;
     }
     // --- END CRITICAL MANUAL VALIDATION STEP ---
+
+    // Universal over-scheduling validation for pack bookings
+    if (data.scheduleType === 'fromPack' && data.packId) {
+      const selectedPack = activeSessionPacks?.find(pack => pack.id === data.packId);
+      const totalSessionsInPack = selectedPack?.total_sessions || 0;
+
+      const validation = await validatePackAvailability(data.packId, totalSessionsInPack);
+      
+      if (!validation.isValid) {
+        toast({
+          title: "Cannot Schedule Session",
+          description: validation.errorMessage,
+          variant: "destructive",
+        });
+        setIsSubmittingForm(false);
+        return;
+      }
+    }
 
     // NEW: Soft validation for availability override
     if (watchedSessionStatus === 'scheduled' && isOutsideAvailability) {

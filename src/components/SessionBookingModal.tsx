@@ -8,10 +8,12 @@ import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, setHours, setMinutes, isBefore, addMinutes } from 'date-fns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { validatePackAvailability } from '@/lib/packValidation';
 
 // Define interfaces for data fetched from Supabase
 interface SessionPack {
   id: string;
+  total_sessions: number;
   sessions_remaining: number;
   service_types: { name: string } | null;
   service_type_id: string;
@@ -162,10 +164,29 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
       return;
     }
 
+    // Parse the single selectedBookingOption string
+    const [method, id] = selectedBookingOption.split(':');
+
+    // Universal over-scheduling validation for pack bookings
+    if (method === 'pack') {
+      const selectedPack = activeSessionPacks.find(pack => pack.id === id);
+      const totalSessionsInPack = selectedPack?.total_sessions || 0;
+
+      const validation = await validatePackAvailability(id, totalSessionsInPack);
+      
+      if (!validation.isValid) {
+        toast({
+          title: "Cannot Book Session",
+          description: validation.errorMessage,
+          variant: "destructive",
+        });
+        setIsBooking(false);
+        return;
+      }
+    }
+
     setIsBooking(true);
     try {
-      // Parse the single selectedBookingOption string
-      const [method, id] = selectedBookingOption.split(':');
 
       // Get the final session date with the selected start time
       const [hour, minute] = selectedStartTime.split(':').map(Number);

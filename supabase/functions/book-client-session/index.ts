@@ -205,16 +205,21 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Check actual sessions used (completed + scheduled) vs total sessions
+        // Check actual sessions used/scheduled vs total sessions (including penalty cancellations)
         const { data: usedSessions, error: usedSessionsError } = await supabaseClient
           .from('sessions')
-          .select('id')
-          .eq('session_pack_id', sourcePackId)
-          .in('status', ['scheduled', 'completed']);
+          .select('id, status, cancellation_reason')
+          .eq('session_pack_id', sourcePackId);
 
         if (usedSessionsError) throw usedSessionsError;
         
-        const totalUsedSessions = usedSessions?.length || 0;
+        // Count sessions that consume pack credits (scheduled + consumed + penalty cancelled)
+        const totalUsedSessions = usedSessions?.filter(session => 
+          session.status === 'scheduled' ||
+          session.status === 'completed' || 
+          session.status === 'no-show' ||
+          (session.status === 'cancelled' && session.cancellation_reason === 'penalty')
+        ).length || 0;
         const actualRemainingSessions = pack.total_sessions - totalUsedSessions;
         
         if (actualRemainingSessions <= 0) {
