@@ -89,13 +89,18 @@ export default function SessionBookingModal({ isOpen, onClose, selectedSlot, cli
         // Calculate actual remaining sessions by subtracting scheduled sessions
         const packsWithActualRemaining = await Promise.all(
           (packs || []).map(async (pack) => {
-            const { data: scheduledSessions } = await supabase
+            const { data: sessionCounts } = await supabase
               .from('sessions')
-              .select('id')
-              .eq('session_pack_id', pack.id)
-              .in('status', ['scheduled', 'completed', 'no-show']);
+              .select('status, cancellation_reason')
+              .eq('session_pack_id', pack.id);
             
-            const usedSessions = scheduledSessions?.length || 0;
+            // Count sessions that consume pack credits (scheduled + consumed)
+            const usedSessions = sessionCounts?.filter(s => 
+              s.status === 'scheduled' ||
+              s.status === 'completed' || 
+              s.status === 'no-show' ||
+              (s.status === 'cancelled' && s.cancellation_reason === 'penalty')
+            ).length || 0;
             const actualRemaining = Math.max(0, pack.total_sessions - usedSessions);
             
             return {

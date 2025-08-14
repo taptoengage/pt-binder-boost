@@ -54,7 +54,16 @@ const ClientPackDetailModal: React.FC<ClientPackDetailModalProps> = ({ isOpen, o
 
   if (!pack) return null;
 
-  const progressPercentage = ((pack.total_sessions - pack.sessions_remaining) / pack.total_sessions) * 100;
+  // Calculate accurate consumed sessions including penalty cancellations
+  const consumedSessions = linkedSessions?.filter(s => 
+    s.status === 'completed' || 
+    s.status === 'no-show' ||
+    (s.status === 'cancelled' && s.cancellation_reason === 'penalty')
+  ).length || 0;
+  
+  const scheduledSessions = linkedSessions?.filter(s => s.status === 'scheduled').length || 0;
+  const totalUsedSessions = consumedSessions + scheduledSessions;
+  const progressPercentage = (totalUsedSessions / pack.total_sessions) * 100;
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -106,8 +115,8 @@ const ClientPackDetailModal: React.FC<ClientPackDetailModalProps> = ({ isOpen, o
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">Sessions Progress</h3>
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span>Used: {pack.total_sessions - pack.sessions_remaining}</span>
-                    <span>Remaining: {pack.sessions_remaining}</span>
+                    <span>Used: {totalUsedSessions}</span>
+                    <span>Remaining: {Math.max(0, pack.total_sessions - totalUsedSessions)}</span>
                   </div>
                   <Progress value={progressPercentage} className="h-2" />
                   <p className="text-xs text-muted-foreground">

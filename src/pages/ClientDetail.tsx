@@ -403,17 +403,22 @@ export default function ClientDetail() {
             
             const { data: sessionCounts } = await supabase
               .from('sessions')
-              .select('status')
+              .select('status, cancellation_reason')
               .in('session_pack_id', packIds)
               .eq('client_id', clientId)
               .eq('trainer_id', user.id);
             
             if (sessionCounts) {
               const scheduled = sessionCounts.filter(s => s.status === 'scheduled').length;
-              const completed = sessionCounts.filter(s => s.status === 'completed' || s.status === 'no-show').length;
+              // Include penalty cancellations as consumed sessions
+              const consumed = sessionCounts.filter(s => 
+                s.status === 'completed' || 
+                s.status === 'no-show' ||
+                (s.status === 'cancelled' && s.cancellation_reason === 'penalty')
+              ).length;
               
               setScheduledSessionsCount(scheduled);
-              setCompletedSessionsCount(completed);
+              setCompletedSessionsCount(consumed);
             }
           } else {
             setScheduledSessionsCount(0);
