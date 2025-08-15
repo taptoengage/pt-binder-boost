@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, addDays, setHours, setMinutes, isSameDay, startOfWeek, isToday, isAfter, isBefore, addMinutes, isWithinInterval } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, addDays, setHours, setMinutes, isSameDay, startOfWeek, isToday, isAfter, isBefore, addMinutes, isWithinInterval, addWeeks, subWeeks } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Calendar, momentLocalizer, View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -281,34 +281,70 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     setIsModalOpen(true);
   };
 
+  const handlePrevWeek = () => {
+    setCurrentDisplayMonth(prevDate => subWeeks(prevDate, 1));
+  };
+
+  const handleNextWeek = () => {
+    setCurrentDisplayMonth(prevDate => addWeeks(prevDate, 1));
+  };
+
   const renderWeekView = () => {
-    const weekStart = startOfWeek(currentDisplayMonth);
+    const weekStart = startOfWeek(currentDisplayMonth, { weekStartsOn: 1 }); // 1 = Monday
     const daysOfWeek = eachDayOfInterval({ start: weekStart, end: addDays(weekStart, 6) });
 
     return (
-      <div className="grid grid-cols-7 gap-2 h-96">
-        {daysOfWeek.map(day => (
-          <div key={format(day, 'yyyy-MM-dd')} className="border rounded-lg p-2 bg-card">
-            <div className={`text-sm font-medium mb-2 ${isToday(day) ? 'text-primary' : 'text-muted-foreground'}`}>
-              {format(day, 'E d')}
+      <div className="space-y-4">
+        {/* Week Navigation */}
+        <div className="flex items-center justify-between">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePrevWeek}
+            className="flex items-center gap-2"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Previous
+          </Button>
+          <h3 className="text-lg font-semibold">
+            {format(weekStart, 'MMM dd')} - {format(addDays(weekStart, 6), 'MMM dd, yyyy')}
+          </h3>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleNextWeek}
+            className="flex items-center gap-2"
+          >
+            Next
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
+        
+        {/* Week Grid */}
+        <div className="grid grid-cols-7 gap-2 h-96">
+          {daysOfWeek.map(day => (
+            <div key={format(day, 'yyyy-MM-dd')} className="border rounded-lg p-2 bg-card">
+              <div className={`text-sm font-medium mb-2 ${isToday(day) ? 'text-primary' : 'text-muted-foreground'}`}>
+                {format(day, 'E d')}
+              </div>
+              <div className="space-y-1">
+                {availableSlots
+                  .filter(slot => isSameDay(slot.start, day))
+                  .map((slot, index) => (
+                    <Button
+                      key={`${day.toISOString()}-${index}`}
+                      size="sm"
+                      variant="outline"
+                      className="w-full text-xs h-8"
+                      onClick={() => handleDayClick(day)}
+                    >
+                      {format(slot.start, 'h:mm a')}
+                    </Button>
+                  ))}
+              </div>
             </div>
-            <div className="space-y-1">
-              {availableSlots
-                .filter(slot => isSameDay(slot.start, day))
-                .map((slot, index) => (
-                  <Button
-                    key={`${day.toISOString()}-${index}`}
-                    size="sm"
-                    variant="outline"
-                    className="w-full text-xs h-8"
-                    onClick={() => handleDayClick(day)}
-                  >
-                    {format(slot.start, 'h:mm a')}
-                  </Button>
-                ))}
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     );
   };
