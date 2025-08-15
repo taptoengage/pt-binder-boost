@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Loader2, Edit, Save, X, User, Clock, MessageSquare } from 'lucide-react';
+import { Loader2, Edit, Save, X, User, Clock, MessageSquare, Phone, Mail, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 // Form validation schema
@@ -29,7 +29,7 @@ export default function ClientProfile() {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
 
-  // Fetch client profile data
+  // Fetch client profile data with trainer information
   const { data: clientProfile, isLoading, error } = useQuery({
     queryKey: ['clientProfile', client?.id],
     queryFn: async () => {
@@ -37,7 +37,17 @@ export default function ClientProfile() {
       
       const { data, error } = await supabase
         .from('clients')
-        .select('*')
+        .select(`
+          *,
+          trainers!trainer_id (
+            id,
+            business_name,
+            contact_email,
+            phone,
+            instagram_handle,
+            whatsapp_id
+          )
+        `)
         .eq('id', client.id)
         .single();
       
@@ -113,6 +123,25 @@ export default function ClientProfile() {
     }
   };
 
+  // Contact handlers
+  const handleCall = () => {
+    if (clientProfile?.trainers?.phone) {
+      window.open(`tel:${clientProfile.trainers.phone}`, '_self');
+    }
+  };
+
+  const handleEmail = () => {
+    if (clientProfile?.trainers?.contact_email) {
+      window.open(`mailto:${clientProfile.trainers.contact_email}`, '_self');
+    }
+  };
+
+  const handleWhatsApp = () => {
+    if (clientProfile?.trainers?.whatsapp_id) {
+      window.open(`https://wa.me/${clientProfile.trainers.whatsapp_id.replace(/\D/g, '')}`, '_blank');
+    }
+  };
+
   // Loading state
   if (isLoading) {
     return (
@@ -153,6 +182,66 @@ export default function ClientProfile() {
             Back to Dashboard
           </Button>
         </div>
+
+        {/* Trainer Information */}
+        {clientProfile?.trainers && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Your Trainer
+              </CardTitle>
+              <CardDescription>
+                Contact information for your personal trainer
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold mb-1">
+                    {clientProfile.trainers.business_name}
+                  </h3>
+                  <p className="text-muted-foreground">Personal Trainer</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {clientProfile.trainers.phone && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCall}
+                      className="flex items-center gap-2"
+                    >
+                      <Phone className="h-4 w-4" />
+                      Call
+                    </Button>
+                  )}
+                  {clientProfile.trainers.contact_email && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleEmail}
+                      className="flex items-center gap-2"
+                    >
+                      <Mail className="h-4 w-4" />
+                      Email
+                    </Button>
+                  )}
+                  {clientProfile.trainers.whatsapp_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleWhatsApp}
+                      className="flex items-center gap-2"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      WhatsApp
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-8 md:grid-cols-2">
           {/* Contact Information */}
