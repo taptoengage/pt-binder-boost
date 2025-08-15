@@ -521,6 +521,7 @@ export default function Dashboard() {
         isOpen={isSessionDetailModalOpen}
         onClose={() => setIsSessionDetailModalOpen(false)}
         session={selectedSessionForModal}
+        onSessionUpdated={fetchDashboardData}
       />
     </div>
   );
