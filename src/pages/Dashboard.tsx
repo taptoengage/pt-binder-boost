@@ -24,7 +24,7 @@ import {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, trainer } = useAuth();
   const { toast } = useToast();
 
   // State for dashboard data
@@ -326,7 +326,7 @@ export default function Dashboard() {
       <main className="container mx-auto px-4 py-8">
         {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-heading-1 mb-2">Welcome back, Alex! 👋</h1>
+          <h1 className="text-heading-1 mb-2">Welcome back, {trainer?.business_name?.split(' ')[0] || 'Alex'}! 👋</h1>
           <p className="text-body-large text-muted-foreground">
             Here's what's happening with your training business today.
           </p>
