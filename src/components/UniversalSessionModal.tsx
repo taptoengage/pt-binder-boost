@@ -79,18 +79,17 @@ export default function UniversalSessionModal({
   trainerId, 
   onSessionUpdated 
 }: UniversalSessionModalProps) {
+  // ============= ALL HOOKS MUST BE CALLED FIRST - BEFORE ANY CONDITIONALS =============
+  
   const { toast } = useToast();
   const { user, trainer, client, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
 
-  // ============= ALL HOOKS MUST BE CALLED FIRST - BEFORE ANY GUARD CLAUSES =============
-  // This fixes the React Hook order violation that was causing crashes
-  
   // Determine user role
   const isTrainer = !!trainer;
   const isClient = !!client;
 
-  // State management
+  // State management - ALL state hooks called unconditionally
   const [isPenaltyWaived, setIsPenaltyWaived] = useState(false);
   const [showAvailabilityOverrideConfirm, setShowAvailabilityOverrideConfirm] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<EditSessionFormData | null>(null);
@@ -105,8 +104,23 @@ export default function UniversalSessionModal({
   const [selectedStartTime, setSelectedStartTime] = useState<string | null>(null);
   const [isLoadingBookingData, setIsLoadingBookingData] = useState(false);
   
-  
   const DEFAULT_SESSION_DURATION_MINUTES = 60;
+
+  // Initialize form - MUST be called unconditionally
+  const form = useForm<EditSessionFormData>({
+    resolver: zodResolver(EditSessionSchema),
+    defaultValues: {
+      status: 'scheduled',
+      session_date: new Date(),
+      session_time: '09:00',
+    },
+    mode: 'onChange'
+  });
+
+  // Watch form fields - MUST be called unconditionally
+  const watchedSessionDate = form.watch('session_date');
+  const watchedSessionTime = form.watch('session_time');
+  const watchedSessionStatus = form.watch('status');
 
   // Helper to generate 30-minute time slots within an availability block
   const generateBookableTimeSlots = useCallback((start: Date, end: Date) => {
@@ -124,6 +138,7 @@ export default function UniversalSessionModal({
     return generateBookableTimeSlots(selectedSlot.start, selectedSlot.end);
   }, [selectedSlot, generateBookableTimeSlots]);
 
+  // ALL useQuery hooks MUST be called unconditionally
   // Fetch complete session data with joins (for view/edit modes)
   const { data: fullSessionData, isLoading: isLoadingSession, error: sessionError } = useQuery({
     queryKey: ['sessionDetail', session?.id],
@@ -156,24 +171,6 @@ export default function UniversalSessionModal({
     enabled: isOpen && !!session?.id && (mode === 'view' || mode === 'edit') && !authLoading,
     staleTime: 30 * 1000, // Cache for 30 seconds
   });
-
-  // Use the fetched data or fallback to the session prop
-  const sessionData = fullSessionData || session;
-
-  const form = useForm<EditSessionFormData>({
-    resolver: zodResolver(EditSessionSchema),
-    defaultValues: {
-      status: 'scheduled',
-      session_date: new Date(),
-      session_time: '09:00',
-    },
-    mode: 'onChange'
-  });
-
-  // Watch form fields to trigger overlap query
-  const watchedSessionDate = form.watch('session_date');
-  const watchedSessionTime = form.watch('session_time');
-  const watchedSessionStatus = form.watch('status');
 
   // Fetch trainer's recurring availability templates
   const { data: recurringTemplates, isLoading: isLoadingTemplates } = useQuery({
@@ -225,11 +222,15 @@ export default function UniversalSessionModal({
     proposedDate: watchedSessionDate,
     proposedTime: watchedSessionTime,
     proposedStatus: watchedSessionStatus,
-    sessionIdToExclude: sessionData?.id,
+    sessionIdToExclude: fullSessionData?.id,
     enabled: mode === 'edit' && !authLoading,
   });
 
-  // Reset form when modal opens or session data changes to ensure correct default values
+  // Use the fetched data or fallback to the session prop
+  const sessionData = fullSessionData || session;
+
+  // ALL useEffect hooks MUST be called unconditionally - NO DUPLICATES
+  // Effect 1: Reset form when modal opens or session data changes
   useEffect(() => {
     if (isOpen && sessionData && (mode === 'view' || mode === 'edit')) {
       form.reset({
@@ -240,7 +241,7 @@ export default function UniversalSessionModal({
     }
   }, [isOpen, sessionData, form, mode]);
 
-  // Add a useEffect to trigger validation when overlap data changes
+  // Effect 2: Handle overlap validation
   useEffect(() => {
     if (overlappingSessionsCount !== undefined && !isLoadingOverlaps && watchedSessionStatus === 'scheduled') {
         // Manually set the overlap error if detected
@@ -258,7 +259,7 @@ export default function UniversalSessionModal({
     }
   }, [overlappingSessionsCount, isLoadingOverlaps, watchedSessionStatus, form]);
 
-  // Book mode data fetching
+  // Effect 3: Book mode data fetching
   useEffect(() => {
     if (!isOpen || mode !== 'book' || !clientId || !trainerId) return;
 
@@ -338,7 +339,7 @@ export default function UniversalSessionModal({
     fetchClientEligibilityData();
   }, [isOpen, mode, clientId, trainerId, toast]);
 
-  // Process availability ranges for the proposed date
+  // Process availability ranges for the proposed date - useMemo hook
   const finalAvailabilityRangesForProposedDate = useMemo(() => {
     const ranges: Array<{ start: Date; end: Date }> = [];
     const proposedDate = form.watch('session_date'); // Use proposed session date for reference
@@ -429,6 +430,40 @@ export default function UniversalSessionModal({
     });
   }, [finalAvailabilityRangesForProposedDate]);
 
+  // Check if proposed session is outside availability
+  const isOutsideAvailability = useMemo(() => {
+    const proposedDate = form.watch('session_date');
+    const proposedTime = form.watch('session_time');
+    const proposedStatus = form.watch('status');
+
+    if (!proposedDate || !proposedTime || proposedStatus !== 'scheduled') {
+        return false;
+    }
+    const proposedSessionStart = parse(proposedTime, 'HH:mm', proposedDate);
+    const proposedSessionEnd = addMinutes(proposedSessionStart, DEFAULT_SESSION_DURATION_MINUTES);
+
+    // Check if session falls within any of the final available ranges for this day
+    const fallsWithinAvailableBlock = finalAvailabilityRangesForProposedDate.some(block =>
+      proposedSessionStart >= block.start && proposedSessionEnd <= block.end
+    );
+
+    return !fallsWithinAvailableBlock;
+  }, [form.watch('session_date'), form.watch('session_time'), form.watch('status'), finalAvailabilityRangesForProposedDate]);
+
+  // Calculate if cancellation is late (within 24 hours) - DEFENSIVE PROGRAMMING
+  const isLateCancel = useMemo(() => {
+    if (!sessionData?.session_date) return false;
+    try {
+      const sessionDateTime = new Date(sessionData.session_date);
+      const now = new Date();
+      const hoursUntilSession = differenceInHours(sessionDateTime, now);
+      return hoursUntilSession <= 24;
+    } catch (error) {
+      console.error('Error calculating late cancellation:', error);
+      return false;
+    }
+  }, [sessionData?.session_date]);
+
   // ============= GUARD CLAUSES - AFTER ALL HOOKS =============
   
   // Guard 1: Modal not open
@@ -483,134 +518,7 @@ export default function UniversalSessionModal({
     return null;
   }
 
-  // Reset form when modal opens or session data changes to ensure correct default values
-  useEffect(() => {
-    if (isOpen && sessionData && (mode === 'view' || mode === 'edit')) {
-      form.reset({
-        status: sessionData.status || 'scheduled',
-        session_date: sessionData.session_date ? new Date(sessionData.session_date) : new Date(),
-        session_time: sessionData.session_date ? format(new Date(sessionData.session_date), 'HH:mm') : '09:00',
-      });
-    }
-  }, [isOpen, sessionData, form, mode]);
-
-  // Add a useEffect to trigger validation when overlap data changes
-  useEffect(() => {
-    if (overlappingSessionsCount !== undefined && !isLoadingOverlaps && watchedSessionStatus === 'scheduled') {
-        // Manually set the overlap error if detected
-        if (overlappingSessionsCount > 0) {
-          form.setError('session_time', {
-            type: 'custom',
-            message: 'This time slot overlaps with another scheduled session.',
-          });
-        } else {
-          form.clearErrors('session_time');
-        }
-    } else if (watchedSessionStatus !== 'scheduled' && !isLoadingOverlaps) {
-        // Clear any overlap errors if status is not scheduled
-        form.clearErrors('session_time');
-    }
-  }, [overlappingSessionsCount, isLoadingOverlaps, watchedSessionStatus, form]);
-
-  // Book mode data fetching
-  useEffect(() => {
-    if (!isOpen || mode !== 'book' || !clientId || !trainerId) return;
-
-    const fetchClientEligibilityData = async () => {
-      setIsLoadingBookingData(true);
-      try {
-        // Fetch active session packs for the client
-        const { data: packs, error: packsError } = await supabase
-          .from('session_packs')
-          .select('id, total_sessions, sessions_remaining, status, service_type_id, service_types(name)')
-          .eq('client_id', clientId)
-          .eq('trainer_id', trainerId)
-          .eq('status', 'active');
-
-        if (packsError) throw packsError;
-        
-        // Calculate actual remaining sessions by subtracting scheduled sessions
-        const packsWithActualRemaining = await Promise.all(
-          (packs || []).map(async (pack) => {
-            const { data: sessionCounts } = await supabase
-              .from('sessions')
-              .select('status, cancellation_reason')
-              .eq('session_pack_id', pack.id);
-            
-            // Count sessions that consume pack credits (scheduled + consumed)
-            const usedSessions = sessionCounts?.filter(s => 
-              s.status === 'scheduled' ||
-              s.status === 'completed' || 
-              s.status === 'no-show' ||
-              (s.status === 'cancelled' && s.cancellation_reason === 'penalty')
-            ).length || 0;
-            const actualRemaining = Math.max(0, pack.total_sessions - usedSessions);
-            
-            return {
-              ...pack,
-              sessions_remaining: actualRemaining
-            };
-          })
-        );
-        
-        // Only show packs with remaining sessions
-        const availablePacks = packsWithActualRemaining.filter(pack => pack.sessions_remaining > 0);
-        setActiveSessionPacks(availablePacks);
-
-        // Fetch active subscriptions for the client
-        const { data: subscriptions, error: subscriptionsError } = await supabase
-          .from('client_subscriptions')
-          .select('id, billing_cycle, payment_frequency, billing_amount, status')
-          .eq('client_id', clientId)
-          .eq('trainer_id', trainerId)
-          .eq('status', 'active');
-
-        if (subscriptionsError) throw subscriptionsError;
-        setActiveSubscriptions(subscriptions || []);
-
-        // Fetch all service types created by this trainer
-        const { data: services, error: servicesError } = await supabase
-          .from('service_types')
-          .select('id, name')
-          .eq('trainer_id', trainerId);
-
-        if (servicesError) throw servicesError;
-        setAvailableServices(services || []);
-
-      } catch (error: any) {
-        console.error('Error fetching client eligibility data:', error.message);
-        toast({
-          title: "Error",
-          description: "Failed to load booking eligibility data.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoadingBookingData(false);
-      }
-    };
-
-    fetchClientEligibilityData();
-  }, [isOpen, mode, clientId, trainerId, toast]);
-
-  // Check if proposed session is outside availability
-  const isOutsideAvailability = React.useMemo(() => {
-    const proposedDate = form.watch('session_date');
-    const proposedTime = form.watch('session_time');
-    const proposedStatus = form.watch('status');
-
-    if (!proposedDate || !proposedTime || proposedStatus !== 'scheduled') {
-        return false;
-    }
-    const proposedSessionStart = parse(proposedTime, 'HH:mm', proposedDate);
-    const proposedSessionEnd = addMinutes(proposedSessionStart, DEFAULT_SESSION_DURATION_MINUTES);
-
-    // Check if session falls within any of the final available ranges for this day
-    const fallsWithinAvailableBlock = finalAvailabilityRangesForProposedDate.some(block =>
-      proposedSessionStart >= block.start && proposedSessionEnd <= block.end
-    );
-
-    return !fallsWithinAvailableBlock;
-  }, [form.watch('session_date'), form.watch('session_time'), form.watch('status'), finalAvailabilityRangesForProposedDate]);
+  // ============= EVENT HANDLERS =============
 
   // Helper to proceed with save (called by onSubmit and handleConfirmOverride)
   const proceedWithSave = async (data: EditSessionFormData) => {
@@ -851,19 +759,7 @@ export default function UniversalSessionModal({
     }
   };
 
-  // Calculate if cancellation is late (within 24 hours) - DEFENSIVE PROGRAMMING
-  const isLateCancel = useMemo(() => {
-    if (!sessionData?.session_date) return false;
-    try {
-      const sessionDateTime = new Date(sessionData.session_date);
-      const now = new Date();
-      const hoursUntilSession = differenceInHours(sessionDateTime, now);
-      return hoursUntilSession <= 24;
-    } catch (error) {
-      console.error('Error calculating late cancellation:', error);
-      return false;
-    }
-  }, [sessionData?.session_date]);
+  // ============= RENDER MODAL CONTENT BASED ON MODE =============
 
   // MODE: VIEW - Session viewing functionality
   if (mode === 'view') {
@@ -1117,9 +1013,8 @@ export default function UniversalSessionModal({
               )}
             </div>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
+        </Dialog>
+      );
   }
 
   // MODE: EDIT - Session editing functionality (only accessible to trainers)
@@ -1311,7 +1206,7 @@ export default function UniversalSessionModal({
             </form>
           </Form>
 
-          {/* NEW: Render ConfirmAvailabilityOverrideModal */}
+          {/* Render ConfirmAvailabilityOverrideModal */}
           {showAvailabilityOverrideConfirm && (
             <ConfirmAvailabilityOverrideModal
               isOpen={showAvailabilityOverrideConfirm}
@@ -1483,4 +1378,4 @@ export default function UniversalSessionModal({
   }
 
   return null;
-}
+  
