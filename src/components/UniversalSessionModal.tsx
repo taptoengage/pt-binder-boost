@@ -743,26 +743,18 @@ export default function UniversalSessionModal({
     }
   };
 
-  if (!isOpen) return null; // Don't render if not open
-
-  // Add robust guard clauses to prevent crashes
-  if (mode !== 'book' && !session) {
-    console.error('UniversalSessionModal: Missing session prop for view/edit mode.');
-    return null;
-  }
-
-  if (mode === 'book' && !selectedSlot) {
-    console.error('UniversalSessionModal: Missing selectedSlot prop for book mode.');
-    return null;
-  }
-
-  // Calculate if cancellation is late (within 24 hours)
+  // Calculate if cancellation is late (within 24 hours) - DEFENSIVE PROGRAMMING
   const isLateCancel = useMemo(() => {
     if (!sessionData?.session_date) return false;
-    const sessionDateTime = new Date(sessionData.session_date);
-    const now = new Date();
-    const hoursUntilSession = differenceInHours(sessionDateTime, now);
-    return hoursUntilSession <= 24;
+    try {
+      const sessionDateTime = new Date(sessionData.session_date);
+      const now = new Date();
+      const hoursUntilSession = differenceInHours(sessionDateTime, now);
+      return hoursUntilSession <= 24;
+    } catch (error) {
+      console.error('Error calculating late cancellation:', error);
+      return false;
+    }
   }, [sessionData?.session_date]);
 
   // MODE: VIEW - Session viewing functionality
@@ -822,7 +814,7 @@ export default function UniversalSessionModal({
             )}
             <p><strong>Client:</strong> {sessionData?.clients?.name || 'N/A'}</p>
 
-            {/* Contact Buttons - Only show for trainers */}
+            {/* Contact Buttons - Only show for trainers with defensive role and data validation */}
             {isTrainer && sessionData?.clients && (
               <div className="flex space-x-2 mb-4">
                 <Button
@@ -831,7 +823,7 @@ export default function UniversalSessionModal({
                   asChild
                   disabled={!sessionData?.clients?.phone_number}
                 >
-                  <a href={`tel:${sessionData.clients.phone_number}`}>
+                  <a href={`tel:${sessionData?.clients?.phone_number || ''}`}>
                     <Phone className="w-4 h-4 mr-2" /> Call Client
                   </a>
                 </Button>
@@ -841,7 +833,7 @@ export default function UniversalSessionModal({
                   asChild
                   disabled={!sessionData?.clients?.email}
                 >
-                  <a href={`mailto:${sessionData.clients.email}`}>
+                  <a href={`mailto:${sessionData?.clients?.email || ''}`}>
                     <Mail className="w-4 h-4 mr-2" /> Email Client
                   </a>
                 </Button>
@@ -865,19 +857,33 @@ export default function UniversalSessionModal({
               </div>
             </div>
 
-            {/* Session Date Field - Read Only */}
+            {/* Session Date Field - Read Only with defensive programming */}
             <div>
               <Label>Session Date</Label>
               <div className="text-sm font-medium mt-1">
-                {sessionData?.session_date ? format(new Date(sessionData.session_date), 'PPP') : 'N/A'}
+                {(() => {
+                  try {
+                    return sessionData?.session_date ? format(new Date(sessionData.session_date), 'PPP') : 'N/A';
+                  } catch (error) {
+                    console.error('Error formatting session date:', error);
+                    return 'Invalid Date';
+                  }
+                })()}
               </div>
             </div>
 
-            {/* Session Time Field - Read Only */}
+            {/* Session Time Field - Read Only with defensive programming */}
             <div>
               <Label>Session Time</Label>
               <div className="text-sm font-medium mt-1">
-                {sessionData?.session_date ? format(new Date(sessionData.session_date), 'p') : 'N/A'}
+                {(() => {
+                  try {
+                    return sessionData?.session_date ? format(new Date(sessionData.session_date), 'p') : 'N/A';
+                  } catch (error) {
+                    console.error('Error formatting session time:', error);
+                    return 'Invalid Time';
+                  }
+                })()}
               </div>
             </div>
 
@@ -888,7 +894,7 @@ export default function UniversalSessionModal({
               </div>
             )}
 
-            {/* Late cancellation warning for clients */}
+            {/* Late cancellation warning for clients - Enhanced role and data validation */}
             {isClient && isLateCancel && sessionData?.status === 'scheduled' && (
               <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
                 <p className="text-sm text-amber-800">
@@ -902,8 +908,8 @@ export default function UniversalSessionModal({
             <div className="flex gap-2 mb-2 sm:mb-0">
               <Button type="button" onClick={onClose}>Close</Button>
               
-              {/* Role-based action buttons */}
-              {isTrainer && sessionData?.status === 'scheduled' && (
+              {/* Role-based action buttons with enhanced validation */}
+              {isTrainer && sessionData?.status === 'scheduled' && sessionData?.id && (
                 <>
                   <Button 
                     type="button" 
@@ -940,7 +946,7 @@ export default function UniversalSessionModal({
                 </>
               )}
 
-              {isClient && sessionData?.status === 'scheduled' && (
+              {isClient && sessionData?.status === 'scheduled' && sessionData?.id && (
                 <>
                   {/* Edit Session button - only if not late cancellation */}
                   {!isLateCancel && (
@@ -1010,17 +1016,19 @@ export default function UniversalSessionModal({
 
   // MODE: EDIT - Session editing functionality (only accessible to trainers)
   if (mode === 'edit') {
-    // Restrict edit mode to trainers only
-    if (!isTrainer) {
+    // Enhanced role validation with explicit checks
+    if (!isTrainer || !trainer?.id) {
       return (
         <Dialog open={isOpen} onOpenChange={onClose}>
           <DialogContent className="sm:max-w-[425px] md:max-w-md">
             <DialogHeader>
               <DialogTitle>Access Denied</DialogTitle>
-              <DialogDescription>Only trainers can edit sessions.</DialogDescription>
+              <DialogDescription>Only authenticated trainers can edit sessions.</DialogDescription>
             </DialogHeader>
             <div className="py-8 text-center">
-              <p className="text-sm text-destructive">You do not have permission to edit sessions.</p>
+              <p className="text-sm text-destructive">
+                {!trainer ? 'You must be logged in as a trainer to edit sessions.' : 'Invalid trainer authentication.'}
+              </p>
             </div>
             <DialogFooter>
               <Button onClick={onClose}>Close</Button>
@@ -1250,11 +1258,18 @@ export default function UniversalSessionModal({
             <div className="grid gap-4 py-4">
               {selectedSlot && (
                 <p className="text-sm font-medium">
-                  Session Date: {format(selectedSlot.start, 'MMM dd, yyyy')}
+                  Session Date: {(() => {
+                    try {
+                      return format(selectedSlot.start, 'MMM dd, yyyy');
+                    } catch (error) {
+                      console.error('Error formatting selected slot date:', error);
+                      return 'Invalid Date';
+                    }
+                  })()}
                 </p>
               )}
 
-              {/* Time Slot Selection using a dropdown */}
+              {/* Time Slot Selection using a dropdown with enhanced defensive programming */}
               <div className="space-y-2">
                 <Label htmlFor="startTime">Choose a Start Time</Label>
                 <Select
@@ -1265,11 +1280,22 @@ export default function UniversalSessionModal({
                     <SelectValue placeholder="Select a start time" />
                   </SelectTrigger>
                   <SelectContent>
-                    {bookableTimeSlots.map((time, index) => (
-                      <SelectItem key={index} value={format(time, 'HH:mm')}>
-                        {format(time, 'h:mm a')}
-                      </SelectItem>
-                    ))}
+                    {bookableTimeSlots?.length > 0 ? (
+                      bookableTimeSlots.map((time, index) => (
+                        <SelectItem key={index} value={format(time, 'HH:mm')}>
+                          {(() => {
+                            try {
+                              return format(time, 'h:mm a');
+                            } catch (error) {
+                              console.error('Error formatting time slot:', error);
+                              return 'Invalid Time';
+                            }
+                          })()}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="" disabled>No available time slots</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
