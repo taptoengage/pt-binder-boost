@@ -83,67 +83,15 @@ export default function UniversalSessionModal({
   const { user, trainer, client, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
 
-  // PHASE 1: CRITICAL GUARD CLAUSES AT THE TOP - PREVENT ALL CRASHES
+  // ============= ALL HOOKS MUST BE CALLED FIRST - BEFORE ANY GUARD CLAUSES =============
+  // This fixes the React Hook order violation that was causing crashes
   
-  // Guard 1: Modal not open
-  if (!isOpen) return null;
-
-  // Guard 2: Auth still loading - show loading dialog
-  if (authLoading) {
-    return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Loading...</DialogTitle>
-            <DialogDescription>
-              Authenticating user...
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center justify-center p-8">
-            <Loader2 className="h-8 w-8 animate-spin" />
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  // Guard 3: No user authenticated
-  if (!user) {
-    return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Authentication Required</DialogTitle>
-            <DialogDescription>
-              You must be logged in to access this feature.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button onClick={onClose}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  // Guard 4: Mode-specific prop validation
-  if (mode !== 'book' && !session) {
-    console.error('UniversalSessionModal: Missing session prop for view/edit mode.');
-    return null;
-  }
-
-  if (mode === 'book' && !selectedSlot) {
-    console.error('UniversalSessionModal: Missing selectedSlot prop for book mode.');
-    return null;
-  }
-
-  // Determine user role ONLY after auth loading is complete
+  // Determine user role
   const isTrainer = !!trainer;
   const isClient = !!client;
 
-  // Remove isEditing state - view mode is now purely read-only
+  // State management
   const [isPenaltyWaived, setIsPenaltyWaived] = useState(false);
-  // NEW STATE for availability override modal
   const [showAvailabilityOverrideConfirm, setShowAvailabilityOverrideConfirm] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<EditSessionFormData | null>(null);
   
@@ -205,7 +153,7 @@ export default function UniversalSessionModal({
       }
       return data;
     },
-    enabled: isOpen && !!session?.id && (mode === 'view' || mode === 'edit'),
+    enabled: isOpen && !!session?.id && (mode === 'view' || mode === 'edit') && !authLoading,
     staleTime: 30 * 1000, // Cache for 30 seconds
   });
 
@@ -227,7 +175,7 @@ export default function UniversalSessionModal({
   const watchedSessionTime = form.watch('session_time');
   const watchedSessionStatus = form.watch('status');
 
-  // NEW: Fetch trainer's recurring availability templates
+  // Fetch trainer's recurring availability templates
   const { data: recurringTemplates, isLoading: isLoadingTemplates } = useQuery({
     queryKey: ['trainerAvailabilityTemplates', user?.id],
     queryFn: async () => {
@@ -245,11 +193,11 @@ export default function UniversalSessionModal({
       }
       return data || [];
     },
-    enabled: !!user?.id && mode === 'edit', // Only enable if in edit mode
+    enabled: !!user?.id && mode === 'edit' && !authLoading,
     staleTime: 60 * 1000,
   });
 
-  // NEW: Fetch trainer's one-off availability exceptions
+  // Fetch trainer's one-off availability exceptions
   const { data: exceptions, isLoading: isLoadingExceptions } = useQuery({
     queryKey: ['trainerAvailabilityExceptions', user?.id],
     queryFn: async () => {
@@ -267,7 +215,7 @@ export default function UniversalSessionModal({
       }
       return data || [];
     },
-    enabled: !!user?.id && mode === 'edit', // Only enable if in edit mode
+    enabled: !!user?.id && mode === 'edit' && !authLoading,
     staleTime: 60 * 1000,
   });
 
@@ -277,9 +225,63 @@ export default function UniversalSessionModal({
     proposedDate: watchedSessionDate,
     proposedTime: watchedSessionTime,
     proposedStatus: watchedSessionStatus,
-    sessionIdToExclude: sessionData?.id, // Pass current session ID to exclude!
-    enabled: mode === 'edit', // Only enable this hook when in edit mode
+    sessionIdToExclude: sessionData?.id,
+    enabled: mode === 'edit' && !authLoading,
   });
+
+  // ============= GUARD CLAUSES - AFTER ALL HOOKS =============
+  
+  // Guard 1: Modal not open
+  if (!isOpen) return null;
+
+  // Guard 2: Auth still loading - show loading dialog
+  if (authLoading) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Loading...</DialogTitle>
+            <DialogDescription>
+              Authenticating user...
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Guard 3: No user authenticated
+  if (!user) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Authentication Required</DialogTitle>
+            <DialogDescription>
+              You must be logged in to access this feature.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={onClose}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Guard 4: Mode-specific prop validation
+  if (mode !== 'book' && !session) {
+    console.error('UniversalSessionModal: Missing session prop for view/edit mode.');
+    return null;
+  }
+
+  if (mode === 'book' && !selectedSlot) {
+    console.error('UniversalSessionModal: Missing selectedSlot prop for book mode.');
+    return null;
+  }
 
   // Reset form when modal opens or session data changes to ensure correct default values
   useEffect(() => {
@@ -289,7 +291,6 @@ export default function UniversalSessionModal({
         session_date: sessionData.session_date ? new Date(sessionData.session_date) : new Date(),
         session_time: sessionData.session_date ? format(new Date(sessionData.session_date), 'HH:mm') : '09:00',
       });
-      // No longer need to set isEditing - view mode is read-only
     }
   }, [isOpen, sessionData, form, mode]);
 
