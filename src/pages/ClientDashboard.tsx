@@ -313,7 +313,7 @@ export default function ClientDashboard() {
               <DropdownMenuItem onClick={() => navigate('/client/book-session')}>
                 Book a Session
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => toast({ title: "My Profile clicked", description: "Functionality to be added later." })}>
+              <DropdownMenuItem onClick={() => navigate('/client/profile')}>
                 My Profile
               </DropdownMenuItem>
               <DropdownMenuSeparator />

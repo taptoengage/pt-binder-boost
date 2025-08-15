@@ -1,0 +1,319 @@
+import React, { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Loader2, Edit, Save, X, User, Clock, MessageSquare } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
+// Form validation schema
+const EditProfileSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email address'),
+  phone_number: z.string().min(1, 'Phone number is required'),
+});
+
+type EditProfileFormData = z.infer<typeof EditProfileSchema>;
+
+export default function ClientProfile() {
+  const { client } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Fetch client profile data
+  const { data: clientProfile, isLoading, error } = useQuery({
+    queryKey: ['clientProfile', client?.id],
+    queryFn: async () => {
+      if (!client?.id) throw new Error('Client not found');
+      
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', client.id)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!client?.id,
+  });
+
+  // Initialize form with default values
+  const form = useForm<EditProfileFormData>({
+    resolver: zodResolver(EditProfileSchema),
+    defaultValues: {
+      name: clientProfile?.name || '',
+      email: clientProfile?.email || '',
+      phone_number: clientProfile?.phone_number || '',
+    },
+  });
+
+  // Reset form when clientProfile changes or when exiting edit mode
+  useEffect(() => {
+    if (clientProfile) {
+      form.reset({
+        name: clientProfile.name || '',
+        email: clientProfile.email || '',
+        phone_number: clientProfile.phone_number || '',
+      });
+    }
+  }, [clientProfile, form]);
+
+  useEffect(() => {
+    if (!isEditing && clientProfile) {
+      form.reset({
+        name: clientProfile.name || '',
+        email: clientProfile.email || '',
+        phone_number: clientProfile.phone_number || '',
+      });
+    }
+  }, [isEditing, clientProfile, form]);
+
+  // Handle form submission
+  const onSubmit = async (data: EditProfileFormData) => {
+    if (!client?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({
+          name: data.name,
+          email: data.email,
+          phone_number: data.phone_number,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', client.id);
+
+      if (error) throw error;
+
+      // Invalidate the query to refresh data
+      queryClient.invalidateQueries({ queryKey: ['clientProfile'] });
+      
+      setIsEditing(false);
+      toast({
+        title: "Profile Updated",
+        description: "Your profile has been successfully updated.",
+      });
+    } catch (error: any) {
+      console.error('Error updating profile:', error);
+      toast({
+        title: "Error",
+        description: `Failed to update profile: ${error.message}`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  // Error state
+  if (error || !clientProfile) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <p className="text-center text-muted-foreground">
+              Error loading profile data. Please try again.
+            </p>
+            <Button onClick={() => navigate('/client')} className="w-full mt-4">
+              Return to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold">My Profile</h1>
+            <p className="text-muted-foreground">Manage your personal information and preferences</p>
+          </div>
+          <Button onClick={() => navigate('/client')} variant="outline">
+            Back to Dashboard
+          </Button>
+        </div>
+
+        <div className="grid gap-8 md:grid-cols-2">
+          {/* Contact Information */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Contact Information
+                </CardTitle>
+                <CardDescription>
+                  Update your personal details and contact information
+                </CardDescription>
+              </div>
+              {!isEditing && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditing(true)}
+                  className="flex items-center gap-2"
+                >
+                  <Edit className="h-4 w-4" />
+                  Edit Profile
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Full Name</FormLabel>
+                        <FormControl>
+                          {isEditing ? (
+                            <Input {...field} placeholder="Enter your full name" />
+                          ) : (
+                            <div className="p-3 border rounded-md bg-muted/50">
+                              {field.value || 'Not provided'}
+                            </div>
+                          )}
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email Address</FormLabel>
+                        <FormControl>
+                          {isEditing ? (
+                            <Input {...field} type="email" placeholder="Enter your email" />
+                          ) : (
+                            <div className="p-3 border rounded-md bg-muted/50">
+                              {field.value || 'Not provided'}
+                            </div>
+                          )}
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="phone_number"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number</FormLabel>
+                        <FormControl>
+                          {isEditing ? (
+                            <Input {...field} placeholder="Enter your phone number" />
+                          ) : (
+                            <div className="p-3 border rounded-md bg-muted/50">
+                              {field.value || 'Not provided'}
+                            </div>
+                          )}
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {isEditing && (
+                    <div className="flex gap-2 pt-4">
+                      <Button type="submit" className="flex items-center gap-2">
+                        <Save className="h-4 w-4" />
+                        Save Changes
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsEditing(false)}
+                        className="flex items-center gap-2"
+                      >
+                        <X className="h-4 w-4" />
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+
+          {/* Quick Links */}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Preferred Time Slots
+                </CardTitle>
+                <CardDescription>
+                  Set your preferred training times (Coming Soon)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="p-6 border rounded-lg bg-muted/50 text-center">
+                  <Clock className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+                  <p className="text-muted-foreground mb-4">
+                    Time slot preferences will be available soon. You'll be able to set your preferred training days and times.
+                  </p>
+                  <Button variant="outline" disabled>
+                    Configure Preferences
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Communication Preferences
+                </CardTitle>
+                <CardDescription>
+                  Manage how your trainer contacts you (Coming Soon)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="p-6 border rounded-lg bg-muted/50 text-center">
+                  <MessageSquare className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+                  <p className="text-muted-foreground mb-4">
+                    Communication settings will include preferred messaging platforms (Instagram, Facebook, WhatsApp) and email preferences.
+                  </p>
+                  <Button variant="outline" disabled>
+                    Manage Preferences
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
