@@ -79,6 +79,68 @@ export default function UniversalSessionModal({
   trainerId, 
   onSessionUpdated 
 }: UniversalSessionModalProps) {
+  const { toast } = useToast();
+  const { user, trainer, client, loading: authLoading } = useAuth();
+  const queryClient = useQueryClient();
+
+  // PHASE 1: CRITICAL GUARD CLAUSES AT THE TOP - PREVENT ALL CRASHES
+  
+  // Guard 1: Modal not open
+  if (!isOpen) return null;
+
+  // Guard 2: Auth still loading - show loading dialog
+  if (authLoading) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Loading...</DialogTitle>
+            <DialogDescription>
+              Authenticating user...
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Guard 3: No user authenticated
+  if (!user) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Authentication Required</DialogTitle>
+            <DialogDescription>
+              You must be logged in to access this feature.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={onClose}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Guard 4: Mode-specific prop validation
+  if (mode !== 'book' && !session) {
+    console.error('UniversalSessionModal: Missing session prop for view/edit mode.');
+    return null;
+  }
+
+  if (mode === 'book' && !selectedSlot) {
+    console.error('UniversalSessionModal: Missing selectedSlot prop for book mode.');
+    return null;
+  }
+
+  // Determine user role ONLY after auth loading is complete
+  const isTrainer = !!trainer;
+  const isClient = !!client;
+
   // Remove isEditing state - view mode is now purely read-only
   const [isPenaltyWaived, setIsPenaltyWaived] = useState(false);
   // NEW STATE for availability override modal
@@ -94,14 +156,6 @@ export default function UniversalSessionModal({
   const [selectedServiceTypeId, setSelectedServiceTypeId] = useState<string | null>(null);
   const [selectedStartTime, setSelectedStartTime] = useState<string | null>(null);
   const [isLoadingBookingData, setIsLoadingBookingData] = useState(false);
-  
-  const { toast } = useToast();
-  const { user, trainer, client } = useAuth();
-  const queryClient = useQueryClient();
-  
-  // Determine user role
-  const isTrainer = !!trainer;
-  const isClient = !!client;
   
   
   const DEFAULT_SESSION_DURATION_MINUTES = 60;
