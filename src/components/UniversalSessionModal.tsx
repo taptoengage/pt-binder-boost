@@ -79,7 +79,7 @@ export default function UniversalSessionModal({
   trainerId, 
   onSessionUpdated 
 }: UniversalSessionModalProps) {
-  const [isEditing, setIsEditing] = useState(false);
+  // Remove isEditing state - view mode is now purely read-only
   const [isPenaltyWaived, setIsPenaltyWaived] = useState(false);
   // NEW STATE for availability override modal
   const [showAvailabilityOverrideConfirm, setShowAvailabilityOverrideConfirm] = useState(false);
@@ -187,7 +187,7 @@ export default function UniversalSessionModal({
       }
       return data || [];
     },
-    enabled: !!user?.id && isEditing, // Only enable if editing
+    enabled: !!user?.id && mode === 'edit', // Only enable if in edit mode
     staleTime: 60 * 1000,
   });
 
@@ -209,7 +209,7 @@ export default function UniversalSessionModal({
       }
       return data || [];
     },
-    enabled: !!user?.id && isEditing, // Only enable if editing
+    enabled: !!user?.id && mode === 'edit', // Only enable if in edit mode
     staleTime: 60 * 1000,
   });
 
@@ -220,7 +220,7 @@ export default function UniversalSessionModal({
     proposedTime: watchedSessionTime,
     proposedStatus: watchedSessionStatus,
     sessionIdToExclude: sessionData?.id, // Pass current session ID to exclude!
-    enabled: isEditing, // Only enable this hook when in edit mode
+    enabled: mode === 'edit', // Only enable this hook when in edit mode
   });
 
   // Reset form when modal opens or session data changes to ensure correct default values
@@ -231,7 +231,7 @@ export default function UniversalSessionModal({
         session_date: sessionData.session_date ? new Date(sessionData.session_date) : new Date(),
         session_time: sessionData.session_date ? format(new Date(sessionData.session_date), 'HH:mm') : '09:00',
       });
-      setIsEditing(mode === 'edit'); // Start in edit mode if mode is 'edit'
+      // No longer need to set isEditing - view mode is read-only
     }
   }, [isOpen, sessionData, form, mode]);
 
@@ -471,7 +471,7 @@ export default function UniversalSessionModal({
         description: 'Session updated successfully!',
       });
       
-      setIsEditing(false);
+      // Successfully updated session
       onClose(); // Close the modal
       onSessionUpdated?.(); // Call the callback if provided
       // Invalidate trainer's sessions query to refresh the schedule view
@@ -725,7 +725,7 @@ export default function UniversalSessionModal({
           <DialogHeader>
             <DialogTitle>Session Details</DialogTitle>
             <DialogDescription>
-              {isEditing ? "Edit this session's details." : "Information about this scheduled session."}
+              Information about this scheduled session.
             </DialogDescription>
           </DialogHeader>
 
@@ -741,7 +741,7 @@ export default function UniversalSessionModal({
               <p><strong>Client:</strong> {sessionData.clients?.name || 'N/A'}</p>
 
               {/* Contact Buttons */}
-              {!isEditing && sessionData.clients && (
+              {sessionData.clients && (
                 <div className="flex space-x-2 mb-4">
                   <Button
                     variant="outline"
@@ -768,232 +768,45 @@ export default function UniversalSessionModal({
 
               <p><strong>Service:</strong> {sessionData.service_types?.name || 'N/A'}</p>
 
-              {/* Status Field */}
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status</FormLabel>
-                    {isEditing ? (
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="scheduled">Scheduled</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                          <SelectItem value="cancelled_late">Cancelled Late</SelectItem>
-                          <SelectItem value="cancelled_early">Cancelled Early</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <div className="text-sm font-medium">
-                         <Badge className={cn(
-                           { 'bg-green-500': sessionData.status === 'scheduled' },
-                           { 'bg-gray-500': sessionData.status === 'completed' },
-                           { 'bg-red-500': sessionData.status === 'cancelled' || sessionData.status === 'cancelled_late' },
-                           { 'bg-orange-500': sessionData.status === 'cancelled_early' }
-                         )}>
-                           {sessionData.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        </Badge>
-                      </div>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* Status Field - Read Only */}
+              <div>
+                <Label>Status</Label>
+                <div className="text-sm font-medium mt-1">
+                  <Badge className={cn(
+                    { 'bg-green-500': sessionData.status === 'scheduled' },
+                    { 'bg-gray-500': sessionData.status === 'completed' },
+                    { 'bg-red-500': sessionData.status === 'cancelled' || sessionData.status === 'cancelled_late' },
+                    { 'bg-orange-500': sessionData.status === 'cancelled_early' }
+                  )}>
+                    {sessionData.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </Badge>
+                </div>
+              </div>
 
-              {/* Session Date Field */}
-              <FormField
-                control={form.control}
-                name="session_date"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Session Date</FormLabel>
-                    {isEditing ? (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full pl-3 text-left font-normal",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value ? (
-                                format(field.value, "PPP")
-                              ) : (
-                                <span>Pick a date</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value || undefined}
-                            onSelect={field.onChange}
-                            initialFocus
-                            className={cn("p-3 pointer-events-auto")}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    ) : (
-                      <div className="text-sm font-medium">{format(new Date(sessionData.session_date), 'PPP')}</div>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* Session Date Field - Read Only */}
+              <div>
+                <Label>Session Date</Label>
+                <div className="text-sm font-medium mt-1">{format(new Date(sessionData.session_date), 'PPP')}</div>
+              </div>
 
-              {/* Session Time Field */}
-              <FormField
-                control={form.control}
-                name="session_time"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Session Time</FormLabel>
-                    {isEditing ? (
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select session time" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent className="max-h-[200px] overflow-y-auto">
-                          {timeOptions.map((time) => (
-                            <SelectItem key={time} value={time}>
-                              {time}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <div className="text-sm font-medium">{format(new Date(sessionData.session_date), 'p')}</div>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* Session Time Field - Read Only */}
+              <div>
+                <Label>Session Time</Label>
+                <div className="text-sm font-medium mt-1">{format(new Date(sessionData.session_date), 'p')}</div>
+              </div>
 
               {sessionData.notes && (
-                <p><strong>Notes:</strong> {sessionData.notes}</p>
+                <div>
+                  <Label>Notes</Label>
+                  <div className="text-sm font-medium mt-1">{sessionData.notes}</div>
+                </div>
               )}
 
               <DialogFooter className="flex flex-col sm:flex-row sm:justify-between sm:space-x-2 mt-6">
-                {isEditing ? (
-                  <>
-                    <Button type="button" variant="outline" onClick={() => setIsEditing(false)} className="mb-2 sm:mb-0">
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={form.formState.isSubmitting || !form.formState.isValid || isLoadingOverlaps} className="mb-2 sm:mb-0">
-                      {form.formState.isSubmitting ? "Saving..." :
-                       isLoadingOverlaps ? "Checking Overlaps..." :
-                       "Save Changes"}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button type="button" variant="outline" onClick={() => setIsEditing(true)} className="mb-2 sm:mb-0">
-                      Edit Session
-                    </Button>
-
-                    {/* Conditional Cancellation Logic */}
-                    {(() => {
-                      const sessionStart = sessionData?.session_date ? new Date(sessionData.session_date) : null;
-                      const isLateCancel = sessionStart ? differenceInHours(sessionStart, new Date()) <= 24 : false;
-                      
-                      return isLateCancel ? (
-                        // UI for late cancellation (penalty applies by default)
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button 
-                              type="button" 
-                              variant="destructive" 
-                              className="mb-2 sm:mb-0"
-                              disabled={sessionData.status !== 'scheduled'}
-                            >
-                              Cancel Session
-                            </Button>
-                          </AlertDialogTrigger>
-                           <AlertDialogContent>
-                             <AlertDialogHeader>
-                               <AlertDialogTitle>Penalty Cancellation</AlertDialogTitle>
-                               <AlertDialogDescription>
-                                 This session is within the 24-hour cancellation window. Cancelling it will result in a penalty, and the session will not be credited back.
-                               </AlertDialogDescription>
-                             </AlertDialogHeader>
-                             <div className="flex items-center space-x-2 p-4 border rounded-md my-4">
-                               <Checkbox
-                                 id="waive-penalty"
-                                 checked={isPenaltyWaived}
-                                 onCheckedChange={(checked) => setIsPenaltyWaived(Boolean(checked))}
-                               />
-                               <Label htmlFor="waive-penalty">Waive penalty</Label>
-                             </div>
-                             <AlertDialogFooter>
-                               <AlertDialogCancel onClick={() => setIsPenaltyWaived(false)}>Keep Session</AlertDialogCancel>
-                               <AlertDialogAction onClick={() => handleCancellation(!isPenaltyWaived)}>
-                                 Confirm Cancellation
-                               </AlertDialogAction>
-                             </AlertDialogFooter>
-                           </AlertDialogContent>
-                        </AlertDialog>
-                      ) : (
-                        // UI for on-time cancellation (no penalty)
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button 
-                              type="button" 
-                              variant="destructive" 
-                              className="mb-2 sm:mb-0"
-                              disabled={sessionData.status !== 'scheduled'}
-                            >
-                              Cancel Session
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Confirm Cancellation</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to cancel this session? A session credit will be added back to the client's pack or subscription.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Keep Session</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleCancellation(false)}>
-                                Confirm Cancellation
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      );
-                    })()}
-
-                    <Button type="button" onClick={onClose} className="mb-2 sm:mb-0">Close</Button>
-                  </>
-                )}
+                <Button type="button" onClick={onClose} className="mb-2 sm:mb-0">Close</Button>
               </DialogFooter>
             </form>
           </Form>
-
-          {/* NEW: Render ConfirmAvailabilityOverrideModal */}
-          {showAvailabilityOverrideConfirm && (
-            <ConfirmAvailabilityOverrideModal
-              isOpen={showAvailabilityOverrideConfirm}
-              onClose={() => {
-                setShowAvailabilityOverrideConfirm(false);
-                setPendingSubmitData(null); // Clear pending data if user cancels
-              }}
-              onConfirm={handleConfirmAvailabilityOverride}
-              proposedDateTime={parse(form.watch('session_time'), 'HH:mm', form.watch('session_date') || new Date())}
-            />
-          )}
         </DialogContent>
       </Dialog>
     );
