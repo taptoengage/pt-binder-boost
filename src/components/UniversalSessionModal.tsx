@@ -466,7 +466,7 @@ export default function UniversalSessionModal({
       const { error } = await supabase
         .from('sessions')
         .update(payload)
-        .eq('id', sessionData.id);
+        .eq('id', sessionData?.id);
 
       if (error) throw error;
 
@@ -526,6 +526,11 @@ export default function UniversalSessionModal({
   const handleCancellation = async (penalize: boolean) => {
     if (!sessionData?.id || !user?.id) {
       toast({ title: 'Error', description: 'Session ID or trainer ID is missing for cancellation.', variant: 'destructive' });
+      return;
+    }
+
+    if (!sessionData?.session_date) {
+      toast({ title: 'Error', description: 'Session date is missing.', variant: 'destructive' });
       return;
     }
 
@@ -686,6 +691,17 @@ export default function UniversalSessionModal({
 
   if (!isOpen) return null; // Don't render if not open
 
+  // Add robust guard clauses to prevent crashes
+  if (mode !== 'book' && !session) {
+    console.error('UniversalSessionModal: Missing session prop for view/edit mode.');
+    return null;
+  }
+
+  if (mode === 'book' && !selectedSlot) {
+    console.error('UniversalSessionModal: Missing selectedSlot prop for book mode.');
+    return null;
+  }
+
   // Calculate if cancellation is late (within 24 hours)
   const isLateCancel = useMemo(() => {
     if (!sessionData?.session_date) return false;
@@ -743,23 +759,23 @@ export default function UniversalSessionModal({
           </DialogHeader>
 
           <div className="py-4 space-y-4">
-            <p><strong>Session ID:</strong> {sessionData.id}</p>
-            {sessionData.session_pack_id && (
+            <p><strong>Session ID:</strong> {sessionData?.id || 'N/A'}</p>
+            {sessionData?.session_pack_id && (
               <p><strong>Pack ID:</strong> {sessionData.session_pack_id}</p>
             )}
-            {sessionData.subscription_id && (
+            {sessionData?.subscription_id && (
               <p><strong>Subscription ID:</strong> {sessionData.subscription_id}</p>
             )}
-            <p><strong>Client:</strong> {sessionData.clients?.name || 'N/A'}</p>
+            <p><strong>Client:</strong> {sessionData?.clients?.name || 'N/A'}</p>
 
             {/* Contact Buttons - Only show for trainers */}
-            {isTrainer && sessionData.clients && (
+            {isTrainer && sessionData?.clients && (
               <div className="flex space-x-2 mb-4">
                 <Button
                   variant="outline"
                   size="sm"
                   asChild
-                  disabled={!sessionData.clients.phone_number}
+                  disabled={!sessionData?.clients?.phone_number}
                 >
                   <a href={`tel:${sessionData.clients.phone_number}`}>
                     <Phone className="w-4 h-4 mr-2" /> Call Client
@@ -769,7 +785,7 @@ export default function UniversalSessionModal({
                   variant="outline"
                   size="sm"
                   asChild
-                  disabled={!sessionData.clients.email}
+                  disabled={!sessionData?.clients?.email}
                 >
                   <a href={`mailto:${sessionData.clients.email}`}>
                     <Mail className="w-4 h-4 mr-2" /> Email Client
@@ -778,19 +794,19 @@ export default function UniversalSessionModal({
               </div>
             )}
 
-            <p><strong>Service:</strong> {sessionData.service_types?.name || 'N/A'}</p>
+            <p><strong>Service:</strong> {sessionData?.service_types?.name || 'N/A'}</p>
 
             {/* Status Field - Read Only */}
             <div>
               <Label>Status</Label>
               <div className="text-sm font-medium mt-1">
-                <Badge className={cn(
-                  { 'bg-green-500': sessionData.status === 'scheduled' },
-                  { 'bg-gray-500': sessionData.status === 'completed' },
-                  { 'bg-red-500': sessionData.status === 'cancelled' || sessionData.status === 'cancelled_late' },
-                  { 'bg-orange-500': sessionData.status === 'cancelled_early' }
+                 <Badge className={cn(
+                  { 'bg-green-500': sessionData?.status === 'scheduled' },
+                  { 'bg-gray-500': sessionData?.status === 'completed' },
+                  { 'bg-red-500': sessionData?.status === 'cancelled' || sessionData?.status === 'cancelled_late' },
+                  { 'bg-orange-500': sessionData?.status === 'cancelled_early' }
                 )}>
-                  {sessionData.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  {sessionData?.status?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown'}
                 </Badge>
               </div>
             </div>
@@ -798,16 +814,20 @@ export default function UniversalSessionModal({
             {/* Session Date Field - Read Only */}
             <div>
               <Label>Session Date</Label>
-              <div className="text-sm font-medium mt-1">{format(new Date(sessionData.session_date), 'PPP')}</div>
+              <div className="text-sm font-medium mt-1">
+                {sessionData?.session_date ? format(new Date(sessionData.session_date), 'PPP') : 'N/A'}
+              </div>
             </div>
 
             {/* Session Time Field - Read Only */}
             <div>
               <Label>Session Time</Label>
-              <div className="text-sm font-medium mt-1">{format(new Date(sessionData.session_date), 'p')}</div>
+              <div className="text-sm font-medium mt-1">
+                {sessionData?.session_date ? format(new Date(sessionData.session_date), 'p') : 'N/A'}
+              </div>
             </div>
 
-            {sessionData.notes && (
+            {sessionData?.notes && (
               <div>
                 <Label>Notes</Label>
                 <div className="text-sm font-medium mt-1">{sessionData.notes}</div>
@@ -815,7 +835,7 @@ export default function UniversalSessionModal({
             )}
 
             {/* Late cancellation warning for clients */}
-            {isClient && isLateCancel && sessionData.status === 'scheduled' && (
+            {isClient && isLateCancel && sessionData?.status === 'scheduled' && (
               <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
                 <p className="text-sm text-amber-800">
                   <strong>Note:</strong> Cancelling within 24 hours may result in a penalty charge.
@@ -829,7 +849,7 @@ export default function UniversalSessionModal({
               <Button type="button" onClick={onClose}>Close</Button>
               
               {/* Role-based action buttons */}
-              {isTrainer && sessionData.status === 'scheduled' && (
+              {isTrainer && sessionData?.status === 'scheduled' && (
                 <>
                   <Button 
                     type="button" 
@@ -866,7 +886,7 @@ export default function UniversalSessionModal({
                 </>
               )}
 
-              {isClient && sessionData.status === 'scheduled' && (
+              {isClient && sessionData?.status === 'scheduled' && (
                 <>
                   {/* Edit Session button - only if not late cancellation */}
                   {!isLateCancel && (
@@ -1002,15 +1022,15 @@ export default function UniversalSessionModal({
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="py-4 space-y-4">
-              <p><strong>Session ID:</strong> {sessionData.id}</p>
-              {sessionData.session_pack_id && (
+              <p><strong>Session ID:</strong> {sessionData?.id || 'N/A'}</p>
+              {sessionData?.session_pack_id && (
                 <p><strong>Pack ID:</strong> {sessionData.session_pack_id}</p>
               )}
-              {sessionData.subscription_id && (
+              {sessionData?.subscription_id && (
                 <p><strong>Subscription ID:</strong> {sessionData.subscription_id}</p>
               )}
-              <p><strong>Client:</strong> {sessionData.clients?.name || 'N/A'}</p>
-              <p><strong>Service:</strong> {sessionData.service_types?.name || 'N/A'}</p>
+              <p><strong>Client:</strong> {sessionData?.clients?.name || 'N/A'}</p>
+              <p><strong>Service:</strong> {sessionData?.service_types?.name || 'N/A'}</p>
 
               {/* Status Field */}
               <FormField
@@ -1104,7 +1124,7 @@ export default function UniversalSessionModal({
                 )}
               />
 
-              {sessionData.notes && (
+              {sessionData?.notes && (
                 <p><strong>Notes:</strong> {sessionData.notes}</p>
               )}
 
