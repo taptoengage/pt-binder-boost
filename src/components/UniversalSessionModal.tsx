@@ -90,6 +90,7 @@ export default function UniversalSessionModal({
   const isClient = !!client;
 
   // State management - ALL state hooks called unconditionally
+  const [currentMode, setCurrentMode] = useState<'view' | 'edit' | 'book'>(mode);
   const [isPenaltyWaived, setIsPenaltyWaived] = useState(false);
   const [showAvailabilityOverrideConfirm, setShowAvailabilityOverrideConfirm] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<EditSessionFormData | null>(null);
@@ -168,7 +169,7 @@ export default function UniversalSessionModal({
       }
       return data;
     },
-    enabled: isOpen && !!session?.id && (mode === 'view' || mode === 'edit') && !authLoading,
+    enabled: isOpen && !!session?.id && (currentMode === 'view' || currentMode === 'edit') && !authLoading,
     staleTime: 30 * 1000, // Cache for 30 seconds
   });
 
@@ -190,7 +191,7 @@ export default function UniversalSessionModal({
       }
       return data || [];
     },
-    enabled: !!user?.id && mode === 'edit' && !authLoading,
+    enabled: !!user?.id && currentMode === 'edit' && !authLoading,
     staleTime: 60 * 1000,
   });
 
@@ -212,7 +213,7 @@ export default function UniversalSessionModal({
       }
       return data || [];
     },
-    enabled: !!user?.id && mode === 'edit' && !authLoading,
+    enabled: !!user?.id && currentMode === 'edit' && !authLoading,
     staleTime: 60 * 1000,
   });
 
@@ -223,25 +224,31 @@ export default function UniversalSessionModal({
     proposedTime: watchedSessionTime,
     proposedStatus: watchedSessionStatus,
     sessionIdToExclude: fullSessionData?.id,
-    enabled: mode === 'edit' && !authLoading,
+    enabled: currentMode === 'edit' && !authLoading,
   });
 
   // Use the fetched data or fallback to the session prop
   const sessionData = fullSessionData || session;
 
   // ALL useEffect hooks MUST be called unconditionally - NO DUPLICATES
-  // Effect 1: Reset form when modal opens or session data changes
+  
+  // Effect 1: Sync currentMode with mode prop when modal opens or mode changes
   useEffect(() => {
-    if (isOpen && sessionData && (mode === 'view' || mode === 'edit')) {
+    setCurrentMode(mode);
+  }, [mode, isOpen]);
+
+  // Effect 2: Reset form when modal opens or session data changes
+  useEffect(() => {
+    if (isOpen && sessionData && (currentMode === 'view' || currentMode === 'edit')) {
       form.reset({
         status: sessionData?.status || 'scheduled',
         session_date: sessionData?.session_date ? new Date(sessionData.session_date) : new Date(),
         session_time: sessionData?.session_date ? format(new Date(sessionData.session_date), 'HH:mm') : '09:00',
       });
     }
-  }, [isOpen, sessionData, form, mode]);
+  }, [isOpen, sessionData, form, currentMode]);
 
-  // Effect 2: Handle overlap validation
+  // Effect 3: Handle overlap validation
   useEffect(() => {
     if (overlappingSessionsCount !== undefined && !isLoadingOverlaps && watchedSessionStatus === 'scheduled') {
         // Manually set the overlap error if detected
@@ -259,9 +266,9 @@ export default function UniversalSessionModal({
     }
   }, [overlappingSessionsCount, isLoadingOverlaps, watchedSessionStatus, form]);
 
-  // Effect 3: Book mode data fetching
+  // Effect 4: Book mode data fetching
   useEffect(() => {
-    if (!isOpen || mode !== 'book' || !clientId || !trainerId) return;
+    if (!isOpen || currentMode !== 'book' || !clientId || !trainerId) return;
 
     const fetchClientEligibilityData = async () => {
       setIsLoadingBookingData(true);
@@ -337,7 +344,7 @@ export default function UniversalSessionModal({
     };
 
     fetchClientEligibilityData();
-  }, [isOpen, mode, clientId, trainerId, toast]);
+  }, [isOpen, currentMode, clientId, trainerId, toast]);
 
   // Process availability ranges for the proposed date - useMemo hook
   const finalAvailabilityRangesForProposedDate = useMemo(() => {
@@ -464,6 +471,14 @@ export default function UniversalSessionModal({
     }
   }, [sessionData?.session_date]);
 
+  // ============= EVENT HANDLERS =============
+
+  // Custom close handler that resets mode state
+  const handleModalClose = () => {
+    setCurrentMode(mode); // Reset to original mode
+    onClose();
+  };
+
   // ============= GUARD CLAUSES - AFTER ALL HOOKS =============
   
   // Guard 1: Modal not open
@@ -472,7 +487,7 @@ export default function UniversalSessionModal({
   // Guard 2: Auth still loading - show loading dialog
   if (authLoading) {
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={handleModalClose}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Loading...</DialogTitle>
@@ -491,7 +506,7 @@ export default function UniversalSessionModal({
   // Guard 3: No user authenticated
   if (!user) {
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={handleModalClose}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Authentication Required</DialogTitle>
@@ -545,8 +560,8 @@ export default function UniversalSessionModal({
         description: 'Session updated successfully!',
       });
       
-      // Successfully updated session
-      onClose(); // Close the modal
+      // Successfully updated session - switch back to view mode
+      setCurrentMode('view');
       onSessionUpdated?.(); // Call the callback if provided
       // Invalidate trainer's sessions query to refresh the schedule view
       queryClient.invalidateQueries({ queryKey: ['trainerSessions', user?.id] });
@@ -762,11 +777,11 @@ export default function UniversalSessionModal({
   // ============= RENDER MODAL CONTENT BASED ON MODE =============
 
   // MODE: VIEW - Session viewing functionality
-  if (mode === 'view') {
+  if (currentMode === 'view') {
     // Show loading state while fetching session data
     if (isLoadingSession) {
       return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
+        <Dialog open={isOpen} onOpenChange={handleModalClose}>
           <DialogContent className="sm:max-w-[425px] md:max-w-md">
             <DialogHeader>
               <DialogTitle>Session Details</DialogTitle>
@@ -784,7 +799,7 @@ export default function UniversalSessionModal({
     // Show error state if session data failed to load
     if (sessionError) {
       return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
+        <Dialog open={isOpen} onOpenChange={handleModalClose}>
           <DialogContent className="sm:max-w-[425px] md:max-w-md">
             <DialogHeader>
               <DialogTitle>Error</DialogTitle>
@@ -799,7 +814,7 @@ export default function UniversalSessionModal({
     }
 
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={handleModalClose}>
         <DialogContent className="sm:max-w-[425px] md:max-w-md">
           <DialogHeader>
             <DialogTitle>Session Details</DialogTitle>
@@ -919,9 +934,8 @@ export default function UniversalSessionModal({
                     type="button" 
                     variant="outline"
                     onClick={() => {
-                      // Switch to edit mode - this would need to be handled by parent component
-                      onClose();
-                      // Parent component should handle opening in edit mode
+                      // Switch to edit mode internally
+                      setCurrentMode('edit');
                     }}
                   >
                     Edit Session
@@ -1019,11 +1033,11 @@ export default function UniversalSessionModal({
   }
 
   // MODE: EDIT - Session editing functionality (only accessible to trainers)
-  if (mode === 'edit') {
+  if (currentMode === 'edit') {
     // Enhanced role validation with explicit checks
     if (!isTrainer || !trainer?.id) {
       return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
+        <Dialog open={isOpen} onOpenChange={handleModalClose}>
           <DialogContent className="sm:max-w-[425px] md:max-w-md">
             <DialogHeader>
               <DialogTitle>Access Denied</DialogTitle>
@@ -1044,7 +1058,7 @@ export default function UniversalSessionModal({
     // Show loading state while fetching session data
     if (isLoadingSession) {
       return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
+        <Dialog open={isOpen} onOpenChange={handleModalClose}>
           <DialogContent className="sm:max-w-[425px] md:max-w-md">
             <DialogHeader>
               <DialogTitle>Edit Session</DialogTitle>
@@ -1062,7 +1076,7 @@ export default function UniversalSessionModal({
     // Show error state if session data failed to load
     if (sessionError) {
       return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
+        <Dialog open={isOpen} onOpenChange={handleModalClose}>
           <DialogContent className="sm:max-w-[425px] md:max-w-md">
             <DialogHeader>
               <DialogTitle>Error</DialogTitle>
@@ -1077,7 +1091,7 @@ export default function UniversalSessionModal({
     }
 
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={handleModalClose}>
         <DialogContent className="sm:max-w-[425px] md:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Session</DialogTitle>
@@ -1225,11 +1239,11 @@ export default function UniversalSessionModal({
   }
 
   // MODE: BOOK - Session booking functionality (primarily for clients)
-  if (mode === 'book') {
+  if (currentMode === 'book') {
     // Restrict book mode to clients (trainers can still book for clients if needed)
     if (!isClient && !isTrainer) {
       return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
+        <Dialog open={isOpen} onOpenChange={handleModalClose}>
           <DialogContent className="sm:max-w-[425px] md:max-w-md">
             <DialogHeader>
               <DialogTitle>Access Denied</DialogTitle>
@@ -1246,7 +1260,7 @@ export default function UniversalSessionModal({
       );
     }
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={handleModalClose}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Book Session</DialogTitle>
