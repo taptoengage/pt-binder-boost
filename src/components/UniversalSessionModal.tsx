@@ -1013,8 +1013,9 @@ export default function UniversalSessionModal({
               )}
             </div>
           </DialogFooter>
-        </Dialog>
-      );
+        </DialogContent>
+      </Dialog>
+    );
   }
 
   // MODE: EDIT - Session editing functionality (only accessible to trainers)
@@ -1378,4 +1379,4 @@ export default function UniversalSessionModal({
   }
 
   return null;
-  
+};
