@@ -96,8 +96,12 @@ export default function UniversalSessionModal({
   const [isLoadingBookingData, setIsLoadingBookingData] = useState(false);
   
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, trainer, client } = useAuth();
   const queryClient = useQueryClient();
+  
+  // Determine user role
+  const isTrainer = !!trainer;
+  const isClient = !!client;
   
   
   const DEFAULT_SESSION_DURATION_MINUTES = 60;
@@ -682,7 +686,16 @@ export default function UniversalSessionModal({
 
   if (!isOpen) return null; // Don't render if not open
 
-  // MODE: VIEW - Session viewing and editing functionality
+  // Calculate if cancellation is late (within 24 hours)
+  const isLateCancel = useMemo(() => {
+    if (!sessionData?.session_date) return false;
+    const sessionDateTime = new Date(sessionData.session_date);
+    const now = new Date();
+    const hoursUntilSession = differenceInHours(sessionDateTime, now);
+    return hoursUntilSession <= 24;
+  }, [sessionData?.session_date]);
+
+  // MODE: VIEW - Session viewing functionality
   if (mode === 'view') {
     // Show loading state while fetching session data
     if (isLoadingSession) {
@@ -729,91 +742,219 @@ export default function UniversalSessionModal({
             </DialogDescription>
           </DialogHeader>
 
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="py-4 space-y-4">
-              <p><strong>Session ID:</strong> {sessionData.id}</p>
-              {sessionData.session_pack_id && (
-                <p><strong>Pack ID:</strong> {sessionData.session_pack_id}</p>
-              )}
-              {sessionData.subscription_id && (
-                <p><strong>Subscription ID:</strong> {sessionData.subscription_id}</p>
-              )}
-              <p><strong>Client:</strong> {sessionData.clients?.name || 'N/A'}</p>
+          <div className="py-4 space-y-4">
+            <p><strong>Session ID:</strong> {sessionData.id}</p>
+            {sessionData.session_pack_id && (
+              <p><strong>Pack ID:</strong> {sessionData.session_pack_id}</p>
+            )}
+            {sessionData.subscription_id && (
+              <p><strong>Subscription ID:</strong> {sessionData.subscription_id}</p>
+            )}
+            <p><strong>Client:</strong> {sessionData.clients?.name || 'N/A'}</p>
 
-              {/* Contact Buttons */}
-              {sessionData.clients && (
-                <div className="flex space-x-2 mb-4">
-                  <Button
+            {/* Contact Buttons - Only show for trainers */}
+            {isTrainer && sessionData.clients && (
+              <div className="flex space-x-2 mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  disabled={!sessionData.clients.phone_number}
+                >
+                  <a href={`tel:${sessionData.clients.phone_number}`}>
+                    <Phone className="w-4 h-4 mr-2" /> Call Client
+                  </a>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  disabled={!sessionData.clients.email}
+                >
+                  <a href={`mailto:${sessionData.clients.email}`}>
+                    <Mail className="w-4 h-4 mr-2" /> Email Client
+                  </a>
+                </Button>
+              </div>
+            )}
+
+            <p><strong>Service:</strong> {sessionData.service_types?.name || 'N/A'}</p>
+
+            {/* Status Field - Read Only */}
+            <div>
+              <Label>Status</Label>
+              <div className="text-sm font-medium mt-1">
+                <Badge className={cn(
+                  { 'bg-green-500': sessionData.status === 'scheduled' },
+                  { 'bg-gray-500': sessionData.status === 'completed' },
+                  { 'bg-red-500': sessionData.status === 'cancelled' || sessionData.status === 'cancelled_late' },
+                  { 'bg-orange-500': sessionData.status === 'cancelled_early' }
+                )}>
+                  {sessionData.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </Badge>
+              </div>
+            </div>
+
+            {/* Session Date Field - Read Only */}
+            <div>
+              <Label>Session Date</Label>
+              <div className="text-sm font-medium mt-1">{format(new Date(sessionData.session_date), 'PPP')}</div>
+            </div>
+
+            {/* Session Time Field - Read Only */}
+            <div>
+              <Label>Session Time</Label>
+              <div className="text-sm font-medium mt-1">{format(new Date(sessionData.session_date), 'p')}</div>
+            </div>
+
+            {sessionData.notes && (
+              <div>
+                <Label>Notes</Label>
+                <div className="text-sm font-medium mt-1">{sessionData.notes}</div>
+              </div>
+            )}
+
+            {/* Late cancellation warning for clients */}
+            {isClient && isLateCancel && sessionData.status === 'scheduled' && (
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
+                <p className="text-sm text-amber-800">
+                  <strong>Note:</strong> Cancelling within 24 hours may result in a penalty charge.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row sm:justify-between sm:space-x-2 mt-6">
+            <div className="flex gap-2 mb-2 sm:mb-0">
+              <Button type="button" onClick={onClose}>Close</Button>
+              
+              {/* Role-based action buttons */}
+              {isTrainer && sessionData.status === 'scheduled' && (
+                <>
+                  <Button 
+                    type="button" 
                     variant="outline"
-                    size="sm"
-                    asChild
-                    disabled={!sessionData.clients.phone_number}
+                    onClick={() => {
+                      // Switch to edit mode - this would need to be handled by parent component
+                      onClose();
+                      // Parent component should handle opening in edit mode
+                    }}
                   >
-                    <a href={`tel:${sessionData.clients.phone_number}`}>
-                      <Phone className="w-4 h-4 mr-2" /> Call Client
-                    </a>
+                    Edit Session
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    asChild
-                    disabled={!sessionData.clients.email}
-                  >
-                    <a href={`mailto:${sessionData.clients.email}`}>
-                      <Mail className="w-4 h-4 mr-2" /> Email Client
-                    </a>
-                  </Button>
-                </div>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        Cancel Session
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel Session</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to cancel this session? This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Keep Session</AlertDialogCancel>
+                         <AlertDialogAction onClick={() => handleCancellation(false)}>
+                           Cancel Session
+                         </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
               )}
 
-              <p><strong>Service:</strong> {sessionData.service_types?.name || 'N/A'}</p>
-
-              {/* Status Field - Read Only */}
-              <div>
-                <Label>Status</Label>
-                <div className="text-sm font-medium mt-1">
-                  <Badge className={cn(
-                    { 'bg-green-500': sessionData.status === 'scheduled' },
-                    { 'bg-gray-500': sessionData.status === 'completed' },
-                    { 'bg-red-500': sessionData.status === 'cancelled' || sessionData.status === 'cancelled_late' },
-                    { 'bg-orange-500': sessionData.status === 'cancelled_early' }
-                  )}>
-                    {sessionData.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* Session Date Field - Read Only */}
-              <div>
-                <Label>Session Date</Label>
-                <div className="text-sm font-medium mt-1">{format(new Date(sessionData.session_date), 'PPP')}</div>
-              </div>
-
-              {/* Session Time Field - Read Only */}
-              <div>
-                <Label>Session Time</Label>
-                <div className="text-sm font-medium mt-1">{format(new Date(sessionData.session_date), 'p')}</div>
-              </div>
-
-              {sessionData.notes && (
-                <div>
-                  <Label>Notes</Label>
-                  <div className="text-sm font-medium mt-1">{sessionData.notes}</div>
-                </div>
+              {isClient && sessionData.status === 'scheduled' && (
+                <>
+                  {/* Edit Session button - only if not late cancellation */}
+                  {!isLateCancel && (
+                    <Button 
+                      type="button" 
+                      variant="outline"
+                      onClick={() => {
+                        // Switch to edit mode - this would need to be handled by parent component
+                        onClose();
+                        // Parent component should handle opening in edit mode
+                      }}
+                    >
+                      Edit Session
+                    </Button>
+                  )}
+                  
+                  {/* Cancel Session button with conditional logic */}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        Cancel Session
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel Session</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {isLateCancel ? 
+                            "Cancelling within 24 hours may result in a penalty charge. Are you sure you want to proceed?" :
+                            "Are you sure you want to cancel this session?"
+                          }
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      {isLateCancel && (
+                        <div className="px-6 pb-4">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox 
+                              id="waive-penalty" 
+                              checked={isPenaltyWaived}
+                              onCheckedChange={(checked) => setIsPenaltyWaived(checked === true)}
+                            />
+                            <Label htmlFor="waive-penalty" className="text-sm">
+                              I understand this may incur a penalty charge
+                            </Label>
+                          </div>
+                        </div>
+                      )}
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Keep Session</AlertDialogCancel>
+                         <AlertDialogAction 
+                           onClick={() => handleCancellation(isLateCancel && !isPenaltyWaived)}
+                           disabled={isLateCancel && !isPenaltyWaived}
+                         >
+                           Cancel Session
+                         </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
               )}
-
-              <DialogFooter className="flex flex-col sm:flex-row sm:justify-between sm:space-x-2 mt-6">
-                <Button type="button" onClick={onClose} className="mb-2 sm:mb-0">Close</Button>
-              </DialogFooter>
-            </form>
-          </Form>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     );
   }
 
-  // MODE: EDIT - Session editing functionality (same as view but starts in editing mode)
+  // MODE: EDIT - Session editing functionality (only accessible to trainers)
   if (mode === 'edit') {
+    // Restrict edit mode to trainers only
+    if (!isTrainer) {
+      return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+          <DialogContent className="sm:max-w-[425px] md:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Access Denied</DialogTitle>
+              <DialogDescription>Only trainers can edit sessions.</DialogDescription>
+            </DialogHeader>
+            <div className="py-8 text-center">
+              <p className="text-sm text-destructive">You do not have permission to edit sessions.</p>
+            </div>
+            <DialogFooter>
+              <Button onClick={onClose}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      );
+    }
     // Show loading state while fetching session data
     if (isLoadingSession) {
       return (
@@ -997,8 +1138,27 @@ export default function UniversalSessionModal({
     );
   }
 
-  // MODE: BOOK - Session booking functionality
+  // MODE: BOOK - Session booking functionality (primarily for clients)
   if (mode === 'book') {
+    // Restrict book mode to clients (trainers can still book for clients if needed)
+    if (!isClient && !isTrainer) {
+      return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+          <DialogContent className="sm:max-w-[425px] md:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Access Denied</DialogTitle>
+              <DialogDescription>You need to be logged in to book sessions.</DialogDescription>
+            </DialogHeader>
+            <div className="py-8 text-center">
+              <p className="text-sm text-destructive">Please log in to book a session.</p>
+            </div>
+            <DialogFooter>
+              <Button onClick={onClose}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      );
+    }
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="sm:max-w-[425px]">
