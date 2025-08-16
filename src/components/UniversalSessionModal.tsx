@@ -607,6 +607,61 @@ export default function UniversalSessionModal({
     }
   };
 
+  // Handle completing a session
+  const handleCompleteSession = async () => {
+    if (!sessionData?.id) {
+      console.error('No session ID available');
+      return;
+    }
+
+    try {
+      // Get the current session to pass the JWT token
+      const { data: session } = await supabase.auth.getSession();
+      const token = session?.session?.access_token;
+
+      const { data, error } = await supabase.functions.invoke('manage-session', {
+        body: {
+          action: 'complete',
+          sessionId: sessionData.id,
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (error) {
+        console.error('Error completing session:', error);
+        let errorMessage = "Failed to complete session. Please try again.";
+        
+        if (data && data.error) {
+          errorMessage = data.error;
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      if (data?.success) {
+        toast({
+          title: "Success",
+          description: "Session marked as completed successfully!",
+        });
+        onClose();
+        onSessionUpdated?.();
+      } else {
+        throw new Error(data?.error || 'Failed to complete session');
+      }
+    } catch (error: any) {
+      console.error('Failed to complete session:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to complete session. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   // New cancellation handler using the edge function
   const handleCancellation = async (penalize: boolean) => {
     if (!sessionData?.id || !user?.id) {
@@ -924,8 +979,20 @@ export default function UniversalSessionModal({
           </div>
 
           <DialogFooter className="flex flex-col sm:flex-row sm:justify-between sm:space-x-2 mt-6">
+            {/* Mark as Complete Button - Full width at top for trainers */}
+            {isTrainer && sessionData?.status === 'scheduled' && sessionData?.id && (
+              <Button 
+                type="button" 
+                variant="success"
+                className="w-full mb-3"
+                onClick={handleCompleteSession}
+              >
+                Mark as Complete
+              </Button>
+            )}
+            
             <div className="flex gap-2 mb-2 sm:mb-0">
-              <Button type="button" onClick={onClose}>Close</Button>
+              <Button type="button" onClick={handleModalClose}>Close</Button>
               
               {/* Role-based action buttons with enhanced validation */}
               {isTrainer && sessionData?.status === 'scheduled' && sessionData?.id && (
