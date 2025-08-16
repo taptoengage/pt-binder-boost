@@ -978,20 +978,21 @@ export default function UniversalSessionModal({
             )}
           </div>
 
-          <DialogFooter className="flex flex-col sm:flex-row sm:justify-between sm:space-x-2 mt-6">
-            {/* Mark as Complete Button - Full width at top for trainers */}
-            {isTrainer && sessionData?.status === 'scheduled' && sessionData?.id && (
-              <Button 
-                type="button" 
-                variant="success"
-                className="w-full mb-3"
-                onClick={handleCompleteSession}
-              >
-                Mark as Complete
-              </Button>
-            )}
-            
-            <div className="flex gap-2 mb-2 sm:mb-0">
+          <DialogFooter className="mt-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:space-x-2">
+              {/* Mark as Complete Button for trainers */}
+              {isTrainer && sessionData?.status === 'scheduled' && sessionData?.id && (
+                <Button 
+                  type="button" 
+                  variant="success"
+                  className="mb-2 sm:mb-0"
+                  onClick={handleCompleteSession}
+                >
+                  Mark as Complete
+                </Button>
+              )}
+              
+              <div className="flex gap-2">
               <Button type="button" onClick={handleModalClose}>Close</Button>
               
               {/* Role-based action buttons with enhanced validation */}
@@ -1091,9 +1092,10 @@ export default function UniversalSessionModal({
                     </AlertDialogContent>
                   </AlertDialog>
                 </>
-              )}
+               )}
+              </div>
             </div>
-          </DialogFooter>
+           </DialogFooter>
         </DialogContent>
       </Dialog>
     );
