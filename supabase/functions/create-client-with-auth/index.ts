@@ -48,7 +48,8 @@ serve(async (req) => {
     }
 
     const { 
-      name, 
+      first_name, 
+      last_name,
       phone_number, 
       email, 
       default_session_rate, 
@@ -58,7 +59,7 @@ serve(async (req) => {
     } = await req.json()
 
     // Validate required fields
-    if (!name || !phone_number || !email || default_session_rate === undefined) {
+    if (!first_name || !phone_number || !email || default_session_rate === undefined) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -75,7 +76,8 @@ serve(async (req) => {
       password: temporaryPassword,
       email_confirm: true, // Auto-confirm email to avoid confirmation step
       user_metadata: {
-        full_name: name,
+        first_name: first_name,
+        last_name: last_name,
         phone_number: phone_number
       }
     })
@@ -105,7 +107,8 @@ serve(async (req) => {
     const { data: clientData, error: clientError } = await supabaseAdmin
       .from('clients')
       .insert({
-        name: name.trim(),
+        first_name: first_name.trim(),
+        last_name: last_name?.trim() || '',
         phone_number: phone_number.trim(),
         email: email.trim(),
         default_session_rate: parseFloat(default_session_rate),

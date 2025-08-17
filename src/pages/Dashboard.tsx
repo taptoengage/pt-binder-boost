@@ -69,7 +69,7 @@ export default function Dashboard() {
       // Fetch today's sessions
       const { data: sessions, error: sessionsError } = await supabase
         .from('sessions')
-        .select('*, clients(name)')
+        .select('*, clients(first_name, last_name)')
         .eq('trainer_id', user.id)
         .eq('status', 'scheduled')
         .gte('session_date', startOfToday.toISOString())
@@ -80,7 +80,7 @@ export default function Dashboard() {
       
       const formattedSessions = sessions?.map(session => ({
         id: session.id,
-        client: session.clients?.name || 'Unknown Client',
+        client: session.clients ? `${session.clients.first_name} ${session.clients.last_name}`.trim() : 'Unknown Client',
         time: new Date(session.session_date).toLocaleTimeString('en-US', { 
           hour: 'numeric', 
           minute: '2-digit',
@@ -98,7 +98,7 @@ export default function Dashboard() {
       // Fetch overdue payments
       const { data: payments, error: paymentsError } = await supabase
         .from('payments')
-        .select('*, clients(name)')
+        .select('*, clients(first_name, last_name)')
         .eq('trainer_id', user.id)
         .eq('status', 'overdue')
         .order('due_date', { ascending: true });
@@ -111,7 +111,7 @@ export default function Dashboard() {
         );
         return {
           id: payment.id,
-          client: payment.clients?.name || 'Unknown Client',
+          client: payment.clients ? `${payment.clients.first_name} ${payment.clients.last_name}`.trim() : 'Unknown Client',
           amount: Number(payment.amount),
           daysOverdue: Math.max(0, daysOverdue)
         };
@@ -212,7 +212,7 @@ export default function Dashboard() {
       // Fetch all active session_packs for the trainer
       const { data: allActivePacks, error: allPacksError } = await supabase
         .from('session_packs')
-        .select('*, clients(id, name, phone_number), service_types(name)')
+        .select('*, clients(id, first_name, last_name, phone_number), service_types(name)')
         .eq('trainer_id', user.id)
         .eq('status', 'active')
         .gt('sessions_remaining', 0);
@@ -220,14 +220,15 @@ export default function Dashboard() {
       if (allPacksError) throw allPacksError;
 
       // Client-side aggregation to identify "running low" clients
-      const clientPackSummaries = new Map<string, { id: string; name: string; phone_number: string; total_remaining: number; total_initial: number; }>();
+      const clientPackSummaries = new Map<string, { id: string; first_name: string; last_name: string; phone_number: string; total_remaining: number; total_initial: number; }>();
 
       (allActivePacks || []).forEach(pack => {
         const clientId = pack.clients?.id || 'unknown';
         if (!clientPackSummaries.has(clientId)) {
           clientPackSummaries.set(clientId, {
             id: clientId,
-            name: pack.clients?.name || 'Unknown Client',
+            first_name: pack.clients?.first_name || 'Unknown',
+            last_name: pack.clients?.last_name || 'Client',
             phone_number: pack.clients?.phone_number || 'N/A',
             total_remaining: 0,
             total_initial: 0,
@@ -247,7 +248,8 @@ export default function Dashboard() {
       // Take top 3 as requested for the card
       const topLowSessionClients = clientsByPackStatus.slice(0, 3).map(client => ({
         id: client.id,
-        name: client.name,
+        first_name: client.first_name,
+        last_name: client.last_name,
         phone: client.phone_number,
         remaining: client.total_remaining,
       }));
@@ -429,7 +431,7 @@ export default function Dashboard() {
                 lowSessionClients.map((client) => (
                   <div key={client.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
                     <div>
-                      <p className="font-medium text-body-small">{client.name}</p>
+                      <p className="font-medium text-body-small">{`${client.first_name} ${client.last_name}`.trim()}</p>
                       <p className="text-body-small text-muted-foreground">{client.phone}</p>
                     </div>
                     <div className="text-right">

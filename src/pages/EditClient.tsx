@@ -18,7 +18,8 @@ export default function EditClient() {
   const { toast } = useToast();
   
   const [formData, setFormData] = useState({
-    name: '',
+    first_name: '',
+    last_name: '',
     phone_number: '',
     email: '',
     default_session_rate: '',
@@ -56,9 +57,10 @@ export default function EditClient() {
           throw error;
         }
 
-        setClientName(data.name);
+        setClientName(`${data.first_name} ${data.last_name}`.trim());
         setFormData({
-          name: data.name,
+          first_name: data.first_name || '',
+          last_name: data.last_name || '',
           phone_number: data.phone_number,
           email: data.email,
           default_session_rate: data.default_session_rate.toString(),
@@ -104,10 +106,10 @@ export default function EditClient() {
     }
 
     // Basic client-side validation
-    if (!formData.name.trim() || !formData.phone_number.trim() || !formData.email.trim() || !formData.default_session_rate) {
+    if (!formData.first_name.trim() || !formData.phone_number.trim() || !formData.email.trim() || !formData.default_session_rate) {
       toast({
         title: "Validation Error",
-        description: "Please fill in all required fields.",
+        description: "Please fill in all required fields (first name, phone, email, rate).",
         variant: "destructive",
       });
       return;
@@ -118,7 +120,8 @@ export default function EditClient() {
     try {
       // Prepare data for update
       const clientData = {
-        name: formData.name.trim(),
+        first_name: formData.first_name.trim(),
+        last_name: formData.last_name.trim(),
         phone_number: formData.phone_number.trim(),
         email: formData.email.trim(),
         default_session_rate: parseFloat(formData.default_session_rate),
@@ -200,14 +203,25 @@ export default function EditClient() {
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Name *</Label>
+                    <Label htmlFor="first_name">First Name *</Label>
                     <Input
-                      id="name"
-                      name="name"
-                      value={formData.name}
+                      id="first_name"
+                      name="first_name"
+                      value={formData.first_name}
                       onChange={handleInputChange}
                       required
-                      placeholder="Enter client's full name"
+                      placeholder="Enter client's first name"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="last_name">Last Name</Label>
+                    <Input
+                      id="last_name"
+                      name="last_name"
+                      value={formData.last_name}
+                      onChange={handleInputChange}
+                      placeholder="Enter client's last name"
                     />
                   </div>
 

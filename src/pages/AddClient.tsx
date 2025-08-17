@@ -17,7 +17,8 @@ export default function AddClient() {
   const { toast } = useToast();
   
   const [formData, setFormData] = useState({
-    name: '',
+    first_name: '',
+    last_name: '',
     phone_number: '',
     email: '',
     default_session_rate: '',
@@ -50,10 +51,10 @@ export default function AddClient() {
     }
 
     // Basic client-side validation
-    if (!formData.name.trim() || !formData.phone_number.trim() || !formData.email.trim() || !formData.default_session_rate) {
+    if (!formData.first_name.trim() || !formData.phone_number.trim() || !formData.email.trim() || !formData.default_session_rate) {
       toast({
         title: "Validation Error",
-        description: "Please fill in all required fields.",
+        description: "Please fill in all required fields (first name, phone, email, rate).",
         variant: "destructive",
       });
       return;
@@ -72,7 +73,8 @@ export default function AddClient() {
       // Call the Edge Function to create client with auth account
       const response = await supabase.functions.invoke('create-client-with-auth', {
         body: {
-          name: formData.name.trim(),
+          first_name: formData.first_name.trim(),
+          last_name: formData.last_name.trim(),
           phone_number: formData.phone_number.trim(),
           email: formData.email.trim(),
           default_session_rate: formData.default_session_rate,
@@ -138,14 +140,25 @@ export default function AddClient() {
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Name *</Label>
+                    <Label htmlFor="first_name">First Name *</Label>
                     <Input
-                      id="name"
-                      name="name"
-                      value={formData.name}
+                      id="first_name"
+                      name="first_name"
+                      value={formData.first_name}
                       onChange={handleInputChange}
                       required
-                      placeholder="Enter client's full name"
+                      placeholder="Enter client's first name"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="last_name">Last Name</Label>
+                    <Input
+                      id="last_name"
+                      name="last_name"
+                      value={formData.last_name}
+                      onChange={handleInputChange}
+                      placeholder="Enter client's last name"
                     />
                   </div>
 

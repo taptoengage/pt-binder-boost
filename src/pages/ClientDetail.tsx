@@ -31,7 +31,8 @@ import { PackCard } from '@/components/PackCard';
 
 interface Client {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   phone_number: string;
   email: string;
   default_session_rate: number;
@@ -873,7 +874,7 @@ export default function ClientDetail() {
               Back to Clients
             </Button>
             <div className="flex items-center justify-between mb-2">
-              <h1 className="text-heading-1">{client.name}</h1>
+              <h1 className="text-heading-1">{`${client.first_name} ${client.last_name}`.trim()}</h1>
               <div className="flex items-center gap-2">
                 <Button 
                   onClick={handleEditClient}
@@ -1563,7 +1564,7 @@ export default function ClientDetail() {
             <DialogHeader>
               <DialogTitle>Confirm Deletion</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete <strong>{client?.name}</strong>? This action cannot be undone. 
+                Are you sure you want to delete <strong>{client ? `${client.first_name} ${client.last_name}`.trim() : ''}</strong>? This action cannot be undone. 
                 All associated payments and sessions will also be deleted.
               </DialogDescription>
             </DialogHeader>
@@ -1685,7 +1686,7 @@ export default function ClientDetail() {
         <Dialog open={isAddPackModalOpen} onOpenChange={setIsAddPackModalOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Add New Session Pack for {client?.name}</DialogTitle>
+              <DialogTitle>Add New Session Pack for {client ? `${client.first_name} ${client.last_name}`.trim() : ''}</DialogTitle>
               <DialogDescription>
                 Create a pre-paid pack of sessions for this client.
               </DialogDescription>

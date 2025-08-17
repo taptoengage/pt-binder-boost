@@ -297,7 +297,7 @@ export default function ClientDashboard() {
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-3xl font-bold">Welcome, {client?.name}!</h1>
+            <h1 className="text-3xl font-bold">Welcome, {client ? `${client.first_name} ${client.last_name}`.trim() : 'Client'}!</h1>
             <p className="text-muted-foreground">Your Personal Training Dashboard</p>
           </div>
           <DropdownMenu>
@@ -308,7 +308,7 @@ export default function ClientDashboard() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{client?.name}</DropdownMenuLabel>
+              <DropdownMenuLabel>{client ? `${client.first_name} ${client.last_name}`.trim() : 'Client'}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => navigate('/client/book-session')}>
                 Book a Session

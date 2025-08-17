@@ -15,7 +15,8 @@ import { useNavigate } from 'react-router-dom';
 
 // Form validation schema
 const EditProfileSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
+  first_name: z.string().min(1, 'First name is required'),
+  last_name: z.string().optional(),
   email: z.string().email('Invalid email address'),
   phone_number: z.string().min(1, 'Phone number is required'),
 });
@@ -61,7 +62,8 @@ export default function ClientProfile() {
   const form = useForm<EditProfileFormData>({
     resolver: zodResolver(EditProfileSchema),
     defaultValues: {
-      name: clientProfile?.name || '',
+      first_name: clientProfile?.first_name || '',
+      last_name: clientProfile?.last_name || '',
       email: clientProfile?.email || '',
       phone_number: clientProfile?.phone_number || '',
     },
@@ -71,7 +73,8 @@ export default function ClientProfile() {
   useEffect(() => {
     if (clientProfile) {
       form.reset({
-        name: clientProfile.name || '',
+        first_name: clientProfile.first_name || '',
+        last_name: clientProfile.last_name || '',
         email: clientProfile.email || '',
         phone_number: clientProfile.phone_number || '',
       });
@@ -81,7 +84,8 @@ export default function ClientProfile() {
   useEffect(() => {
     if (!isEditing && clientProfile) {
       form.reset({
-        name: clientProfile.name || '',
+        first_name: clientProfile.first_name || '',
+        last_name: clientProfile.last_name || '',
         email: clientProfile.email || '',
         phone_number: clientProfile.phone_number || '',
       });
@@ -96,7 +100,8 @@ export default function ClientProfile() {
       const { error } = await supabase
         .from('clients')
         .update({
-          name: data.name,
+          first_name: data.first_name,
+          last_name: data.last_name,
           email: data.email,
           phone_number: data.phone_number,
           updated_at: new Date().toISOString(),
@@ -273,13 +278,33 @@ export default function ClientProfile() {
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField
                     control={form.control}
-                    name="name"
+                    name="first_name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Full Name</FormLabel>
+                        <FormLabel>First Name</FormLabel>
                         <FormControl>
                           {isEditing ? (
-                            <Input {...field} placeholder="Enter your full name" />
+                            <Input {...field} placeholder="Enter your first name" />
+                          ) : (
+                            <div className="p-3 border rounded-md bg-muted/50">
+                              {field.value || 'Not provided'}
+                            </div>
+                          )}
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="last_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Last Name</FormLabel>
+                        <FormControl>
+                          {isEditing ? (
+                            <Input {...field} placeholder="Enter your last name" />
                           ) : (
                             <div className="p-3 border rounded-md bg-muted/50">
                               {field.value || 'Not provided'}

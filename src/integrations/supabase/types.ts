@@ -113,7 +113,9 @@ export type Database = {
           created_at: string
           default_session_rate: number
           email: string
+          first_name: string
           id: string
+          last_name: string
           name: string
           phone_number: string
           physical_activity_readiness: string | null
@@ -127,7 +129,9 @@ export type Database = {
           created_at?: string
           default_session_rate?: number
           email: string
+          first_name?: string
           id?: string
+          last_name?: string
           name: string
           phone_number: string
           physical_activity_readiness?: string | null
@@ -141,7 +145,9 @@ export type Database = {
           created_at?: string
           default_session_rate?: number
           email?: string
+          first_name?: string
           id?: string
+          last_name?: string
           name?: string
           phone_number?: string
           physical_activity_readiness?: string | null
@@ -705,8 +711,10 @@ export type Database = {
           contact_email: string
           created_at: string | null
           facebook_id: string | null
+          first_name: string
           id: string
           instagram_handle: string | null
+          last_name: string
           phone: string | null
           trainerize_id: string | null
           updated_at: string | null
@@ -718,8 +726,10 @@ export type Database = {
           contact_email: string
           created_at?: string | null
           facebook_id?: string | null
+          first_name?: string
           id?: string
           instagram_handle?: string | null
+          last_name?: string
           phone?: string | null
           trainerize_id?: string | null
           updated_at?: string | null
@@ -731,8 +741,10 @@ export type Database = {
           contact_email?: string
           created_at?: string | null
           facebook_id?: string | null
+          first_name?: string
           id?: string
           instagram_handle?: string | null
+          last_name?: string
           phone?: string | null
           trainerize_id?: string | null
           updated_at?: string | null

@@ -11,7 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 
 interface Client {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   phone_number: string;
   email: string;
   default_session_rate: number;
@@ -139,7 +140,7 @@ export default function Clients() {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => handleClientClick(client.id)}
                     >
-                      <TableCell className="font-medium">{client.name}</TableCell>
+                      <TableCell className="font-medium">{`${client.first_name} ${client.last_name}`.trim()}</TableCell>
                       <TableCell>{client.phone_number}</TableCell>
                       <TableCell>{client.email}</TableCell>
                       <TableCell>${client.default_session_rate.toFixed(2)}</TableCell>
