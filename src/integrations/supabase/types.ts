@@ -14,6 +14,72 @@ export type Database = {
   }
   public: {
     Tables: {
+      client_photos: {
+        Row: {
+          captured_at: string | null
+          client_id: string
+          content_type: string | null
+          created_at: string
+          file_path: string
+          file_size_bytes: number | null
+          id: string
+          measurements: Json | null
+          notes: string | null
+          pose: string | null
+          trainer_id: string
+          updated_at: string
+          uploaded_by: string
+          visibility: Database["public"]["Enums"]["client_photo_visibility_enum"]
+        }
+        Insert: {
+          captured_at?: string | null
+          client_id: string
+          content_type?: string | null
+          created_at?: string
+          file_path: string
+          file_size_bytes?: number | null
+          id?: string
+          measurements?: Json | null
+          notes?: string | null
+          pose?: string | null
+          trainer_id: string
+          updated_at?: string
+          uploaded_by: string
+          visibility?: Database["public"]["Enums"]["client_photo_visibility_enum"]
+        }
+        Update: {
+          captured_at?: string | null
+          client_id?: string
+          content_type?: string | null
+          created_at?: string
+          file_path?: string
+          file_size_bytes?: number | null
+          id?: string
+          measurements?: Json | null
+          notes?: string | null
+          pose?: string | null
+          trainer_id?: string
+          updated_at?: string
+          uploaded_by?: string
+          visibility?: Database["public"]["Enums"]["client_photo_visibility_enum"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_photos_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_photos_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_service_rates: {
         Row: {
           client_id: string
@@ -119,6 +185,7 @@ export type Database = {
           name: string
           phone_number: string
           physical_activity_readiness: string | null
+          profile_photo_url: string | null
           rough_goals: string | null
           trainer_id: string
           training_age: number | null
@@ -135,6 +202,7 @@ export type Database = {
           name: string
           phone_number: string
           physical_activity_readiness?: string | null
+          profile_photo_url?: string | null
           rough_goals?: string | null
           trainer_id: string
           training_age?: number | null
@@ -151,6 +219,7 @@ export type Database = {
           name?: string
           phone_number?: string
           physical_activity_readiness?: string | null
+          profile_photo_url?: string | null
           rough_goals?: string | null
           trainer_id?: string
           training_age?: number | null
@@ -716,6 +785,7 @@ export type Database = {
           instagram_handle: string | null
           last_name: string
           phone: string | null
+          profile_photo_url: string | null
           trainerize_id: string | null
           updated_at: string | null
           wechat_id: string | null
@@ -731,6 +801,7 @@ export type Database = {
           instagram_handle?: string | null
           last_name?: string
           phone?: string | null
+          profile_photo_url?: string | null
           trainerize_id?: string | null
           updated_at?: string | null
           wechat_id?: string | null
@@ -746,6 +817,7 @@ export type Database = {
           instagram_handle?: string | null
           last_name?: string
           phone?: string | null
+          profile_photo_url?: string | null
           trainerize_id?: string | null
           updated_at?: string | null
           wechat_id?: string | null
@@ -783,6 +855,7 @@ export type Database = {
       }
     }
     Enums: {
+      client_photo_visibility_enum: "private" | "shared"
       client_subscription_status_enum:
         | "active"
         | "paused"
@@ -927,6 +1000,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      client_photo_visibility_enum: ["private", "shared"],
       client_subscription_status_enum: [
         "active",
         "paused",
