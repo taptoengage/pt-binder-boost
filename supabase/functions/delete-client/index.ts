@@ -91,96 +91,100 @@ Deno.serve(async (req) => {
     try {
       // Step 1: Delete all associated data in proper order (due to foreign key constraints)
       
-      // Fetch subscription IDs for this client first to avoid .in() subquery errors
+      // 1) Delete sessions first to break FKs to credits/subscriptions/packs
+      const { error: sessionsError } = await supabaseAdmin
+        .from('sessions')
+        .delete()
+        .eq('client_id', clientId);
+      if (sessionsError) {
+        throw new Error(`Failed to delete sessions: ${sessionsError.message}`);
+      }
+
+      // 2) Fetch subscription IDs for this client to handle related tables
       const { data: subscriptionRows, error: subIdsError } = await supabaseAdmin
         .from('client_subscriptions')
         .select('id')
         .eq('client_id', clientId);
-
       if (subIdsError) {
-        console.error('Error fetching subscription IDs:', subIdsError);
+        throw new Error(`Error fetching subscription IDs: ${subIdsError.message}`);
       }
       const subscriptionIds = (subscriptionRows ?? []).map((s: { id: string }) => s.id);
 
+      // 3) Delete subscription-related records in dependency-safe order
       if (subscriptionIds.length > 0) {
-        // Delete subscription session credits
-        const { error: creditsError } = await supabaseAdmin
-          .from('subscription_session_credits')
-          .delete()
-          .in('subscription_id', subscriptionIds);
-        if (creditsError) {
-          console.error('Error deleting subscription session credits:', creditsError);
-        }
-
-        // Delete subscription service allocations
-        const { error: allocationsError } = await supabaseAdmin
-          .from('subscription_service_allocations')
-          .delete()
-          .in('subscription_id', subscriptionIds);
-        if (allocationsError) {
-          console.error('Error deleting subscription service allocations:', allocationsError);
-        }
-
-        // Delete subscription billing periods
+        // a) Delete billing periods first (they can reference payments)
         const { error: billingError } = await supabaseAdmin
           .from('subscription_billing_periods')
           .delete()
           .in('client_subscription_id', subscriptionIds);
         if (billingError) {
-          console.error('Error deleting billing periods:', billingError);
+          throw new Error(`Failed to delete billing periods: ${billingError.message}`);
+        }
+
+        // b) Delete credits (sessions already removed, so no FK issues)
+        const { error: creditsError } = await supabaseAdmin
+          .from('subscription_session_credits')
+          .delete()
+          .in('subscription_id', subscriptionIds);
+        if (creditsError) {
+          throw new Error(`Failed to delete subscription session credits: ${creditsError.message}`);
+        }
+
+        // c) Delete service allocations
+        const { error: allocationsError } = await supabaseAdmin
+          .from('subscription_service_allocations')
+          .delete()
+          .in('subscription_id', subscriptionIds);
+        if (allocationsError) {
+          throw new Error(`Failed to delete subscription service allocations: ${allocationsError.message}`);
         }
       } else {
         console.log('INFO: No subscriptions found for client; skipping subscription-related deletions');
       }
 
-      // Delete client subscriptions
-      const { error: subscriptionsError } = await supabaseAdmin
-        .from('client_subscriptions')
-        .delete()
-        .eq('client_id', clientId);
-      
-      if (subscriptionsError) {
-        console.error('Error deleting client subscriptions:', subscriptionsError);
-      }
-
-      // Delete sessions
-      const { error: sessionsError } = await supabaseAdmin
-        .from('sessions')
-        .delete()
-        .eq('client_id', clientId);
-      
-      if (sessionsError) {
-        console.error('Error deleting sessions:', sessionsError);
-      }
-
-      // Delete session packs
-      const { error: packsError } = await supabaseAdmin
-        .from('session_packs')
-        .delete()
-        .eq('client_id', clientId);
-      
-      if (packsError) {
-        console.error('Error deleting session packs:', packsError);
-      }
-
-      // Delete payments
+      // 4) Delete payments after billing periods are removed
       const { error: paymentsError } = await supabaseAdmin
         .from('payments')
         .delete()
         .eq('client_id', clientId);
-      
       if (paymentsError) {
-        console.error('Error deleting payments:', paymentsError);
+        throw new Error(`Failed to delete payments: ${paymentsError.message}`);
       }
 
-      // Delete client service rates
+      // 5) Delete client subscriptions
+      const { error: subscriptionsError } = await supabaseAdmin
+        .from('client_subscriptions')
+        .delete()
+        .eq('client_id', clientId);
+      if (subscriptionsError) {
+        throw new Error(`Failed to delete client subscriptions: ${subscriptionsError.message}`);
+      }
+
+      // 6) Delete session packs (payments gone, sessions gone)
+      const { error: packsError } = await supabaseAdmin
+        .from('session_packs')
+        .delete()
+        .eq('client_id', clientId);
+      if (packsError) {
+        throw new Error(`Failed to delete session packs: ${packsError.message}`);
+      }
+
+      // 7) Delete client service rates
       const { error: ratesError } = await supabaseAdmin
         .from('client_service_rates')
         .delete()
         .eq('client_id', clientId);
-      
       if (ratesError) {
-        console.error('Error deleting client service rates:', ratesError);
+        throw new Error(`Failed to delete client service rates: ${ratesError.message}`);
+      }
+
+      // 8) Delete client photos metadata
+      const { error: photosError } = await supabaseAdmin
+        .from('client_photos')
+        .delete()
+        .eq('client_id', clientId);
+      if (photosError) {
+        throw new Error(`Failed to delete client photos: ${photosError.message}`);
       }
 
       // Step 2: Delete the client record
