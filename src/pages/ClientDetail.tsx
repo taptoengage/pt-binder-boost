@@ -519,14 +519,38 @@ export default function ClientDetail() {
       }
 
       const data = response.data;
-      if (!data.success) {
+      
+      // Distinguish between true failures vs partial success
+      if (!data.success && !data.database_deletion_successful) {
         throw new Error(data.error || 'Failed to delete client');
       }
 
-      toast({
-        title: "Client deleted",
-        description: data.message || "The client and all associated data have been deleted successfully.",
-      });
+      // Log deletion summary for debugging
+      if (data.deletion_summary) {
+        console.log('Client deletion completed:', {
+          client_name: data.client_name,
+          records_deleted: data.records_deleted,
+          auth_user_deleted: data.auth_user_deleted,
+          manual_cleanup_required: data.manual_cleanup_required
+        });
+      }
+
+      // Show appropriate toast based on deletion outcome
+      if (data.manual_cleanup_required) {
+        // Partial success - database deleted but auth cleanup failed
+        toast({
+          title: "Client deleted (auth cleanup needed)",
+          description: `${data.client_name || 'Client'} data was deleted successfully, but auth user cleanup failed. Manual intervention may be required.`,
+          variant: "destructive",
+          duration: 8000,
+        });
+      } else {
+        // Complete success
+        toast({
+          title: "Client deleted",
+          description: `${data.client_name || 'Client'} and all associated data have been deleted successfully.`,
+        });
+      }
 
       navigate('/clients');
     } catch (error) {
