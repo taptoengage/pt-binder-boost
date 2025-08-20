@@ -91,46 +91,46 @@ Deno.serve(async (req) => {
     try {
       // Step 1: Delete all associated data in proper order (due to foreign key constraints)
       
-      // Delete subscription session credits
-      const { error: creditsError } = await supabaseAdmin
-        .from('subscription_session_credits')
-        .delete()
-        .in('subscription_id', supabaseAdmin
-          .from('client_subscriptions')
-          .select('id')
-          .eq('client_id', clientId)
-        );
-      
-      if (creditsError) {
-        console.error('Error deleting subscription session credits:', creditsError);
-      }
+      // Fetch subscription IDs for this client first to avoid .in() subquery errors
+      const { data: subscriptionRows, error: subIdsError } = await supabaseAdmin
+        .from('client_subscriptions')
+        .select('id')
+        .eq('client_id', clientId);
 
-      // Delete subscription service allocations  
-      const { error: allocationsError } = await supabaseAdmin
-        .from('subscription_service_allocations')
-        .delete()
-        .in('subscription_id', supabaseAdmin
-          .from('client_subscriptions')
-          .select('id')
-          .eq('client_id', clientId)
-        );
-      
-      if (allocationsError) {
-        console.error('Error deleting subscription service allocations:', allocationsError);
+      if (subIdsError) {
+        console.error('Error fetching subscription IDs:', subIdsError);
       }
+      const subscriptionIds = (subscriptionRows ?? []).map((s: { id: string }) => s.id);
 
-      // Delete subscription billing periods
-      const { error: billingError } = await supabaseAdmin
-        .from('subscription_billing_periods')
-        .delete()
-        .in('client_subscription_id', supabaseAdmin
-          .from('client_subscriptions')
-          .select('id')
-          .eq('client_id', clientId)
-        );
-      
-      if (billingError) {
-        console.error('Error deleting billing periods:', billingError);
+      if (subscriptionIds.length > 0) {
+        // Delete subscription session credits
+        const { error: creditsError } = await supabaseAdmin
+          .from('subscription_session_credits')
+          .delete()
+          .in('subscription_id', subscriptionIds);
+        if (creditsError) {
+          console.error('Error deleting subscription session credits:', creditsError);
+        }
+
+        // Delete subscription service allocations
+        const { error: allocationsError } = await supabaseAdmin
+          .from('subscription_service_allocations')
+          .delete()
+          .in('subscription_id', subscriptionIds);
+        if (allocationsError) {
+          console.error('Error deleting subscription service allocations:', allocationsError);
+        }
+
+        // Delete subscription billing periods
+        const { error: billingError } = await supabaseAdmin
+          .from('subscription_billing_periods')
+          .delete()
+          .in('client_subscription_id', subscriptionIds);
+        if (billingError) {
+          console.error('Error deleting billing periods:', billingError);
+        }
+      } else {
+        console.log('INFO: No subscriptions found for client; skipping subscription-related deletions');
       }
 
       // Delete client subscriptions
