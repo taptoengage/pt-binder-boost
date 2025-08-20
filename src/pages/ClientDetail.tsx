@@ -509,31 +509,76 @@ export default function ClientDetail() {
     try {
       setIsDeleting(true);
       
-      // Use the secure delete Edge Function instead of direct database deletion
+      // Call the secure delete Edge Function
       const response = await supabase.functions.invoke('delete-client', {
         body: { clientId }
       });
 
+      // Handle different response scenarios
       if (response.error) {
+        // Network or invocation error
         throw new Error(response.error.message || 'Failed to delete client');
       }
 
+      // Get the response data
       const data = response.data;
       
-      // Simple check for success - works with current edge function format
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to delete client');
+      // Check for explicit success indicators
+      const isSuccessful = 
+        data?.success === true || 
+        data?.message?.includes('successfully') ||
+        data?.message?.includes('deleted') ||
+        (data && typeof data === 'object' && !data.error && data.success !== false);
+
+      // Check for explicit error indicators
+      const hasError = 
+        data?.success === false ||
+        data?.error ||
+        (typeof data === 'string' && data.toLowerCase().includes('error'));
+
+      if (hasError) {
+        throw new Error(data.error || data.message || 'Failed to delete client');
       }
 
-      // Show success toast
+      // If we reach here, consider it successful
+      const successMessage = data?.message || 'Client and all associated data have been deleted successfully.';
+      
       toast({
         title: "Client deleted",
-        description: data.message || "The client and all associated data have been deleted successfully.",
+        description: successMessage,
       });
 
+      // Navigate back to clients list
       navigate('/clients');
+
     } catch (error) {
       console.error('Error deleting client:', error);
+      
+      // Check if the client was actually deleted despite the error
+      // This is a fallback check for when the function succeeds but returns unexpected format
+      try {
+        const { data: clientCheck } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('id', clientId)
+          .eq('trainer_id', user.id)
+          .maybeSingle();
+
+        if (!clientCheck) {
+          // Client doesn't exist anymore, so deletion was successful
+          toast({
+            title: "Client deleted",
+            description: "The client has been deleted successfully.",
+          });
+          navigate('/clients');
+          return;
+        }
+      } catch (checkError) {
+        // If we can't check, proceed with error handling
+        console.error('Error checking client existence:', checkError);
+      }
+
+      // Show error toast only if client still exists
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to delete client. Please try again.",
