@@ -838,6 +838,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      delete_client_data: {
+        Args: { p_client_id: string; p_trainer_id: string }
+        Returns: Json
+      }
       increment_pack_sessions: {
         Args: { inc?: number; pack_id: string; trainer_id: string }
         Returns: boolean
