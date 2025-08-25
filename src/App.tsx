@@ -72,8 +72,8 @@ function AppRoutes() {
         }
       }
     } else { // User is not authenticated
-      // Redirect from protected routes to landing
-      if (currentPath !== '/' && !currentPath.startsWith('/auth/')) {
+      // Redirect from protected routes to landing (but allow access to under-construction)
+      if (currentPath !== '/' && !currentPath.startsWith('/auth/') && currentPath !== '/under-construction') {
         navigate('/');
       }
     }
