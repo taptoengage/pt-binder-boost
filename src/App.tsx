@@ -7,7 +7,6 @@ import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
-import Landing from "./pages/Landing";
 import AuthRedirect from "./pages/AuthRedirect";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
@@ -80,12 +79,11 @@ function AppRoutes() {
         }
       }
     } else { // User is not authenticated
-      // For protected routes, we'll show UnderConstruction instead of redirecting
-      // Only redirect to landing if they're trying to access auth routes or other specific routes
-      if (currentPath.startsWith('/auth/')) {
-        navigate('/');
+      // Redirect unauthenticated users to /auth for login
+      if (currentPath === '/') {
+        navigate('/auth');
       }
-      // Note: We don't redirect protected routes anymore - they'll show UnderConstruction
+      // For other protected routes, we'll show UnderConstruction
     }
   }, [user, loading, trainer, client, authStatus, navigate, toast]);
 
@@ -96,7 +94,7 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={<AuthRedirect />} />
       <Route path="/auth" element={<AuthRedirect />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/onboarding" element={<Onboarding />} />
