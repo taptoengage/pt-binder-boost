@@ -114,25 +114,29 @@ export const useUniversalCalendar = ({
     staleTime: 60 * 1000, // Cache for 1 minute
   });
 
-  // Fetch booked sessions
+  // Fetch booked sessions using secure RPC
   const { data: sessions = [], isLoading: isLoadingSessions, error: sessionsError } = useQuery({
-    queryKey: ['trainerSessions', trainerId, currentDisplayMonth],
+    queryKey: ['trainerBusySlots', trainerId, currentDisplayMonth],
     queryFn: async () => {
       if (!trainerId) return [];
       
       const startDate = startOfMonth(currentDisplayMonth);
       const endDate = endOfMonth(currentDisplayMonth);
       
-      const { data, error } = await supabase
-        .from('sessions')
-        .select('session_date, status')
-        .eq('trainer_id', trainerId)
-        .not('status', 'in', '("cancelled", "no-show")')
-        .gte('session_date', startDate.toISOString())
-        .lte('session_date', endDate.toISOString());
+      const { data, error } = await supabase.rpc('get_trainer_busy_slots');
 
       if (error) throw error;
-      return data || [];
+      
+      // Filter to current month and transform to match expected format
+      const filteredSessions = (data || []).filter((session: any) => {
+        const sessionDate = new Date(session.session_date);
+        return sessionDate >= startDate && sessionDate <= endDate && session.trainer_id === trainerId;
+      }).map((session: any) => ({
+        session_date: session.session_date,
+        status: 'scheduled' // RPC only returns scheduled/completed sessions
+      }));
+      
+      return filteredSessions;
     },
     enabled: enabled && !!trainerId,
     staleTime: 30 * 1000, // Cache for 30 seconds

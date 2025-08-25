@@ -39,26 +39,28 @@ export const useSessionOverlapCheck = ({
       const proposedStart = setMinutes(setHours(proposedDate, hours), minutes);
       const proposedEnd = addMinutes(proposedStart, DEFAULT_SESSION_DURATION_MINUTES);
 
-      let query = supabase
-        .from('sessions')
-        .select('id, session_date')
-        .eq('trainer_id', trainerId)
-        // Only consider sessions that are 'scheduled' or 'completed' as potential overlaps
-        .in('status', ['scheduled', 'completed']);
-
-      if (sessionIdToExclude) {
-        query = query.neq('id', sessionIdToExclude); // Exclude the current session being edited
-      }
-
-      const { data, error } = await query;
+      const { data, error } = await supabase.rpc('get_trainer_busy_slots');
 
       if (error) {
-        console.error("Error fetching overlapping sessions:", error);
+        console.error("Error fetching trainer busy slots:", error);
         throw error;
       }
 
+      // Filter to specific trainer and transform to expected format
+      const trainerSessions = (data || []).filter((session: any) => 
+        session.trainer_id === trainerId
+      ).map((session: any) => ({
+        id: session.session_date, // Use session_date as temporary ID for filtering
+        session_date: session.session_date
+      }));
+
+      // Apply sessionIdToExclude filter if needed (though RPC doesn't return IDs)
+      const filteredData = sessionIdToExclude 
+        ? trainerSessions.filter((session: any) => session.id !== sessionIdToExclude)
+        : trainerSessions;
+
       // Client-side filtering for actual time overlap
-      const overlaps = data.filter((existingSession: any) => {
+      const overlaps = filteredData.filter((existingSession: any) => {
         const existingStart = new Date(existingSession.session_date);
         const existingEnd = addMinutes(existingStart, DEFAULT_SESSION_DURATION_MINUTES);
 
