@@ -71,6 +71,7 @@ export default function AddClient() {
       }
 
       // Call the Edge Function to create client with auth account
+      console.log('DEBUG: Submitting form data:', formData);
       const response = await supabase.functions.invoke('create-client-with-auth', {
         body: {
           first_name: formData.first_name.trim(),

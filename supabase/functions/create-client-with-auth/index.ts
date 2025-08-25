@@ -47,6 +47,9 @@ serve(async (req) => {
       )
     }
 
+    const bookingData = await req.json()
+    console.log('DEBUG: Received booking data:', bookingData)
+
     const { 
       first_name, 
       last_name,
@@ -56,7 +59,7 @@ serve(async (req) => {
       training_age, 
       rough_goals, 
       physical_activity_readiness 
-    } = await req.json()
+    } = bookingData
 
     // Validate required fields
     if (!first_name || !phone_number || !email || default_session_rate === undefined) {
@@ -107,6 +110,7 @@ serve(async (req) => {
     const { data: clientData, error: clientError } = await supabaseAdmin
       .from('clients')
       .insert({
+        name: `${first_name?.trim() || ''} ${last_name?.trim() || ''}`.trim(),
         first_name: first_name.trim(),
         last_name: last_name?.trim() || '',
         phone_number: phone_number.trim(),
