@@ -108,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: existingClient, error: clientError } = await supabase
         .from('clients')
         .select('*')
-        .eq('email', user.email)
+        .eq('user_id', user.id)
         .maybeSingle()
 
       if (clientError) {
