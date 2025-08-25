@@ -893,6 +893,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_to_waitlist: {
+        Args: {
+          p_email: string
+          p_ip_address?: string
+          p_metadata?: Json
+          p_referrer?: string
+          p_source?: string
+          p_user_agent?: string
+        }
+        Returns: {
+          created_at: string
+          duplicate: boolean
+          email: string
+          id: string
+        }[]
+      }
       decrement_pack_sessions: {
         Args: {
           expected_remaining: number
