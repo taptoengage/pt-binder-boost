@@ -155,7 +155,7 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     .from('clients')
     .select('id, email')
     .eq('id', clientId)
-    .eq('email', user.email)
+    .eq('user_id', user.id)
     .single();
 
   if (clientError || !clientData) {
