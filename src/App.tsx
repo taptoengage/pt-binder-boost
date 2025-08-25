@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import Landing from "./pages/Landing";
+import AuthRedirect from "./pages/AuthRedirect";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
 import Clients from "./pages/Clients";
@@ -41,6 +42,7 @@ function AppRoutes() {
   // Track if user is attempting to access a restricted route
   const currentPath = window.location.pathname;
   const isProtectedRoute = currentPath !== '/' && 
+                          currentPath !== '/auth' &&
                           !currentPath.startsWith('/auth/') && 
                           currentPath !== '/under-construction';
   const shouldShowUnderConstruction = !loading && !user && isProtectedRoute;
@@ -95,6 +97,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
+      <Route path="/auth" element={<AuthRedirect />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/clients" element={<Clients />} />
