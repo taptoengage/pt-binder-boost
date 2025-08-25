@@ -90,15 +90,13 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Build a friendly response
+    // Build a friendly, minimal response
     const responseBody = {
       success: true,
+      duplicate: !!row.duplicate,
       message: row.duplicate
         ? "Thank you! You're already on our waitlist."
         : "Successfully added to waitlist!",
-      id: row.id,
-      created_at: row.created_at,
-      duplicate: !!row.duplicate,
     };
 
     return new Response(JSON.stringify(responseBody), {
