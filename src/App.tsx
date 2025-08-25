@@ -28,6 +28,7 @@ import ClientHistory from "./pages/ClientHistory";
 import MyProfile from "./pages/MyProfile";
 import ClientProfile from "./pages/ClientProfile";
 import ManageAvailability from "./pages/ManageAvailability";
+import UnderConstruction from "./components/UnderConstruction";
 
 const queryClient = new QueryClient();
 
@@ -101,6 +102,8 @@ function AppRoutes() {
       <Route path="/client/dashboard" element={<ClientDashboard />} />
       <Route path="/client/book-session" element={<ClientBookSessionPage />} />
       <Route path="/client/profile" element={<ClientProfile />} />
+      {/* TEMPORARY: Test route for UnderConstruction component */}
+      <Route path="/under-construction" element={<UnderConstruction />} />
       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
       <Route path="*" element={<NotFound />} />
     </Routes>
