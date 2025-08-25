@@ -37,10 +37,15 @@ function AppRoutes() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Track if user is attempting to access a restricted route
+  const currentPath = window.location.pathname;
+  const isProtectedRoute = currentPath !== '/' && 
+                          !currentPath.startsWith('/auth/') && 
+                          currentPath !== '/under-construction';
+  const shouldShowUnderConstruction = !loading && !user && isProtectedRoute;
+
   useEffect(() => {
     if (loading) return; // Wait for auth state to be confirmed
-
-    const currentPath = window.location.pathname;
 
     // Handle unassigned role specifically for onboarding
     if (authStatus === 'unassigned_role') {
@@ -72,12 +77,19 @@ function AppRoutes() {
         }
       }
     } else { // User is not authenticated
-      // Redirect from protected routes to landing (but allow access to under-construction)
-      if (currentPath !== '/' && !currentPath.startsWith('/auth/') && currentPath !== '/under-construction') {
+      // For protected routes, we'll show UnderConstruction instead of redirecting
+      // Only redirect to landing if they're trying to access auth routes or other specific routes
+      if (currentPath.startsWith('/auth/')) {
         navigate('/');
       }
+      // Note: We don't redirect protected routes anymore - they'll show UnderConstruction
     }
   }, [user, loading, trainer, client, authStatus, navigate, toast]);
+
+  // Show UnderConstruction for unauthenticated users trying to access protected routes
+  if (shouldShowUnderConstruction) {
+    return <UnderConstruction />;
+  }
 
   return (
     <Routes>

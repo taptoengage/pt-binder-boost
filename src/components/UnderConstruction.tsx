@@ -27,15 +27,20 @@ const UnderConstruction = () => {
 
     setIsLoading(true);
 
+    // Determine source based on how user got here
+    const currentPath = window.location.pathname;
+    const source = currentPath === '/under-construction' ? 'under-construction' : 'restricted-access';
+
     try {
       const { data, error } = await supabase.functions.invoke('waitlist-signup', {
         body: {
           email: email.trim(),
-          source: 'under-construction',
+          source: source,
           referrer: window.location.href,
           metadata: {
             timestamp: new Date().toISOString(),
-            userAgent: navigator.userAgent
+            userAgent: navigator.userAgent,
+            originalPath: currentPath !== '/under-construction' ? currentPath : undefined
           }
         }
       });
