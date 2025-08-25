@@ -842,6 +842,13 @@ export type Database = {
         Args: { p_client_id: string; p_trainer_id: string }
         Returns: Json
       }
+      get_trainer_busy_slots: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          session_date: string
+          trainer_id: string
+        }[]
+      }
       increment_pack_sessions: {
         Args: { inc?: number; pack_id: string; trainer_id: string }
         Returns: boolean
