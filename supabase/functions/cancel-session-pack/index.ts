@@ -1,24 +1,26 @@
 // cancel-session-pack edge function
-// Handles cancelling a session pack by either forfeiting or refunding remaining sessions
+// Handles cancelling a session pack by either forfeiting or refunding remaining sessions.
 // Requires authentication. Only the trainer who owns the pack may cancel it.
-// - Blocks cancellation if any sessions for the pack are currently scheduled
-// - Archives the pack and records forfeited/refunded counts and optional notes
+// - Blocks cancellation if any sessions for the pack are currently scheduled.
+// - Archives the pack and records forfeited/refunded counts and optional notes.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// Standard CORS headers for Supabase Edge Functions
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 Deno.serve(async (req: Request) => {
-  // Handle CORS preflight
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    // Create an auth-aware client using the caller's JWT so RLS policies apply
+    // Create a Supabase client with the user's authentication token.
+    // This ensures that all database operations respect RLS policies.
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -29,7 +31,7 @@ Deno.serve(async (req: Request) => {
       }
     );
 
-    // Authenticate user
+    // 1. Authenticate the user
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData?.user) {
       return new Response(
@@ -39,7 +41,7 @@ Deno.serve(async (req: Request) => {
     }
     const userId = userData.user.id;
 
-    // Parse payload
+    // 2. Parse the request payload
     const { packId, cancellationType, notes } = await req.json().catch(() => ({}));
 
     if (!packId || !cancellationType || !['forfeit', 'refund'].includes(cancellationType)) {
@@ -49,7 +51,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Fetch the pack with RLS applied (caller must be able to see it)
+    // 3. Fetch the session pack to verify ownership and status
     const { data: pack, error: packError } = await supabase
       .from('session_packs')
       .select('id, trainer_id, sessions_remaining, status')
@@ -63,7 +65,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Only the trainer can cancel a pack
+    // 4. Authorize the action: ensure the user owns the pack
     if (pack.trainer_id !== userId) {
       return new Response(
         JSON.stringify({ error: 'Forbidden', details: 'Only the trainer can cancel this pack' }),
@@ -71,7 +73,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Optional: prevent double-cancellation if already archived
+    // 5. Prevent cancelling a pack that is already archived
     if (pack.status === 'archived') {
       return new Response(
         JSON.stringify({ error: 'Pack already archived' }),
@@ -79,8 +81,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Block cancellation if there are scheduled sessions
-    const { data: scheduled, error: scheduledErr } = await supabase
+    // 6. BUSINESS RULE: Block cancellation if there are any scheduled sessions
+    const { count: scheduledCount, error: scheduledErr } = await supabase
       .from('sessions')
       .select('id', { count: 'exact', head: true })
       .eq('session_pack_id', packId)
@@ -88,41 +90,20 @@ Deno.serve(async (req: Request) => {
 
     if (scheduledErr) {
       return new Response(
-        JSON.stringify({ error: 'Failed to check scheduled sessions', details: scheduledErr.message }),
+        JSON.stringify({ error: 'Failed to check for scheduled sessions', details: scheduledErr.message }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // When using head: true, data is null; use count from the response
-    const scheduledCount = (scheduled as unknown as any)?.length ?? (scheduled as unknown as any)?.count ?? (scheduled as any)?.[0]?.count ?? 0;
-    // Fallback: perform a lightweight select to ensure we have a count if needed
-    let finalScheduledCount = 0;
-    if (typeof scheduledCount !== 'number') {
-      const { count: c2, error: countErr } = await supabase
-        .from('sessions')
-        .select('id', { count: 'exact', head: true })
-        .eq('session_pack_id', packId)
-        .eq('status', 'scheduled');
-      if (countErr) {
-        return new Response(
-          JSON.stringify({ error: 'Failed to check scheduled sessions', details: countErr.message }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      finalScheduledCount = c2 ?? 0;
-    } else {
-      finalScheduledCount = scheduledCount;
-    }
-
-    if (finalScheduledCount > 0) {
+    if (scheduledCount > 0) {
       return new Response(
-        JSON.stringify({ error: 'Cannot cancel a pack with scheduled sessions.' }),
+        JSON.stringify({ error: `Cannot cancel a pack with ${scheduledCount} scheduled session(s).` }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Prepare update based on cancellation type
-    const remaining = pack.sessions_remaining ?? 0;
+    // 7. Prepare the update payload
+    const remainingSessions = pack.sessions_remaining ?? 0;
     const updateData: Record<string, unknown> = {
       status: 'archived',
       sessions_remaining: 0,
@@ -131,13 +112,14 @@ Deno.serve(async (req: Request) => {
     };
 
     if (cancellationType === 'forfeit') {
-      updateData.forfeited_sessions = remaining;
-      updateData.refunded_sessions = 0;
+      updateData.forfeited_sessions = remainingSessions;
+      updateData.refunded_sessions = 0; // Explicitly set to 0
     } else if (cancellationType === 'refund') {
-      updateData.refunded_sessions = remaining;
-      updateData.forfeited_sessions = 0;
+      updateData.refunded_sessions = remainingSessions;
+      updateData.forfeited_sessions = 0; // Explicitly set to 0
     }
 
+    // 8. Execute the update
     const { data: updatedPack, error: updateError } = await supabase
       .from('session_packs')
       .update(updateData)
@@ -152,14 +134,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // TODO (future): create credit note for refunds
+    // TODO (Future Story): Implement credit note generation for 'refund' types.
 
+    // 9. Return the successful response
     return new Response(JSON.stringify(updatedPack), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+
   } catch (err: any) {
-    console.error('cancel-session-pack error:', err);
+    // Generic error handler for any unexpected issues
+    console.error('Critical Error in cancel-session-pack:', err);
     return new Response(
       JSON.stringify({ error: 'Internal Server Error', details: err?.message ?? String(err) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
