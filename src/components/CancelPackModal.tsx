@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
-
-type SessionPack = Database['public']['Tables']['session_packs']['Row'];
+import { FunctionsHttpError, FunctionsRelayError, FunctionsFetchError } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -19,11 +18,13 @@ import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Terminal } from 'lucide-react';
 
+type SessionPack = Database['public']['Tables']['session_packs']['Row'];
+
 interface CancelPackModalProps {
   pack: SessionPack | null;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSuccess: () => void; // To refetch data on the parent page
+  onSuccess: () => void;
 }
 
 export function CancelPackModal({ pack, isOpen, onOpenChange, onSuccess }: CancelPackModalProps) {
@@ -53,17 +54,35 @@ export function CancelPackModal({ pack, isOpen, onOpenChange, onSuccess }: Cance
       });
 
       if (functionError) {
-        throw new Error(functionError.message);
+        // V-- THIS IS THE FIX --V
+        // Throw the original error object to preserve its type and context
+        throw functionError;
+        // A-- END OF FIX --A
       }
 
       toast({
         title: 'Success!',
         description: `The pack has been successfully cancelled and archived.`,
       });
-      onSuccess(); // Trigger parent component to refetch data
-      onOpenChange(false); // Close the modal
+      onSuccess();
+      onOpenChange(false);
     } catch (err: any) {
-      const errorMessage = err.message || 'An unexpected error occurred.';
+      let errorMessage = 'An unexpected error occurred.';
+
+      if (err instanceof FunctionsHttpError) {
+        try {
+          // This logic will now correctly execute
+          const details = await err.context.response.json();
+          errorMessage = details?.error || details?.details || err.message;
+        } catch {
+          errorMessage = 'Failed to parse the specific error message from the server.';
+        }
+      } else if (err instanceof FunctionsRelayError || err instanceof FunctionsFetchError) {
+        errorMessage = err.message || 'A network error occurred while contacting the server.';
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+
       setError(errorMessage);
       toast({
         title: 'Error Cancelling Pack',
@@ -75,7 +94,6 @@ export function CancelPackModal({ pack, isOpen, onOpenChange, onSuccess }: Cance
     }
   };
 
-  // Reset state when modal is closed
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       setCancellationType('');
