@@ -11,20 +11,12 @@ import { ArrowLeft, Package, Loader2, Calendar } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { DashboardNavigation } from '@/components/Navigation';
 import { cn } from '@/lib/utils';
+import { Database } from '@/integrations/supabase/types';
 
-// Define the type for a client pack as it's fetched from Supabase
-interface ClientPack {
-  id: string;
-  total_sessions: number;
-  sessions_remaining: number;
-  service_type_id: string;
-  purchase_date: string;
-  created_at: string;
-  amount_paid: number;
-  expiry_date: string | null;
-  status: string;
+// Use the centrally-managed types from Supabase
+type ClientPack = Database['public']['Tables']['session_packs']['Row'] & {
   service_types: { name: string } | null;
-}
+};
 
 const ClientHistory: React.FC = () => {
   const { clientId } = useParams<{ clientId: string }>();
@@ -332,7 +324,7 @@ const ClientHistory: React.FC = () => {
         {/* Reuse the existing ClientPackDetailModal */}
         <ClientPackDetailModal
           isOpen={isPackDetailModalOpen}
-          onClose={() => setIsPackDetailModalOpen(false)}
+          onOpenChange={setIsPackDetailModalOpen}
           pack={selectedPackForDetail}
         />
       </div>

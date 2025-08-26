@@ -568,7 +568,7 @@ export default function ClientDashboard() {
       
       <ClientPackDetailModal
         isOpen={isPackModalOpen}
-        onClose={handlePackModalClose}
+        onOpenChange={setIsPackModalOpen}
         pack={selectedPackForModal}
       />
     </div>

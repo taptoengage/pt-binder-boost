@@ -54,10 +54,7 @@ export function CancelPackModal({ pack, isOpen, onOpenChange, onSuccess }: Cance
       });
 
       if (functionError) {
-        // V-- THIS IS THE FIX --V
-        // Throw the original error object to preserve its type and context
         throw functionError;
-        // A-- END OF FIX --A
       }
 
       toast({
@@ -71,7 +68,6 @@ export function CancelPackModal({ pack, isOpen, onOpenChange, onSuccess }: Cance
 
       if (err instanceof FunctionsHttpError) {
         try {
-          // This logic will now correctly execute
           const details = await err.context.response.json();
           errorMessage = details?.error || details?.details || err.message;
         } catch {
