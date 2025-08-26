@@ -30,6 +30,7 @@ import ClientSubscriptionModal from '@/components/ClientSubscriptionModal';
 import SubscriptionDetailModal from '@/components/SubscriptionDetailModal';
 import { PackCard } from '@/components/PackCard';
 import { CancelPackModal } from '@/components/CancelPackModal';
+import PackCancellationBlockedModal from '@/components/PackCancellationBlockedModal';
 
 interface Client {
   id: string;
@@ -137,6 +138,9 @@ export default function ClientDetail() {
   // Cancel pack modal state
   const [isCancelPackModalOpen, setIsCancelPackModalOpen] = useState(false);
   const [selectedPackForCancellation, setSelectedPackForCancellation] = useState<SessionPack | null>(null);
+  
+  // Pack cancellation blocked modal state
+  const [isPackCancellationBlockedModalOpen, setIsPackCancellationBlockedModalOpen] = useState(false);
 
   // Pagination state for session history
   const [currentPage, setCurrentPage] = useState(1);
@@ -763,10 +767,45 @@ export default function ClientDetail() {
     setIsPackDetailModalOpen(true);
   };
 
-  const handleCancelPack = (pack: SessionPack) => {
+  const handleCancelPack = async (pack: SessionPack) => {
     setIsPackDetailModalOpen(false); // Close the pack detail modal
     setSelectedPackForCancellation(pack); // Set the selected pack for cancellation
-    setIsCancelPackModalOpen(true); // Open the cancel pack modal
+    
+    try {
+      // Check for scheduled sessions for this pack
+      const { data: scheduledSessions, error } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('session_pack_id', pack.id)
+        .eq('status', 'scheduled');
+
+      if (error) {
+        console.error('Error checking scheduled sessions:', error);
+        toast({
+          title: "Error",
+          description: "Failed to check session status. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const scheduledCount = scheduledSessions?.length || 0;
+      
+      if (scheduledCount > 0) {
+        // Show blocked modal if there are scheduled sessions
+        setIsPackCancellationBlockedModalOpen(true);
+      } else {
+        // Show regular cancellation modal if no scheduled sessions
+        setIsCancelPackModalOpen(true);
+      }
+    } catch (error) {
+      console.error('Error in handleCancelPack:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleAddPackSubmit = async (data: PackFormData) => {
@@ -2005,6 +2044,12 @@ export default function ClientDetail() {
             };
             fetchSessionPacks();
           }}
+        />
+
+        {/* Pack Cancellation Blocked Modal */}
+        <PackCancellationBlockedModal
+          isOpen={isPackCancellationBlockedModalOpen}
+          onOpenChange={setIsPackCancellationBlockedModalOpen}
         />
       </div>
     </div>
