@@ -2,8 +2,6 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
 import { FunctionsHttpError, FunctionsRelayError, FunctionsFetchError } from '@supabase/supabase-js';
-
-type SessionPack = Database['public']['Tables']['session_packs']['Row'];
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -20,11 +18,13 @@ import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Terminal } from 'lucide-react';
 
+type SessionPack = Database['public']['Tables']['session_packs']['Row'];
+
 interface CancelPackModalProps {
   pack: SessionPack | null;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSuccess: () => void; // To refetch data on the parent page
+  onSuccess: () => void;
 }
 
 export function CancelPackModal({ pack, isOpen, onOpenChange, onSuccess }: CancelPackModalProps) {
@@ -54,15 +54,15 @@ export function CancelPackModal({ pack, isOpen, onOpenChange, onSuccess }: Cance
       });
 
       if (functionError) {
-        throw new Error(functionError.message);
+        throw functionError;
       }
 
       toast({
         title: 'Success!',
         description: `The pack has been successfully cancelled and archived.`,
       });
-      onSuccess(); // Trigger parent component to refetch data
-      onOpenChange(false); // Close the modal
+      onSuccess();
+      onOpenChange(false);
     } catch (err: any) {
       let errorMessage = 'An unexpected error occurred.';
 
@@ -90,7 +90,6 @@ export function CancelPackModal({ pack, isOpen, onOpenChange, onSuccess }: Cance
     }
   };
 
-  // Reset state when modal is closed
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       setCancellationType('');
