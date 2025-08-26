@@ -1,7 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // Define the necessary type directly within the function to avoid import issues.
-// This makes the function self-contained.
 type SessionPackUpdate = {
   status?: string;
   sessions_remaining?: number;
@@ -71,13 +70,15 @@ Deno.serve(async (req: Request) => {
       throw scheduledErr;
     }
 
+    // V-- THIS IS THE ONLY CHANGE --V
     if (scheduledCount && scheduledCount > 0) {
-      return new Response(JSON.stringify({ error: `Cannot cancel a pack with ${scheduledCount} scheduled session(s).` }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      const userFriendlyError = "Pack unable to be cancelled due to existing sessions still SCHEDULED. Please 'cancel' or 'complete' these sessions to cancel this pack.";
+      return new Response(JSON.stringify({ error: userFriendlyError }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+    // A-- END OF CHANGE --A
 
     const remainingSessions = pack.sessions_remaining ?? 0;
     
-    // This is the corrected update object using the locally defined type
     const updateData: SessionPackUpdate = {
       status: 'archived',
       sessions_remaining: 0,
