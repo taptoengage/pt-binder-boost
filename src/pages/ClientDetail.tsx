@@ -1946,7 +1946,7 @@ export default function ClientDetail() {
         {/* Pack Detail Modal */}
         <ClientPackDetailModal
           isOpen={isPackDetailModalOpen}
-          onClose={() => setIsPackDetailModalOpen(false)}
+          onOpenChange={setIsPackDetailModalOpen}
           pack={selectedPackForDetail}
           onCancelRequest={handleCancelPack}
         />

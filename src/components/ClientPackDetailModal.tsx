@@ -59,7 +59,7 @@ export function ClientPackDetailModal({ isOpen, onOpenChange, pack, onCancelRequ
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{pack.pack_name || 'Session Pack Details'}</DialogTitle>
+          <DialogTitle>Session Pack Details</DialogTitle>
           <DialogDescription>
             Review the details and session history of this pack.
           </DialogDescription>
@@ -100,7 +100,7 @@ export function ClientPackDetailModal({ isOpen, onOpenChange, pack, onCancelRequ
                     <TableRow key={session.id}>
                       <TableCell>{session.session_date ? format(new Date(session.session_date), 'PPP') : 'Unscheduled'}</TableCell>
                       <TableCell>
-                        <Badge variant={session.status === 'completed' ? 'success' : 'outline'}>
+                        <Badge variant={session.status === 'completed' ? 'default' : 'outline'}>
                           {session.status}
                         </Badge>
                       </TableCell>
