@@ -763,6 +763,12 @@ export default function ClientDetail() {
     setIsPackDetailModalOpen(true);
   };
 
+  const handleCancelPack = (pack: SessionPack) => {
+    setIsPackDetailModalOpen(false); // Close the pack detail modal
+    setSelectedPackForCancellation(pack); // Set the selected pack for cancellation
+    setIsCancelPackModalOpen(true); // Open the cancel pack modal
+  };
+
   const handleAddPackSubmit = async (data: PackFormData) => {
     if (!user?.id) {
       toast({ title: "Error", description: "You must be logged in to add a pack.", variant: "destructive" });
@@ -1463,28 +1469,13 @@ export default function ClientDetail() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Display Active Packs */}
                 {sessionPacks.map((pack) => (
-                  <div key={pack.id} className="relative">
-                    <PackCard
-                      pack={pack}
-                      clientId={clientId!}
-                      trainerId={user!.id}
-                      onClick={() => handleViewPackDetail(pack)}
-                    />
-                    {pack.status === 'active' && (
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedPackForCancellation(pack);
-                          setIsCancelPackModalOpen(true);
-                        }}
-                        className="absolute top-2 right-2"
-                      >
-                        Cancel Pack
-                      </Button>
-                    )}
-                  </div>
+                  <PackCard
+                    key={pack.id}
+                    pack={pack}
+                    clientId={clientId!}
+                    trainerId={user!.id}
+                    onClick={() => handleViewPackDetail(pack)}
+                  />
                 ))}
 
                 {/* Display Active Subscriptions */}
@@ -1957,6 +1948,7 @@ export default function ClientDetail() {
           isOpen={isPackDetailModalOpen}
           onClose={() => setIsPackDetailModalOpen(false)}
           pack={selectedPackForDetail}
+          onCancelRequest={handleCancelPack}
         />
 
         {/* Subscription Modal */}

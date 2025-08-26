@@ -32,9 +32,10 @@ interface ClientPackDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   pack: SessionPack | null;
+  onCancelRequest?: (pack: SessionPack) => void;
 }
 
-const ClientPackDetailModal: React.FC<ClientPackDetailModalProps> = ({ isOpen, onClose, pack }) => {
+const ClientPackDetailModal: React.FC<ClientPackDetailModalProps> = ({ isOpen, onClose, pack, onCancelRequest }) => {
   // Fetch sessions linked to this pack
   const { data: linkedSessions, isLoading: isLoadingLinkedSessions, error: linkedSessionsError } = useQuery({
     queryKey: ['linkedSessions', pack?.id],
@@ -222,6 +223,14 @@ const ClientPackDetailModal: React.FC<ClientPackDetailModalProps> = ({ isOpen, o
         </div>
         
         <DialogFooter>
+          {pack.status === 'active' && onCancelRequest && (
+            <Button
+              variant="destructive"
+              onClick={() => onCancelRequest(pack)}
+            >
+              Cancel Pack
+            </Button>
+          )}
           <DialogClose asChild>
             <Button type="button" variant="outline">Close</Button>
           </DialogClose>
