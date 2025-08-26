@@ -358,12 +358,15 @@ export type Database = {
       session_packs: {
         Row: {
           amount_paid: number
+          cancellation_notes: string | null
           client_id: string
           created_at: string
           expiry_date: string | null
+          forfeited_sessions: number
           id: string
           payment_id: string | null
           purchase_date: string
+          refunded_sessions: number
           service_type_id: string
           sessions_remaining: number
           status: string
@@ -373,12 +376,15 @@ export type Database = {
         }
         Insert: {
           amount_paid: number
+          cancellation_notes?: string | null
           client_id: string
           created_at?: string
           expiry_date?: string | null
+          forfeited_sessions?: number
           id?: string
           payment_id?: string | null
           purchase_date?: string
+          refunded_sessions?: number
           service_type_id: string
           sessions_remaining: number
           status?: string
@@ -388,12 +394,15 @@ export type Database = {
         }
         Update: {
           amount_paid?: number
+          cancellation_notes?: string | null
           client_id?: string
           created_at?: string
           expiry_date?: string | null
+          forfeited_sessions?: number
           id?: string
           payment_id?: string | null
           purchase_date?: string
+          refunded_sessions?: number
           service_type_id?: string
           sessions_remaining?: number
           status?: string
