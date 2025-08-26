@@ -16,8 +16,17 @@ export function AdminRoute({ children }: AdminRouteProps) {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Show toast when admin check fails
+    // Show toast and log when admin check fails
     if (!authLoading && !adminLoading && user && isAdmin === false) {
+      // Log the denied access attempt
+      console.warn('Admin access denied:', {
+        userId: user.id,
+        userEmail: user.email,
+        timestamp: new Date().toISOString(),
+        attemptedRoute: '/admin/dashboard'
+      });
+      
+      // Show consistent access denied toast
       toast({
         title: "Access Denied",
         description: "Admins only",
