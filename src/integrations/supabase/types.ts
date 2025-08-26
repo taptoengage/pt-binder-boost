@@ -930,6 +930,15 @@ export type Database = {
         Args: { p_client_id: string; p_trainer_id: string }
         Returns: Json
       }
+      get_admin_metrics: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          active_session_packs: number
+          total_clients: number
+          total_revenue: number
+          total_trainers: number
+        }[]
+      }
       get_trainer_busy_slots: {
         Args: Record<PropertyKey, never>
         Returns: {
