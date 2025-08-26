@@ -20,6 +20,7 @@ import { format } from 'date-fns';
 import { ArrowLeft, Loader2, User, Phone, Mail, DollarSign, Calendar, Target, Activity, Plus, Clock, Edit, Trash2, CalendarIcon, Package } from 'lucide-react';
 import { DashboardNavigation } from '@/components/Navigation';
 import { supabase } from '@/integrations/supabase/client';
+import { Database } from '@/integrations/supabase/types';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -28,6 +29,7 @@ import ClientPackDetailModal from '@/components/ClientPackDetailModal';
 import ClientSubscriptionModal from '@/components/ClientSubscriptionModal';
 import SubscriptionDetailModal from '@/components/SubscriptionDetailModal';
 import { PackCard } from '@/components/PackCard';
+import { CancelPackModal } from '@/components/CancelPackModal';
 
 interface Client {
   id: string;
@@ -74,17 +76,9 @@ interface ServiceType {
   description?: string;
 }
 
-interface SessionPack {
-  id: string;
-  total_sessions: number;
-  sessions_remaining: number;
-  service_type_id: string;
+type SessionPack = Database['public']['Tables']['session_packs']['Row'] & {
   service_types: { name: string } | null;
-  amount_paid: number;
-  purchase_date: string;
-  expiry_date: string | null;
-  status: string;
-}
+};
 
 const packSchema = z.object({
   service_type_id: z.string().min(1, 'Service type is required'),
@@ -139,6 +133,10 @@ export default function ClientDetail() {
   // Subscription detail modal state
   const [isSubscriptionDetailModalOpen, setIsSubscriptionDetailModalOpen] = useState(false);
   const [selectedSubscription, setSelectedSubscription] = useState<any | null>(null);
+
+  // Cancel pack modal state
+  const [isCancelPackModalOpen, setIsCancelPackModalOpen] = useState(false);
+  const [selectedPackForCancellation, setSelectedPackForCancellation] = useState<SessionPack | null>(null);
 
   // Pagination state for session history
   const [currentPage, setCurrentPage] = useState(1);
@@ -372,14 +370,7 @@ export default function ClientDetail() {
         const { data: sessionPacksData, error: sessionPacksError } = await supabase
           .from('session_packs')
           .select(`
-            id,
-            total_sessions,
-            sessions_remaining,
-            service_type_id,
-            amount_paid,
-            purchase_date,
-            expiry_date,
-            status,
+            *,
             service_types(name)
           `)
           .eq('client_id', clientId)
@@ -857,14 +848,7 @@ export default function ClientDetail() {
       const { data: sessionPacksData, error: sessionPacksError } = await supabase
         .from('session_packs')
         .select(`
-          id,
-          total_sessions,
-          sessions_remaining,
-          service_type_id,
-          amount_paid,
-          purchase_date,
-          expiry_date,
-          status,
+          *,
           service_types(name)
         `)
         .eq('client_id', clientId)
@@ -1479,13 +1463,28 @@ export default function ClientDetail() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Display Active Packs */}
                 {sessionPacks.map((pack) => (
-                  <PackCard
-                    key={pack.id}
-                    pack={pack}
-                    clientId={clientId!}
-                    trainerId={user!.id}
-                    onClick={() => handleViewPackDetail(pack)}
-                  />
+                  <div key={pack.id} className="relative">
+                    <PackCard
+                      pack={pack}
+                      clientId={clientId!}
+                      trainerId={user!.id}
+                      onClick={() => handleViewPackDetail(pack)}
+                    />
+                    {pack.status === 'active' && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPackForCancellation(pack);
+                          setIsCancelPackModalOpen(true);
+                        }}
+                        className="absolute top-2 right-2"
+                      >
+                        Cancel Pack
+                      </Button>
+                    )}
+                  </div>
                 ))}
 
                 {/* Display Active Subscriptions */}
@@ -1977,6 +1976,42 @@ export default function ClientDetail() {
           subscription={selectedSubscription}
           onUpdate={() => {
             queryClient.invalidateQueries({ queryKey: ['activeClientSubscriptions', clientId] });
+          }}
+        />
+
+        {/* Cancel Pack Modal */}
+        <CancelPackModal
+          pack={selectedPackForCancellation}
+          isOpen={isCancelPackModalOpen}
+          onOpenChange={setIsCancelPackModalOpen}
+          onSuccess={() => {
+            // Refetch session packs data
+            setIsLoadingSessionPacks(true);
+            const fetchSessionPacks = async () => {
+              if (!user || !clientId) return;
+              
+              try {
+                const { data: sessionPacksData, error: sessionPacksError } = await supabase
+                  .from('session_packs')
+                  .select(`
+                    *,
+                    service_types(name)
+                  `)
+                  .eq('client_id', clientId)
+                  .eq('trainer_id', user.id)
+                  .eq('status', 'active')
+                  .order('purchase_date', { ascending: false });
+
+                if (!sessionPacksError) {
+                  setSessionPacks(sessionPacksData || []);
+                }
+              } catch (error) {
+                console.error('Error refetching session packs:', error);
+              } finally {
+                setIsLoadingSessionPacks(false);
+              }
+            };
+            fetchSessionPacks();
           }}
         />
       </div>
