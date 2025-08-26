@@ -97,9 +97,10 @@ export function DashboardNavigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   
+  const { signOut } = useAuth();
+  
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/');
+    await signOut();
   };
 
   const handleMobileNavClick = (path: string) => {
