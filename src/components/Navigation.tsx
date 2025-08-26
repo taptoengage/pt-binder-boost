@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
-import { Menu, X, Users, Calendar, CreditCard, BarChart3, Settings, User } from 'lucide-react';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { Menu, X, Users, Calendar, CreditCard, BarChart3, Settings, User, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -98,6 +99,7 @@ export function DashboardNavigation() {
   const navigate = useNavigate();
   
   const { signOut } = useAuth();
+  const { data: isAdmin } = useIsAdmin();
   
   const handleSignOut = async () => {
     await signOut();
@@ -195,6 +197,16 @@ export function DashboardNavigation() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {/* Admin Link - Only show for admins */}
+            {isAdmin && (
+              <Link 
+                to="/admin/dashboard" 
+                className="flex items-center space-x-2 text-body hover:text-primary transition-colors"
+              >
+                <Shield className="w-4 h-4" />
+                <span>Admin</span>
+              </Link>
+            )}
           </nav>
 
           {/* User Menu (Desktop) */}
@@ -275,6 +287,16 @@ export function DashboardNavigation() {
               <CreditCard className="w-4 h-4" />
               <span>Finance</span>
             </button>
+            {/* Admin Link - Only show for admins */}
+            {isAdmin && (
+              <button 
+                onClick={() => handleMobileNavClick('/admin/dashboard')}
+                className="flex items-center space-x-3 text-body hover:text-primary transition-colors py-2 px-1"
+              >
+                <Shield className="w-4 h-4" />
+                <span>Admin</span>
+              </button>
+            )}
             <div className="border-t border-border pt-4">
               <button 
                 onClick={() => {

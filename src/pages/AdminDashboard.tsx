@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { useQuery } from '@tanstack/react-query';
 import { 
   Users, 
   UserCheck, 
@@ -34,34 +36,60 @@ interface WaitlistSignup {
 }
 
 interface AdminMetrics {
-  totalTrainers: number;
-  totalClients: number;
-  totalWaitlistSignups: number;
-  activeSessionPacks: number;
-  totalRevenue: number;
-  monthlyGrowth: number;
+  total_trainers: number;
+  total_clients: number;
+  active_session_packs: number;
+  total_revenue: number;
 }
 
 export default function AdminDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { data: isAdmin, isLoading: adminLoading } = useIsAdmin();
   
-  const [isLoading, setIsLoading] = useState(true);
   const [waitlistSignups, setWaitlistSignups] = useState<WaitlistSignup[]>([]);
   const [filteredSignups, setFilteredSignups] = useState<WaitlistSignup[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [metrics, setMetrics] = useState<AdminMetrics>({
-    totalTrainers: 0,
-    totalClients: 0,
-    totalWaitlistSignups: 0,
-    activeSessionPacks: 0,
-    totalRevenue: 0,
-    monthlyGrowth: 0
+
+  // Fetch admin metrics using the secure RPC
+  const { data: metrics, isLoading: metricsLoading, error: metricsError } = useQuery({
+    queryKey: ['adminMetrics'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_admin_metrics' as any);
+      
+      if (error) throw error;
+      return data?.[0] || {
+        total_trainers: 0,
+        total_clients: 0,
+        active_session_packs: 0,
+        total_revenue: 0
+      };
+    },
+    enabled: isAdmin === true, // Only fetch if user is confirmed admin
+    retry: 1
+  });
+
+  // Fetch waitlist signups (separate query with RLS protection)
+  const { data: waitlistData, isLoading: waitlistLoading } = useQuery({
+    queryKey: ['waitlistSignups'],
+    queryFn: async () => {
+      const { data: signups, error } = await supabase
+        .from('waitlist_signups')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return signups || [];
+    },
+    enabled: isAdmin === true, // Only fetch if user is confirmed admin
+    retry: 1
   });
 
   useEffect(() => {
-    fetchAdminData();
-  }, [user?.id]);
+    if (waitlistData) {
+      setWaitlistSignups(waitlistData);
+    }
+  }, [waitlistData]);
 
   useEffect(() => {
     // Filter waitlist signups based on search term
@@ -73,68 +101,16 @@ export default function AdminDashboard() {
     setFilteredSignups(filtered);
   }, [searchTerm, waitlistSignups]);
 
-  const fetchAdminData = async () => {
-    if (!user?.id) return;
-    
-    try {
-      setIsLoading(true);
-
-      // Fetch waitlist signups
-      const { data: signups, error: signupsError } = await supabase
-        .from('waitlist_signups')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (signupsError) throw signupsError;
-      setWaitlistSignups(signups || []);
-
-      // Fetch metrics
-      const [trainersCount, clientsCount, sessionPacksCount, revenueData] = await Promise.all([
-        // Total trainers
-        supabase
-          .from('trainers')
-          .select('id', { count: 'exact' }),
-        
-        // Total clients
-        supabase
-          .from('clients')
-          .select('id', { count: 'exact' }),
-        
-        // Active session packs
-        supabase
-          .from('session_packs')
-          .select('id', { count: 'exact' })
-          .eq('status', 'active'),
-        
-        // Total revenue (paid payments)
-        supabase
-          .from('payments')
-          .select('amount')
-          .eq('status', 'paid')
-      ]);
-
-      const totalRevenue = revenueData.data?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
-
-      setMetrics({
-        totalTrainers: trainersCount.count || 0,
-        totalClients: clientsCount.count || 0,
-        totalWaitlistSignups: signups?.length || 0,
-        activeSessionPacks: sessionPacksCount.count || 0,
-        totalRevenue,
-        monthlyGrowth: 12.5 // Placeholder for now
-      });
-
-    } catch (error: any) {
-      console.error('Error fetching admin data:', error);
+  useEffect(() => {
+    if (metricsError) {
+      console.error('Error fetching admin metrics:', metricsError);
       toast({
         title: "Error loading admin data",
-        description: error.message || "Failed to load admin dashboard data",
+        description: metricsError.message || "Failed to load admin dashboard data",
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
-  };
+  }, [metricsError, toast]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -145,7 +121,27 @@ export default function AdminDashboard() {
     }
   };
 
-  if (isLoading) {
+  // Block rendering if admin check is loading or user is not admin
+  if (adminLoading || isAdmin !== true) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle">
+        <DashboardNavigation />
+        <main className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="flex flex-col items-center space-y-4">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-body text-muted-foreground">
+                {adminLoading ? 'Verifying admin access...' : 'Loading admin dashboard...'}
+              </p>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Show loading state while fetching admin data
+  if (metricsLoading || waitlistLoading) {
     return (
       <div className="min-h-screen bg-gradient-subtle">
         <DashboardNavigation />
@@ -178,29 +174,29 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <MetricCard
             title="Total Trainers"
-            value={metrics.totalTrainers.toString()}
+            value={(metrics?.total_trainers || 0).toString()}
             change={8}
             changeLabel="new this month"
             icon={<UserCheck className="w-6 h-6 text-primary" />}
           />
           <MetricCard
             title="Total Clients"
-            value={metrics.totalClients.toString()}
+            value={(metrics?.total_clients || 0).toString()}
             change={15}
             changeLabel="new this month"
             icon={<Users className="w-6 h-6 text-primary" />}
           />
           <MetricCard
             title="Waitlist Signups"
-            value={metrics.totalWaitlistSignups.toString()}
+            value={waitlistSignups.length.toString()}
             change={23}
             changeLabel="this week"
             icon={<Mail className="w-6 h-6 text-primary" />}
           />
           <MetricCard
             title="Platform Revenue"
-            value={`$${metrics.totalRevenue.toFixed(2)}`}
-            change={metrics.monthlyGrowth}
+            value={`$${(metrics?.total_revenue || 0).toFixed(2)}`}
+            change={12.5}
             changeLabel="from last month"
             icon={<TrendingUp className="w-6 h-6 text-primary" />}
           />
@@ -222,15 +218,15 @@ export default function AdminDashboard() {
             <div className="space-y-2">
               <div className="flex justify-between text-body-small">
                 <span>Active Trainers:</span>
-                <span className="font-medium">{metrics.totalTrainers}</span>
+                <span className="font-medium">{metrics?.total_trainers || 0}</span>
               </div>
               <div className="flex justify-between text-body-small">
                 <span>Active Clients:</span>
-                <span className="font-medium">{metrics.totalClients}</span>
+                <span className="font-medium">{metrics?.total_clients || 0}</span>
               </div>
               <div className="flex justify-between text-body-small">
                 <span>Active Packs:</span>
-                <span className="font-medium">{metrics.activeSessionPacks}</span>
+                <span className="font-medium">{metrics?.active_session_packs || 0}</span>
               </div>
             </div>
           </DashboardCard>

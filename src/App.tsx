@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import AuthRedirect from "./pages/AuthRedirect";
 import Index from "./pages/Index";
+import { AdminRoute } from "./components/AdminRoute";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
 import Clients from "./pages/Clients";
@@ -114,7 +115,11 @@ function AppRoutes() {
       <Route path="/client/dashboard" element={<ClientDashboard />} />
       <Route path="/client/book-session" element={<ClientBookSessionPage />} />
       <Route path="/client/profile" element={<ClientProfile />} />
-      <Route path="/admin/dashboard" element={<AdminDashboard />} />
+      <Route path="/admin/dashboard" element={
+        <AdminRoute>
+          <AdminDashboard />
+        </AdminRoute>
+      } />
       {/* TEMPORARY: Test route for UnderConstruction component */}
       <Route path="/under-construction" element={<UnderConstruction />} />
       {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
