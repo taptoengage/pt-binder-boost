@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
+import { FunctionsHttpError, FunctionsRelayError, FunctionsFetchError } from '@supabase/supabase-js';
 
 type SessionPack = Database['public']['Tables']['session_packs']['Row'];
 import { Button } from '@/components/ui/button';
@@ -63,7 +64,21 @@ export function CancelPackModal({ pack, isOpen, onOpenChange, onSuccess }: Cance
       onSuccess(); // Trigger parent component to refetch data
       onOpenChange(false); // Close the modal
     } catch (err: any) {
-      const errorMessage = err.message || 'An unexpected error occurred.';
+      let errorMessage = 'An unexpected error occurred.';
+
+      if (err instanceof FunctionsHttpError) {
+        try {
+          const details = await err.context.response.json();
+          errorMessage = details?.error || details?.details || err.message;
+        } catch {
+          errorMessage = 'Failed to parse the specific error message from the server.';
+        }
+      } else if (err instanceof FunctionsRelayError || err instanceof FunctionsFetchError) {
+        errorMessage = err.message || 'A network error occurred while contacting the server.';
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+
       setError(errorMessage);
       toast({
         title: 'Error Cancelling Pack',
