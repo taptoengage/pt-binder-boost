@@ -55,45 +55,45 @@ function AppRoutes() {
   useEffect(() => {
     // Wait for auth to complete
     if (loading) {
-      return; // Do nothing while loading
+      return;
     }
 
-    // Handle unassigned role specifically for onboarding
-    if (authStatus === 'unassigned_role') {
-      if (currentPath !== '/onboarding') { // If user is unassigned AND not on onboarding page
-        navigate('/onboarding'); // Redirect them to onboarding
-      }
-      return; // Stop further navigation attempts
-    }
-
-
-    if (user) { // User is authenticated
-      // 1. Admin check is now the highest priority
-      if (authStatus === 'admin') {
+    // Clean switch statement based on authStatus
+    switch (authStatus) {
+      case 'admin':
         if (currentPath !== '/admin/dashboard') {
           navigate('/admin/dashboard');
         }
-      } else if (authStatus === 'trainer' || trainer) {
-        // 2. If not admin, check for trainer profile
+        break;
+      
+      case 'trainer':
         if (currentPath === '/' || currentPath === '/dashboard') {
           navigate('/trainer/dashboard');
         }
-      } else if (authStatus === 'client' || client) {
-        // 3. If not admin or trainer, check for client profile
+        break;
+      
+      case 'client':
         if (currentPath === '/' || currentPath === '/dashboard') {
           navigate('/client/dashboard');
         }
-      } else {
-        // 4. If no roles or profiles, redirect to onboarding (fallback)
+        break;
+      
+      case 'unassigned_role':
         if (currentPath !== '/onboarding') {
           navigate('/onboarding');
         }
-      }
-    } else { // User is not authenticated
-      // Allow unauthenticated users to stay on '/' (landing page)
-      // For other protected routes, we'll show UnderConstruction
+        break;
+      
+      case 'unauthenticated':
+        // Allow unauthenticated users to stay on '/' (landing page)
+        // For other protected routes, we'll show UnderConstruction
+        break;
+      
+      default:
+        // Fallback for any unexpected status
+        break;
     }
-  }, [user, loading, trainer, client, authStatus, navigate, toast]);
+  }, [authStatus, loading, navigate, currentPath]);
 
   // Show loading spinner while auth check is in progress
   if (loading) {
