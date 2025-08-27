@@ -82,7 +82,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkUserType = async (user: User) => {
     try {
-      // First check if user is a trainer
+      // 1) Check admin role FIRST
+      const { data: isAdmin, error: adminError } = await supabase.rpc('has_role', {
+        _user_id: user.id,
+        _role: 'admin'
+      })
+      if (adminError) {
+        console.error('Error checking admin role:', adminError)
+      }
+      if (isAdmin) {
+        // Admins are authenticated without needing trainer/client profiles
+        setTrainer(null)
+        setClient(null)
+        setAuthStatus('authenticated')
+        setLoading(false)
+        navigate('/admin/dashboard')
+        return
+      }
+
+      // 2) Not admin: check if user is a trainer
       const { data: existingTrainer, error: trainerError } = await supabase
         .from('trainers')
         .select('*')
@@ -104,7 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // Not a trainer, check if user is a client
+      // 3) Not a trainer, check if user is a client
       const { data: existingClient, error: clientError } = await supabase
         .from('clients')
         .select('*')
@@ -126,7 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // If user is neither a trainer nor a registered client
+      // 4) If user is neither a trainer nor a registered client
       if (!existingTrainer && !existingClient) {
         // New user needs onboarding - don't sign them out
         setTrainer(null)
