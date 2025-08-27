@@ -39,8 +39,7 @@ import Spinner from "./components/ui/spinner";
 const queryClient = new QueryClient();
 
 function AppRoutes() {
-  const { user, loading, trainer, client, authStatus } = useAuth();
-  
+  const { authStatus, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -50,7 +49,7 @@ function AppRoutes() {
                           currentPath !== '/auth' &&
                           !currentPath.startsWith('/auth/') && 
                           currentPath !== '/under-construction';
-  const shouldShowUnderConstruction = !loading && !user && isProtectedRoute;
+  const shouldShowUnderConstruction = !loading && authStatus === 'unauthenticated' && isProtectedRoute;
 
   useEffect(() => {
     // Wait for auth to complete
