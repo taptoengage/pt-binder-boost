@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import AuthRedirect from "./pages/AuthRedirect";
@@ -33,11 +34,13 @@ import ClientProfile from "./pages/ClientProfile";
 import ManageAvailability from "./pages/ManageAvailability";
 import AdminDashboard from "./pages/AdminDashboard";
 import UnderConstruction from "./components/UnderConstruction";
+import Spinner from "./components/ui/spinner";
 
 const queryClient = new QueryClient();
 
 function AppRoutes() {
   const { user, loading, trainer, client, authStatus } = useAuth();
+  const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -50,7 +53,10 @@ function AppRoutes() {
   const shouldShowUnderConstruction = !loading && !user && isProtectedRoute;
 
   useEffect(() => {
-    if (loading) return; // Wait for auth state to be confirmed
+    // Wait for both auth and admin status checks to complete
+    if (loading || isAdminLoading) {
+      return; // Do nothing while loading
+    }
 
     // Handle unassigned role specifically for onboarding
     if (authStatus === 'unassigned_role') {
@@ -71,16 +77,42 @@ function AppRoutes() {
       return; // Stop further navigation attempts
     }
 
-    if (user) { // User is authenticated (and not unassigned_role or access_denied_unregistered)
-      // For authenticated users on the landing page, redirect to the dashboard handler
-      if (currentPath === '/') {
-        navigate('/dashboard');
+    if (user) { // User is authenticated
+      // 1. Admin check is now the highest priority
+      if (isAdmin) {
+        if (currentPath !== '/admin/dashboard') {
+          navigate('/admin/dashboard');
+        }
+      } else if (trainer) {
+        // 2. If not admin, check for trainer profile
+        if (currentPath === '/' || currentPath === '/dashboard') {
+          navigate('/trainer/dashboard');
+        }
+      } else if (client) {
+        // 3. If not admin or trainer, check for client profile
+        if (currentPath === '/' || currentPath === '/dashboard') {
+          navigate('/client/dashboard');
+        }
+      } else {
+        // 4. If no roles or profiles, redirect to onboarding (fallback)
+        if (currentPath !== '/onboarding') {
+          navigate('/onboarding');
+        }
       }
     } else { // User is not authenticated
       // Allow unauthenticated users to stay on '/' (landing page)
       // For other protected routes, we'll show UnderConstruction
     }
-  }, [user, loading, trainer, client, authStatus, navigate, toast]);
+  }, [user, loading, trainer, client, authStatus, isAdmin, isAdminLoading, navigate, toast]);
+
+  // Show loading spinner while auth or admin checks are in progress
+  if (loading || isAdminLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Spinner />
+      </div>
+    );
+  }
 
   // Show UnderConstruction for unauthenticated users trying to access protected routes
   if (shouldShowUnderConstruction) {
