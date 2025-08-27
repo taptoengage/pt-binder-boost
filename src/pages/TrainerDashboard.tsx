@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
-import { useIsAdmin } from '@/hooks/useIsAdmin';
-import Spinner from '@/components/ui/spinner'; 
+import { useAuth } from '../hooks/useAuth';
+import { useIsAdmin } from '../hooks/useIsAdmin';
+import Spinner from '../components/ui/spinner'; 
 
 const Dashboard = () => {
   const { user, loading: authLoading } = useAuth();

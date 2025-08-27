@@ -11,6 +11,7 @@ import AuthRedirect from "./pages/AuthRedirect";
 import Index from "./pages/Index";
 import { AdminRoute } from "./components/AdminRoute";
 import Dashboard from "./pages/Dashboard";
+import TrainerDashboard from "./pages/TrainerDashboard";
 import Onboarding from "./pages/Onboarding";
 import Clients from "./pages/Clients";
 import AddClient from "./pages/AddClient";
@@ -71,14 +72,9 @@ function AppRoutes() {
     }
 
     if (user) { // User is authenticated (and not unassigned_role or access_denied_unregistered)
-      if (trainer) { // User is a trainer
-        if (currentPath === '/' || currentPath.startsWith('/client/')) {
-          navigate('/dashboard');
-        }
-      } else if (client) { // User is a client
-        if (!currentPath.startsWith('/client/')) {
-          navigate('/client/dashboard');
-        }
+      // For authenticated users on the landing page, redirect to the dashboard handler
+      if (currentPath === '/') {
+        navigate('/dashboard');
       }
     } else { // User is not authenticated
       // Allow unauthenticated users to stay on '/' (landing page)
@@ -96,6 +92,7 @@ function AppRoutes() {
       <Route path="/" element={<Index />} />
       <Route path="/auth" element={<AuthRedirect />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/trainer/dashboard" element={<TrainerDashboard />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/clients" element={<Clients />} />
       <Route path="/clients/new" element={<AddClient />} />
