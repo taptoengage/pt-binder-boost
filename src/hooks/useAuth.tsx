@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/integrations/supabase/client'
-import { useNavigate } from 'react-router-dom'
+
 
 export interface Trainer {
   id: string
@@ -28,7 +28,7 @@ interface AuthContextType {
   trainer: Trainer | null
   client: Client | null
   loading: boolean
-  authStatus: 'loading' | 'authenticated' | 'unauthenticated' | 'access_denied_unregistered' | 'unassigned_role'
+  authStatus: 'loading' | 'admin' | 'trainer' | 'client' | 'unauthenticated' | 'unassigned_role'
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
 }
@@ -41,8 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [trainer, setTrainer] = useState<Trainer | null>(null)
   const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
-  const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated' | 'access_denied_unregistered' | 'unassigned_role'>('loading')
-  const navigate = useNavigate()
+  const [authStatus, setAuthStatus] = useState<'loading' | 'admin' | 'trainer' | 'client' | 'unauthenticated' | 'unassigned_role'>('loading')
+  
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -94,9 +94,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Admins are authenticated without needing trainer/client profiles
         setTrainer(null)
         setClient(null)
-        setAuthStatus('authenticated')
+        setAuthStatus('admin')
         setLoading(false)
-        navigate('/admin/dashboard')
+        return
         return
       }
 
@@ -116,9 +116,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (existingTrainer) {
         // User is a trainer
         setTrainer(existingTrainer)
-        setAuthStatus('authenticated')
+        setAuthStatus('trainer')
         setLoading(false)
-        navigate('/dashboard')
+        return
         return
       }
 
@@ -138,9 +138,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (existingClient) {
         // User is a registered client
         setClient(existingClient)
-        setAuthStatus('authenticated')
+        setAuthStatus('client')
         setLoading(false)
-        navigate('/client/dashboard')
+        return
         return
       }
 
@@ -181,7 +181,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null)
       setTrainer(null)
       setClient(null)
-      navigate('/')
     }
   }
 

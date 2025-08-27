@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
-import { useIsAdmin } from "@/hooks/useIsAdmin";
+
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import AuthRedirect from "./pages/AuthRedirect";
@@ -40,7 +40,7 @@ const queryClient = new QueryClient();
 
 function AppRoutes() {
   const { user, loading, trainer, client, authStatus } = useAuth();
-  const { data: isAdmin, isLoading: isAdminLoading } = useIsAdmin();
+  
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -53,8 +53,8 @@ function AppRoutes() {
   const shouldShowUnderConstruction = !loading && !user && isProtectedRoute;
 
   useEffect(() => {
-    // Wait for both auth and admin status checks to complete
-    if (loading || isAdminLoading) {
+    // Wait for auth to complete
+    if (loading) {
       return; // Do nothing while loading
     }
 
@@ -66,29 +66,19 @@ function AppRoutes() {
       return; // Stop further navigation attempts
     }
 
-    // Handle access denied state explicitly
-    if (authStatus === 'access_denied_unregistered') {
-      toast({
-        title: "Access Denied",
-        description: "Your email is not registered as a client or trainer. Please contact support.",
-        variant: "destructive",
-      });
-      navigate('/'); // Redirect to landing page
-      return; // Stop further navigation attempts
-    }
 
     if (user) { // User is authenticated
       // 1. Admin check is now the highest priority
-      if (isAdmin) {
+      if (authStatus === 'admin') {
         if (currentPath !== '/admin/dashboard') {
           navigate('/admin/dashboard');
         }
-      } else if (trainer) {
+      } else if (authStatus === 'trainer' || trainer) {
         // 2. If not admin, check for trainer profile
         if (currentPath === '/' || currentPath === '/dashboard') {
           navigate('/trainer/dashboard');
         }
-      } else if (client) {
+      } else if (authStatus === 'client' || client) {
         // 3. If not admin or trainer, check for client profile
         if (currentPath === '/' || currentPath === '/dashboard') {
           navigate('/client/dashboard');
@@ -103,10 +93,10 @@ function AppRoutes() {
       // Allow unauthenticated users to stay on '/' (landing page)
       // For other protected routes, we'll show UnderConstruction
     }
-  }, [user, loading, trainer, client, authStatus, isAdmin, isAdminLoading, navigate, toast]);
+  }, [user, loading, trainer, client, authStatus, navigate, toast]);
 
-  // Show loading spinner while auth or admin checks are in progress
-  if (loading || isAdminLoading) {
+  // Show loading spinner while auth check is in progress
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <Spinner />
