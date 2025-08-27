@@ -13,7 +13,7 @@ const Index = () => {
       <div className="text-center max-w-2xl mx-auto">
         <div className="animate-fade-in-up">
           <h1 className="text-display mb-6 bg-gradient-primary bg-clip-text text-transparent">
-            PT Binder
+            Optimised Trainer
           </h1>
           <p className="text-body-large text-muted-foreground mb-8 leading-relaxed">
             Professional personal training management platform. 
