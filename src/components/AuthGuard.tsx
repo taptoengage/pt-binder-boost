@@ -11,8 +11,11 @@ export default function AuthGuard() {
   const isClientArea  = /^\/client(\/|$)/.test(pathname);
   const isAdminArea   = /^\/admin(\/|$)/.test(pathname);
 
-  // Debug line every render
-  console.debug('[guard]', { path: pathname, authStatus, loading });
+  // Debug line every render (deduplicated)
+  if ((window as any).__lastGuardLog !== pathname + ':' + authStatus + ':' + String(loading)) {
+    console.debug('[guard]', { path: pathname, authStatus, loading })
+    ;(window as any).__lastGuardLog = pathname + ':' + authStatus + ':' + String(loading)
+  }
 
   // 1) Loading → show a single lightweight placeholder
   if (loading) {
