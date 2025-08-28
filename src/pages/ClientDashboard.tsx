@@ -26,6 +26,10 @@ import ClientPackDetailModal from '@/components/ClientPackDetailModal';
 
 export default function ClientDashboard() {
   const { client, signOut, authStatus } = useAuth();
+  
+  // Guard: only render for clients
+  if (authStatus !== 'client') return null;
+  
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
