@@ -25,7 +25,7 @@ import CancellationPenaltyModal from '@/components/CancellationPenaltyModal';
 import ClientPackDetailModal from '@/components/ClientPackDetailModal';
 
 export default function ClientDashboard() {
-  const { client, signOut } = useAuth();
+  const { client, signOut, authStatus } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -283,6 +283,11 @@ export default function ClientDashboard() {
     // CRITICAL: Invalidate queries to force a data re-fetch on the dashboard
     fetchClientDashboardData();
   };
+
+  // Route gating: render-only. AuthGuard owns navigation.
+  if (authStatus !== 'client') {
+    return null;
+  }
 
   if (isLoadingDashboard) {
     return (
