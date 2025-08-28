@@ -34,15 +34,15 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Timeout wrapper for Supabase calls
-const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> => {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => 
-      setTimeout(() => reject(new Error(`[auth] Timeout after ${timeoutMs}ms for ${operation}`)), timeoutMs)
-    )
+// Timeout wrapper for Supabase calls (7s default)
+const withTimeout = <T,>(p: PromiseLike<T>, ms = 7000, op = 'supabase'): Promise<T> =>
+  Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(Object.assign(new Error(`[auth-timeout] ${op} exceeded ${ms}ms`), { code: 'TIMEOUT' })), ms)
+    ),
   ])
-}
+
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -55,7 +55,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Serialization and unmount guards
   const checkingRef = useRef(false)
   const mountedRef = useRef(true)
-  
+  const runIdRef = useRef(0) // helps ignore stale resolutions under StrictMode
+
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -107,11 +108,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkUserType = async (currentUser: User) => {
     // Prevent overlapping runs
     if (checkingRef.current) {
-      console.log('[auth] checkUserType already running, skipping')
+      // quiet skip to avoid console spam
       return
     }
     
     checkingRef.current = true
+    const myRunId = ++runIdRef.current
     
     if (!mountedRef.current) {
       checkingRef.current = false
@@ -119,19 +121,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     
     setLoading(true)
-    console.log('[auth] Starting user type check for user:', currentUser.id)
+    console.log('[auth] start', { userId: currentUser.id })
     
     try {
       // 1) Check admin role FIRST
-      console.log('[auth] Checking admin role...')
-      const { data: isAdmin, error: adminError } = await supabase.rpc('has_role', { role_name: 'admin' })
-      
+      const { data: isAdmin, error: adminError } = await withTimeout(
+        supabase.rpc('has_role', { role_name: 'admin' }),
+        7000,
+        'has_role(admin)'
+      )
       if (adminError) {
-        console.error('[auth] Error checking admin role:', adminError)
+        console.warn('[auth] admin check error', adminError)
       }
-      
       if (isAdmin) {
-        console.log('[auth] User is admin')
+        if (runIdRef.current !== myRunId) return
+        console.log('[auth] resolved: admin')
         if (mountedRef.current) {
           setTrainer(null)
           setClient(null)
@@ -141,19 +145,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 2) Check if user is a trainer
-      console.log('[auth] Checking trainer record...')
-      const { data: trainerData, error: trainerError } = await supabase
-        .from('trainers')
-        .select('*')
-        .eq('id', currentUser.id)
-        .single()
-
+      const { data: trainerData, error: trainerError } = await withTimeout(
+        supabase.from('trainers').select('*').eq('id', currentUser.id).single(),
+        7000,
+        'select trainers'
+      )
       if (trainerError && !['PGRST116', '406'].includes(trainerError.code || '')) {
-        console.error('[auth] Error checking trainer record:', trainerError)
+        console.warn('[auth] trainer error', trainerError)
       }
-
+      
       if (trainerData && mountedRef.current) {
-        console.log('[auth] User is trainer')
+        if (runIdRef.current !== myRunId) return
+        console.log('[auth] resolved: trainer')
         setTrainer(trainerData)
         setClient(null)
         setAuthStatus('trainer')
@@ -161,19 +164,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 3) Check if user is a client
-      console.log('[auth] Checking client record...')
-      const { data: clientData, error: clientError } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .single()
-
+      const { data: clientData, error: clientError } = await withTimeout(
+        supabase.from('clients').select('*').eq('user_id', currentUser.id).single(),
+        7000,
+        'select clients'
+      )
       if (clientError && !['PGRST116', '406'].includes(clientError.code || '')) {
-        console.error('[auth] Error checking client record:', clientError)
+        console.warn('[auth] client error', clientError)
       }
-
+      
       if (clientData && mountedRef.current) {
-        console.log('[auth] User is client')
+        if (runIdRef.current !== myRunId) return
+        console.log('[auth] resolved: client')
         setClient(clientData)
         setTrainer(null)
         setAuthStatus('client')
@@ -181,15 +183,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 4) No role found - needs onboarding
-      console.log('[auth] No role found, setting unassigned_role')
+      if (runIdRef.current !== myRunId) return
+      console.log('[auth] resolved: unassigned_role')
       if (mountedRef.current) {
         setTrainer(null)
         setClient(null)
         setAuthStatus('unassigned_role')
       }
     } catch (error) {
-      console.error('[auth] Error in checkUserType:', error)
-      // Fail-safe: set unassigned_role
+      console.warn('[auth] error', error)
       if (mountedRef.current) {
         setTrainer(null)
         setClient(null)
