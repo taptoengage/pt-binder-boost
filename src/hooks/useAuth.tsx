@@ -1,7 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/integrations/supabase/client'
-
 
 export interface Trainer {
   id: string
@@ -35,6 +34,16 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// Timeout wrapper for Supabase calls
+const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error(`[auth] Timeout after ${timeoutMs}ms for ${operation}`)), timeoutMs)
+    )
+  ])
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
@@ -43,30 +52,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [authStatus, setAuthStatus] = useState<'loading' | 'admin' | 'trainer' | 'client' | 'unauthenticated' | 'unassigned_role'>('loading')
   
+  // Serialization and unmount guards
+  const checkingRef = useRef(false)
+  const mountedRef = useRef(true)
+  
 
   useEffect(() => {
     // Set up auth state listener FIRST
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mountedRef.current) return
+      
       setSession(session)
       setUser(session?.user ?? null)
       
       if (session?.user) {
         // Defer Supabase calls to avoid blocking auth state changes
         setTimeout(() => {
-          checkUserType(session.user)
+          if (mountedRef.current) {
+            checkUserType(session.user)
+          }
         }, 0)
       } else {
-        setTrainer(null)
-        setClient(null)
-        setAuthStatus('unauthenticated')
-        setLoading(false)
+        if (mountedRef.current) {
+          setTrainer(null)
+          setClient(null)
+          setAuthStatus('unauthenticated')
+          setLoading(false)
+        }
       }
     })
 
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mountedRef.current) return
+      
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
@@ -77,86 +98,108 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      mountedRef.current = false
+      subscription.unsubscribe()
+    }
   }, [])
 
-  const checkUserType = async (user: User) => {
+  const checkUserType = async (currentUser: User) => {
+    // Prevent overlapping runs
+    if (checkingRef.current) {
+      console.log('[auth] checkUserType already running, skipping')
+      return
+    }
+    
+    checkingRef.current = true
+    
+    if (!mountedRef.current) {
+      checkingRef.current = false
+      return
+    }
+    
+    setLoading(true)
+    console.log('[auth] Starting user type check for user:', currentUser.id)
+    
     try {
       // 1) Check admin role FIRST
-      const { data: isAdmin, error: adminError } = await supabase.rpc('has_role', {
-        _user_id: user.id,
-        _role: 'admin'
-      })
+      console.log('[auth] Checking admin role...')
+      const { data: isAdmin, error: adminError } = await supabase.rpc('has_role', { role_name: 'admin' })
+      
       if (adminError) {
-        console.error('Error checking admin role:', adminError)
+        console.error('[auth] Error checking admin role:', adminError)
       }
+      
       if (isAdmin) {
-        // Admins are authenticated without needing trainer/client profiles
-        setTrainer(null)
-        setClient(null)
-        setAuthStatus('admin')
-        setLoading(false)
-        return
+        console.log('[auth] User is admin')
+        if (mountedRef.current) {
+          setTrainer(null)
+          setClient(null)
+          setAuthStatus('admin')
+        }
         return
       }
 
-      // 2) Not admin: check if user is a trainer
-      const { data: existingTrainer, error: trainerError } = await supabase
+      // 2) Check if user is a trainer
+      console.log('[auth] Checking trainer record...')
+      const { data: trainerData, error: trainerError } = await supabase
         .from('trainers')
         .select('*')
-        .eq('id', user.id)
-        .maybeSingle()
+        .eq('id', currentUser.id)
+        .single()
 
-      if (trainerError) {
-        console.error('Error checking trainer record:', trainerError)
-        setLoading(false)
-        return
+      if (trainerError && !['PGRST116', '406'].includes(trainerError.code || '')) {
+        console.error('[auth] Error checking trainer record:', trainerError)
       }
 
-      if (existingTrainer) {
-        // User is a trainer
-        setTrainer(existingTrainer)
+      if (trainerData && mountedRef.current) {
+        console.log('[auth] User is trainer')
+        setTrainer(trainerData)
+        setClient(null)
         setAuthStatus('trainer')
-        setLoading(false)
-        return
         return
       }
 
-      // 3) Not a trainer, check if user is a client
-      const { data: existingClient, error: clientError } = await supabase
+      // 3) Check if user is a client
+      console.log('[auth] Checking client record...')
+      const { data: clientData, error: clientError } = await supabase
         .from('clients')
         .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle()
+        .eq('user_id', currentUser.id)
+        .single()
 
-      if (clientError) {
-        console.error('Error checking client record:', clientError)
-        setLoading(false)
-        return
+      if (clientError && !['PGRST116', '406'].includes(clientError.code || '')) {
+        console.error('[auth] Error checking client record:', clientError)
       }
 
-      if (existingClient) {
-        // User is a registered client
-        setClient(existingClient)
+      if (clientData && mountedRef.current) {
+        console.log('[auth] User is client')
+        setClient(clientData)
+        setTrainer(null)
         setAuthStatus('client')
-        setLoading(false)
-        return
         return
       }
 
-      // 4) If user is neither a trainer nor a registered client
-      if (!existingTrainer && !existingClient) {
-        // New user needs onboarding - don't sign them out
+      // 4) No role found - needs onboarding
+      console.log('[auth] No role found, setting unassigned_role')
+      if (mountedRef.current) {
         setTrainer(null)
         setClient(null)
         setAuthStatus('unassigned_role')
-        setLoading(false)
-        return
       }
     } catch (error) {
-      console.error('Error in checkUserType:', error)
+      console.error('[auth] Error in checkUserType:', error)
+      // Fail-safe: set unassigned_role
+      if (mountedRef.current) {
+        setTrainer(null)
+        setClient(null)
+        setAuthStatus('unassigned_role')
+      }
     } finally {
-      setLoading(false)
+      checkingRef.current = false
+      if (mountedRef.current) {
+        setLoading(false)
+      }
     }
   }
 
