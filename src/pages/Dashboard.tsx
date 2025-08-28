@@ -1,23 +1,13 @@
-import { useAuth } from "@/hooks/useAuth";
-import Spinner from "@/components/ui/spinner";
+import { useAuth } from '@/hooks/useAuth'
+import Spinner from '@/components/ui/spinner'
 
-export default function Dashboard() {
-  const { loading } = useAuth();
-
-  // Neutral page: AuthGuard handles all redirects.
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Spinner />
-      </div>
-    );
-  }
-
-  // Should be unreachable because AuthGuard redirects,
-  // but keep a friendly fallback for safety.
+const Dashboard = () => {
+  const { loading } = useAuth()
   return (
     <div className="flex items-center justify-center h-screen">
-      <p>Redirecting…</p>
+      {loading ? <Spinner /> : <p className="text-sm text-muted-foreground">Redirecting…</p>}
     </div>
-  );
+  )
 }
+
+export default Dashboard;
