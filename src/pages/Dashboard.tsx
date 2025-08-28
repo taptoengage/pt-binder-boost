@@ -1,10 +1,10 @@
-import { useAuth } from '@/hooks/useAuth';
-import Spinner from '@/components/ui/spinner';
+import { useAuth } from "@/hooks/useAuth";
+import Spinner from "@/components/ui/spinner";
 
-const Dashboard = () => {
-  const { authStatus, loading } = useAuth();
+export default function Dashboard() {
+  const { loading } = useAuth();
 
-  // Let AuthGuard handle all routing - just show loading here
+  // Neutral page: AuthGuard handles all redirects.
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -13,12 +13,11 @@ const Dashboard = () => {
     );
   }
 
-  // This should never be reached since AuthGuard redirects users
+  // Should be unreachable because AuthGuard redirects,
+  // but keep a friendly fallback for safety.
   return (
     <div className="flex items-center justify-center h-screen">
-      <p>Redirecting...</p>
+      <p>Redirecting…</p>
     </div>
   );
-};
-
-export default Dashboard;
+}
