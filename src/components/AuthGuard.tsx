@@ -1,80 +1,47 @@
-import { Navigate, useLocation } from 'react-router-dom';
+// src/components/AuthGuard.tsx
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 
-/**
- * Single source of truth for route access.
- * - Logs every render so we can see decisions.
- * - Redirects are idempotent (only when pathname !== target).
- * - Trainer area includes all trainer pages (clients/schedule/finance/...).
- */
-export default function AuthGuard({ children }: { children: React.ReactNode }) {
+export default function AuthGuard() {
   const { authStatus, loading } = useAuth();
-  const location = useLocation();
+  const { pathname } = useLocation();
 
-  // Always log so we can see the transition from loading->trainer/client/admin
-  console.debug('[guard]', {
-    path: location.pathname,
-    authStatus,
-    loading,
-  });
+  // Areas (prefix match)
+  const isTrainerArea = /^\/(trainer|clients|schedule|payments|finance|settings|profile)(\/|$)/.test(pathname);
+  const isClientArea  = /^\/client(\/|$)/.test(pathname);
+  const isAdminArea   = /^\/admin(\/|$)/.test(pathname);
 
-  // 1) While auth is resolving, show a single spinner (no children)
+  // Debug line every render
+  console.debug('[guard]', { path: pathname, authStatus, loading });
+
+  // 1) Loading → show a single lightweight placeholder
   if (loading) {
     return <div className="flex items-center justify-center h-screen">Loading…</div>;
   }
 
-  // 2) Block ALL protected routes when unauthenticated
+  // 2) Not logged in → block all protected children
   if (authStatus === 'unauthenticated') {
-    if (location.pathname !== '/') {
-      return <Navigate to="/" replace />;
-    }
-    return <>{children}</>;
+    return <Navigate to="/" replace />;
   }
 
-  // Helpers (regex so we don't miss siblings)
-  const inAdminArea   = /^\/admin(\/|$)/.test(location.pathname);
-  const inClientArea  = /^\/client(\/|$)/.test(location.pathname);
-  const inTrainerArea =
-    /^\/(trainer|clients|schedule|payments|finance|settings|profile)(\/|$)/.test(
-      location.pathname
-    );
-
-  // 3) Admin
-  if (authStatus === 'admin') {
-    const target = '/admin/dashboard';
-    if (!inAdminArea && location.pathname !== target) {
-      return <Navigate to={target} replace />;
-    }
-    return <>{children}</>;
+  // 3) Role fences
+  if (authStatus === 'trainer' && !isTrainerArea) {
+    return <Navigate to="/trainer/dashboard" replace />;
   }
 
-  // 4) Trainer
-  if (authStatus === 'trainer') {
-    const target = '/trainer/dashboard';
-    // Always route trainers away from /, /dashboard, and non-trainer areas
-    if (!inTrainerArea && location.pathname !== target) {
-      return <Navigate to={target} replace />;
-    }
-    return <>{children}</>;
+  if (authStatus === 'client' && !isClientArea) {
+    return <Navigate to="/client/dashboard" replace />;
   }
 
-  // 5) Client
-  if (authStatus === 'client') {
-    const target = '/client/dashboard';
-    if (!inClientArea && location.pathname !== target) {
-      return <Navigate to={target} replace />;
-    }
-    return <>{children}</>;
+  if (authStatus === 'admin' && !isAdminArea) {
+    return <Navigate to="/admin/dashboard" replace />;
   }
 
-  // 6) New/Unassigned user
-  if (authStatus === 'unassigned_role') {
-    if (location.pathname !== '/onboarding') {
-      return <Navigate to="/onboarding" replace />;
-    }
-    return <>{children}</>;
+  // 4) Unassigned users land on onboarding (and must stay there)
+  if (authStatus === 'unassigned_role' && pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />;
   }
 
-  // Fallback: render children
-  return <>{children}</>;
+  // 5) Allowed → render the routed child page
+  return <Outlet />;
 }
