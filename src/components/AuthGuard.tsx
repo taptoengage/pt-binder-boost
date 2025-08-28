@@ -1,77 +1,80 @@
-// src/components/AuthGuard.tsx
-import { useRef, useEffect } from 'react';
-import { useAuth } from "@/hooks/useAuth";
-import { Navigate, Outlet, useLocation } from "react-router-dom";
-import Spinner from "@/components/ui/spinner";
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
 
-const AuthGuard = () => {
+/**
+ * Single source of truth for route access.
+ * - Logs every render so we can see decisions.
+ * - Redirects are idempotent (only when pathname !== target).
+ * - Trainer area includes all trainer pages (clients/schedule/finance/...).
+ */
+export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { authStatus, loading } = useAuth();
   const location = useLocation();
-  const loggedOnce = useRef(false);
 
-  useEffect(() => {
-    if (!loggedOnce.current) {
-      // Lightweight visibility into guard decisions (one-time)
-      console.debug('[guard] path:', location.pathname, 'authStatus:', authStatus, 'loading:', loading);
-      loggedOnce.current = true;
-    }
-  }, [authStatus, loading, location.pathname]);
+  // Always log so we can see the transition from loading->trainer/client/admin
+  console.debug('[guard]', {
+    path: location.pathname,
+    authStatus,
+    loading,
+  });
 
+  // 1) While auth is resolving, show a single spinner (no children)
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Spinner />
-      </div>
+    return <div className="flex items-center justify-center h-screen">Loading…</div>;
+  }
+
+  // 2) Block ALL protected routes when unauthenticated
+  if (authStatus === 'unauthenticated') {
+    if (location.pathname !== '/') {
+      return <Navigate to="/" replace />;
+    }
+    return <>{children}</>;
+  }
+
+  // Helpers (regex so we don't miss siblings)
+  const inAdminArea   = /^\/admin(\/|$)/.test(location.pathname);
+  const inClientArea  = /^\/client(\/|$)/.test(location.pathname);
+  const inTrainerArea =
+    /^\/(trainer|clients|schedule|payments|finance|settings|profile)(\/|$)/.test(
+      location.pathname
     );
+
+  // 3) Admin
+  if (authStatus === 'admin') {
+    const target = '/admin/dashboard';
+    if (!inAdminArea && location.pathname !== target) {
+      return <Navigate to={target} replace />;
+    }
+    return <>{children}</>;
   }
 
-  // 🚨 Unauthenticated users must never access protected routes
-  if (authStatus === "unauthenticated") {
-    return <Navigate to="/" replace />;
+  // 4) Trainer
+  if (authStatus === 'trainer') {
+    const target = '/trainer/dashboard';
+    // Always route trainers away from /, /dashboard, and non-trainer areas
+    if (!inTrainerArea && location.pathname !== target) {
+      return <Navigate to={target} replace />;
+    }
+    return <>{children}</>;
   }
 
-  const currentPath = location.pathname;
-
-  const trainerHome = "/trainer/dashboard";
-  const clientHome = "/client/dashboard";
-  const adminHome  = "/admin/dashboard";
-  const onboardingPath = "/onboarding";
-
-  // Trainer-owned areas (match your App.tsx trainer routes)
-  const isTrainerArea =
-    currentPath.startsWith("/trainer") ||
-    currentPath.startsWith("/clients") ||
-    currentPath.startsWith("/schedule") ||
-    currentPath.startsWith("/payments") ||
-    currentPath.startsWith("/finance") ||
-    currentPath.startsWith("/settings") ||
-    currentPath.startsWith("/profile") ||
-    currentPath === "/dashboard"; // shared entry that you redirect from
-
-  const isClientArea = currentPath.startsWith("/client");
-  const isAdminArea  = currentPath.startsWith("/admin");
-
-  // Admins must stay under /admin/*
-  if (authStatus === "admin" && !isAdminArea) {
-    return <Navigate to={adminHome} replace />;
+  // 5) Client
+  if (authStatus === 'client') {
+    const target = '/client/dashboard';
+    if (!inClientArea && location.pathname !== target) {
+      return <Navigate to={target} replace />;
+    }
+    return <>{children}</>;
   }
 
-  // Trainers must stay in trainer-owned areas
-  if (authStatus === "trainer" && !isTrainerArea) {
-    return <Navigate to={trainerHome} replace />;
+  // 6) New/Unassigned user
+  if (authStatus === 'unassigned_role') {
+    if (location.pathname !== '/onboarding') {
+      return <Navigate to="/onboarding" replace />;
+    }
+    return <>{children}</>;
   }
 
-  // Clients must stay in /client/*
-  if (authStatus === "client" && !isClientArea) {
-    return <Navigate to={clientHome} replace />;
-  }
-
-  // Unassigned role → onboarding
-  if (authStatus === "unassigned_role" && currentPath !== onboardingPath) {
-    return <Navigate to={onboardingPath} replace />;
-  }
-
-  return <Outlet />;
-};
-
-export default AuthGuard;
+  // Fallback: render children
+  return <>{children}</>;
+}
