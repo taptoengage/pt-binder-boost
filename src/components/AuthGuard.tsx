@@ -1,4 +1,5 @@
 // src/components/AuthGuard.tsx
+import { useRef, useEffect } from 'react';
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import Spinner from "@/components/ui/spinner";
@@ -6,6 +7,15 @@ import Spinner from "@/components/ui/spinner";
 const AuthGuard = () => {
   const { authStatus, loading } = useAuth();
   const location = useLocation();
+  const loggedOnce = useRef(false);
+
+  useEffect(() => {
+    if (!loggedOnce.current) {
+      // Lightweight visibility into guard decisions (one-time)
+      console.debug('[guard] path:', location.pathname, 'authStatus:', authStatus, 'loading:', loading);
+      loggedOnce.current = true;
+    }
+  }, [authStatus, loading, location.pathname]);
 
   if (loading) {
     return (
