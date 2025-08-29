@@ -464,7 +464,7 @@ export default function ClientDetail() {
       }
 
       query = query
-        .order('session_date', { ascending: true })
+        .order('session_date', { ascending: false })
         .range(from, to);
 
       const { data, error, count } = await query;
