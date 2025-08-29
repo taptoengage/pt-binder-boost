@@ -4,13 +4,15 @@ import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, isWithinInterval, isToday, eachDayOfInterval, isSameMonth, isSameDay, parse, setMinutes, setHours, addMinutes, isBefore } from 'date-fns';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import UniversalSessionModal from '@/components/UniversalSessionModal';
+import BlockAvailabilityModal from '@/components/BlockAvailabilityModal';
+import { useToast } from '@/hooks/use-toast';
 
 // Helper to generate 30-minute time slots for a day
 const generateDayTimeSlots = () => {
@@ -118,10 +120,13 @@ const getEffectiveDayAvailabilityRanges = (
 
 export default function ViewSchedule() {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [currentView, setCurrentView] = useState<'day' | 'week' | 'month'>('week');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isSessionDetailModalOpen, setIsSessionDetailModalOpen] = useState(false);
   const [selectedSessionForModal, setSelectedSessionForModal] = useState<any | null>(null);
+  const [isBlockAvailabilityModalOpen, setIsBlockAvailabilityModalOpen] = useState(false);
 
   // Fetch all trainer's sessions
   const { data: allTrainerSessions, isLoading: isLoadingSessions, error: sessionsError } = useQuery({
@@ -312,20 +317,31 @@ export default function ViewSchedule() {
             </Button>
           </div>
 
-          {/* View Toggles */}
-          <ToggleGroup type="single" value={currentView} onValueChange={(value: 'day' | 'week' | 'month') => {
-            if (value) setCurrentView(value);
-          }}>
-            <ToggleGroupItem value="day" aria-label="Toggle day view">
-              Day
-            </ToggleGroupItem>
-            <ToggleGroupItem value="week" aria-label="Toggle week view">
-              Week
-            </ToggleGroupItem>
-            <ToggleGroupItem value="month" aria-label="Toggle month view">
-              Month
-            </ToggleGroupItem>
-          </ToggleGroup>
+          {/* Block Availability and View Toggles */}
+          <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsBlockAvailabilityModalOpen(true)}
+              className="flex items-center gap-2"
+            >
+              <CalendarOff className="h-4 w-4" />
+              Block Availability
+            </Button>
+            
+            <ToggleGroup type="single" value={currentView} onValueChange={(value: 'day' | 'week' | 'month') => {
+              if (value) setCurrentView(value);
+            }}>
+              <ToggleGroupItem value="day" aria-label="Toggle day view">
+                Day
+              </ToggleGroupItem>
+              <ToggleGroupItem value="week" aria-label="Toggle week view">
+                Week
+              </ToggleGroupItem>
+              <ToggleGroupItem value="month" aria-label="Toggle month view">
+                Month
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
         </div>
 
         <div className="calendar-grid-display border rounded-lg p-4 bg-white shadow-sm">
@@ -590,6 +606,13 @@ export default function ViewSchedule() {
             setSelectedSessionForModal(null);
           }}
           session={selectedSessionForModal}
+        />
+
+        {/* Render the block availability modal */}
+        <BlockAvailabilityModal
+          isOpen={isBlockAvailabilityModalOpen}
+          onClose={() => setIsBlockAvailabilityModalOpen(false)}
+          trainerId={user?.id || ''}
         />
       </main>
     </div>
