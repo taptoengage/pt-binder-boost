@@ -16,7 +16,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Badge } from "@/components/ui/badge";
 
 // Feature flag for email authentication
-const EMAIL_AUTH_ENABLED = true;
+const EMAIL_AUTH_ENABLED = import.meta.env.VITE_EMAIL_AUTH_ENABLED === 'true';
 
 // Password validation schema
 const passwordSchema = z.string()
