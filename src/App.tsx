@@ -19,7 +19,8 @@ import ClientDashboard from "./pages/ClientDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
 import { AdminRoute } from "./components/AdminRoute";
-import AuthRedirect from "./pages/AuthRedirect";
+import Auth from "./pages/Auth";
+import AuthReset from "./pages/AuthReset";
 import Dashboard from "./pages/Dashboard";
 import EditPayment from "./pages/EditPayment";
 import EditSession from "./pages/EditSession";
@@ -47,7 +48,8 @@ function App() {
             <Routes>
               {/* Public routes that are always accessible */}
               <Route path="/" element={<Index />} />
-              <Route path="/auth" element={<AuthRedirect />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/auth/reset" element={<AuthReset />} />
               <Route path="/under-construction" element={<UnderConstruction />} />
 
               {/* All protected routes are now children of the AuthGuard */}
