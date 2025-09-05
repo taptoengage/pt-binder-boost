@@ -71,3 +71,25 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+
+## Secure transactional email function
+
+This project includes a secure Supabase Edge Function: `send-transactional-email`.
+
+1) Configure function secrets (Supabase Dashboard > Project Settings > Functions):
+- RESEND_API_KEY (required)
+- INTERNAL_FUNCTION_TOKEN (required)
+- EMAIL_FROM (optional, default: no-reply@optimisedtrainer.online)
+
+2) Example call:
+
+```
+curl -X POST "https://<PROJECT>.functions.supabase.co/send-transactional-email" \
+  -H "Content-Type: application/json" \
+  -H "X-OT-Internal-Token: <INTERNAL_FUNCTION_TOKEN>" \
+  -d '{"type":"WELCOME","to":"you@yourdomain.com","data":{"ctaUrl":"https://optimisedtrainer.online"}}'
+```
+
+Notes:
+- JWT is disabled for this function; access is gated by the `X-OT-Internal-Token` header only.
+- Do not expose your INTERNAL_FUNCTION_TOKEN publicly; call this from trusted server environments only.

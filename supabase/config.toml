@@ -2,3 +2,6 @@ project_id = "rjislxmkntaunloeqdzx"
 
 [functions.waitlist-signup]
 verify_jwt = false
+
+[functions.send-transactional-email]
+verify_jwt = false
