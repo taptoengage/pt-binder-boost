@@ -77,7 +77,7 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-trick
 This project includes a secure Supabase Edge Function: `send-transactional-email`.
 
 1) Configure function secrets (Supabase Dashboard > Project Settings > Functions):
-- RESEND_API_KEY (required)
+- POSTMARK_SERVER_TOKEN (required)
 - INTERNAL_FUNCTION_TOKEN (required)
 - EMAIL_FROM (optional, default: no-reply@optimisedtrainer.online)
 

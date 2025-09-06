@@ -5,7 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
+const POSTMARK_SERVER_TOKEN = Deno.env.get("POSTMARK_SERVER_TOKEN")!;
 const EMAIL_FROM = Deno.env.get("EMAIL_FROM") || "no-reply@optimisedtrainer.online";
 const INTERNAL_FUNCTION_TOKEN = Deno.env.get("INTERNAL_FUNCTION_TOKEN");
 
@@ -54,24 +54,27 @@ function renderHtml(payload: Payload): { subject: string; html: string } {
 
 async function sendEmail(p: Payload) {
   const { subject, html } = renderHtml(p);
-  const resp = await fetch("https://api.resend.com/emails", {
+  const resp = await fetch("https://api.postmarkapp.com/email", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Accept": "application/json",
       "Content-Type": "application/json",
+      "X-Postmark-Server-Token": POSTMARK_SERVER_TOKEN,
     },
     body: JSON.stringify({
-      from: EMAIL_FROM,
-      to: p.to,
-      subject,
-      html,
+      From: EMAIL_FROM,
+      To: p.to,
+      Subject: subject,
+      HtmlBody: html,
+      MessageStream: "outbound",
     }),
   });
   const json = await resp.json();
   if (!resp.ok) {
-    throw new Error(json?.message || resp.statusText || "Send failed");
+    // Postmark returns { ErrorCode, Message } on error
+    throw new Error(json?.Message || resp.statusText || "Send failed");
   }
-  return json; // typically { id: "..." }
+  return json; // { MessageID, To, SubmittedAt, ... }
 }
 
 serve(async (req) => {
@@ -118,8 +121,8 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
-  if (!RESEND_API_KEY) {
-    return new Response(JSON.stringify({ error: "RESEND_API_KEY not configured" }), {
+  if (!POSTMARK_SERVER_TOKEN) {
+    return new Response(JSON.stringify({ error: "POSTMARK_SERVER_TOKEN not configured" }), {
       status: 400,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
@@ -145,13 +148,13 @@ serve(async (req) => {
   let providerId: string | undefined;
   try {
     const first = await sendEmail(payload);
-    providerId = first?.id;
+    providerId = first?.MessageID || providerId;
   } catch (e1) {
     console.warn("Send failed, retrying once:", e1);
     await new Promise((r) => setTimeout(r, 400));
     try {
       const second = await sendEmail(payload);
-      providerId = second?.id;
+      providerId = second?.MessageID || providerId;
     } catch (e2) {
       await supabaseAdmin
         .from("email_logs")
