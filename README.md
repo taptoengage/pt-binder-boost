@@ -94,6 +94,11 @@ curl -X POST "https://<PROJECT>.functions.supabase.co/send-transactional-email" 
   -d '{"type":"WELCOME","to":"you@yourdomain.com","data":{"ctaUrl":"https://optimisedtrainer.online"}}'
 ```
 
+Expected response:
+```
+{"ok": true, "id": "<MessageID>"}
+```
+
 Notes:
 - Function is token-gated (X-OT-Internal-Token), not JWT; keep the token private.
 - Do not expose your INTERNAL_FUNCTION_TOKEN publicly; call this from trusted server environments only.

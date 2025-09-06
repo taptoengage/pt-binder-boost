@@ -9,10 +9,6 @@ const POSTMARK_SERVER_TOKEN = Deno.env.get("POSTMARK_SERVER_TOKEN")!;
 const EMAIL_FROM = Deno.env.get("EMAIL_FROM") || "no-reply@optimisedtrainer.online";
 const INTERNAL_FUNCTION_TOKEN = Deno.env.get("INTERNAL_FUNCTION_TOKEN");
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-ot-internal-token",
-};
 
 type Payload = {
   type: "WELCOME" | "GENERIC";
@@ -78,24 +74,20 @@ async function sendEmail(p: Payload) {
 }
 
 serve(async (req) => {
-  // CORS preflight
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
 
   // Require internal token (no service role over the wire)
   const provided = req.headers.get("x-ot-internal-token");
   if (!INTERNAL_FUNCTION_TOKEN || !provided || provided !== INTERNAL_FUNCTION_TOKEN) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json" },
     });
   }
 
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json" },
     });
   }
 
@@ -105,26 +97,26 @@ serve(async (req) => {
   } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json" },
     });
   }
 
   if (!payload?.to || !payload?.type) {
     return new Response(JSON.stringify({ error: "Missing `to` or `type`" }), {
       status: 400,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json" },
     });
   }
   if (!["WELCOME", "GENERIC"].includes(payload.type)) {
     return new Response(JSON.stringify({ error: "Invalid `type`" }), {
       status: 400,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json" },
     });
   }
   if (!POSTMARK_SERVER_TOKEN) {
     return new Response(JSON.stringify({ error: "POSTMARK_SERVER_TOKEN not configured" }), {
       status: 400,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers: { "Content-Type": "application/json" },
     });
   }
 
@@ -155,26 +147,35 @@ serve(async (req) => {
     try {
       const second = await sendEmail(payload);
       providerId = second?.MessageID || providerId;
-    } catch (e2) {
+      } catch (e2) {
+        {
+          const targetId = queued?.id;
+          if (targetId) {
+            await supabaseAdmin
+              .from("email_logs")
+              .update({ status: "failed", error: String(e2), provider_id: providerId ?? null })
+              .eq("id", targetId);
+          }
+        }
+        return new Response(JSON.stringify({ ok: false, error: String(e2) }), {
+          status: 502,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+  }
+
+  {
+    const targetId = queued?.id;
+    if (targetId) {
       await supabaseAdmin
         .from("email_logs")
-        .update({ status: "failed", error: String(e2), provider_id: providerId ?? null })
-        .eq("id", queued?.id);
-      return new Response(JSON.stringify({ ok: false, error: String(e2) }), {
-        status: 502,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
+        .update({ status: "sent", provider_id: providerId ?? null })
+        .eq("id", targetId);
     }
   }
 
-  // 4) log success
-  await supabaseAdmin
-    .from("email_logs")
-    .update({ status: "sent", provider_id: providerId ?? null })
-    .eq("id", queued?.id);
-
   return new Response(JSON.stringify({ ok: true, id: providerId ?? null }), {
     status: 200,
-    headers: { "Content-Type": "application/json", ...corsHeaders },
+    headers: { "Content-Type": "application/json" },
   });
 });
