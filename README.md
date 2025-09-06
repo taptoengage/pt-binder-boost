@@ -77,11 +77,15 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-trick
 This project includes a secure Supabase Edge Function: `send-transactional-email`.
 
 1) Configure function secrets (Supabase Dashboard > Project Settings > Functions):
-- POSTMARK_SERVER_TOKEN (required)
-- INTERNAL_FUNCTION_TOKEN (required)
-- EMAIL_FROM (optional, default: no-reply@optimisedtrainer.online)
 
-2) Example call:
+Function env (Supabase → Functions → Environment variables)
+```
+POSTMARK_SERVER_TOKEN=<your Postmark server token>
+EMAIL_FROM=no-reply@optimisedtrainer.online
+INTERNAL_FUNCTION_TOKEN=<your long random string>
+```
+
+2) cURL test:
 
 ```
 curl -X POST "https://<PROJECT>.functions.supabase.co/send-transactional-email" \
@@ -91,5 +95,5 @@ curl -X POST "https://<PROJECT>.functions.supabase.co/send-transactional-email" 
 ```
 
 Notes:
-- JWT is disabled for this function; access is gated by the `X-OT-Internal-Token` header only.
+- Function is token-gated (X-OT-Internal-Token), not JWT; keep the token private.
 - Do not expose your INTERNAL_FUNCTION_TOKEN publicly; call this from trusted server environments only.
