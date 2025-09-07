@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, addDays, setHours, setMinutes, isSameDay, startOfWeek, isToday, isAfter, isBefore, addMinutes, isWithinInterval, addWeeks, subWeeks } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import { Calendar, momentLocalizer, View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -55,6 +55,8 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSlotForModal, setSelectedSlotForModal] = useState<{ start: Date; end: Date } | null>(null);
   const [bookedSessions, setBookedSessions] = useState<any[]>([]);
+  const [lastSelectedDate, setLastSelectedDate] = useState<Date | null>(null);
+  const tilesContainerRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
   // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
@@ -295,10 +297,32 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
   const handlePrevWeek = () => {
     setCurrentDisplayMonth(prevDate => subWeeks(prevDate, 1));
+    // Scroll to top after week change
+    if (isMobile && tilesContainerRef.current) {
+      requestAnimationFrame(() => {
+        tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
   };
 
   const handleNextWeek = () => {
     setCurrentDisplayMonth(prevDate => addWeeks(prevDate, 1));
+    // Scroll to top after week change
+    if (isMobile && tilesContainerRef.current) {
+      requestAnimationFrame(() => {
+        tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
+  };
+
+  const goToToday = () => {
+    setCurrentDisplayMonth(new Date());
+    // Scroll to today tile if visible
+    if (isMobile && tilesContainerRef.current) {
+      requestAnimationFrame(() => {
+        tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
   };
 
   // Mobile Week Header Component
@@ -307,24 +331,42 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     const label = `${format(days[0], "MMM dd")} – ${format(days[6], "MMM dd, yyyy")}`;
 
     return (
-      <div className="flex items-center justify-between gap-3 px-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handlePrevWeek}
-          className="text-sm"
-        >
-          Previous
-        </Button>
-        <div className="text-sm font-medium">{label}</div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleNextWeek}
-          className="text-sm"
-        >
-          Next
-        </Button>
+      <div className="sticky top-0 z-10 bg-background/90 backdrop-blur border-b py-3">
+        <div className="flex items-center justify-between gap-3 px-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePrevWeek}
+            className="text-sm"
+            aria-label="Previous week"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Previous
+          </Button>
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-medium">{label}</div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={goToToday}
+              className="text-xs"
+              aria-label="Go to today"
+            >
+              <CalendarIcon className="w-3 h-3 mr-1" />
+              Today
+            </Button>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleNextWeek}
+            className="text-sm"
+            aria-label="Next week"
+          >
+            Next
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
     );
   };
@@ -333,10 +375,13 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   type DayTileProps = {
     date: Date;
     isAvailable: boolean;
+    slotCount: number;
+    isToday: boolean;
+    selected?: boolean;
     onSelect: (date: Date) => void;
   };
 
-  const DayTile = ({ date, isAvailable, onSelect }: DayTileProps) => {
+  const DayTile = ({ date, isAvailable, slotCount, isToday, selected, onSelect }: DayTileProps) => {
     const dayName = format(date, "EEEE");
     const dayLabel = format(date, "MMM d");
 
@@ -348,6 +393,11 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
         >
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
+              {isToday && (
+                <span className="mb-1 inline-block w-fit rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Today
+                </span>
+              )}
               <span className="text-base font-semibold text-muted-foreground">{dayName}</span>
               <span className="text-xs text-muted-foreground">{dayLabel}</span>
             </div>
@@ -361,38 +411,110 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
       <Button
         onClick={() => onSelect(date)}
         variant="outline"
-        className="h-auto w-full justify-between rounded-xl px-4 py-3 text-left hover:bg-accent hover:text-accent-foreground active:scale-[0.99]"
+        className={`h-auto w-full justify-between rounded-xl px-4 py-3 text-left hover:bg-accent hover:text-accent-foreground active:scale-[0.99] focus:outline-none focus:ring ${
+          selected ? 'ring-1 ring-primary/60 shadow-sm' : ''
+        }`}
+        aria-pressed={false}
       >
         <div className="flex flex-col">
+          {isToday && (
+            <span className="mb-1 inline-block w-fit rounded-full border border-primary px-2 py-0.5 text-[10px] uppercase tracking-wide text-primary">
+              Today
+            </span>
+          )}
           <span className="text-base font-semibold">{dayName}</span>
           <span className="text-xs text-muted-foreground">{dayLabel}</span>
         </div>
-        <span className="text-sm font-medium text-primary">Available</span>
+        <span className="text-sm font-medium text-primary">
+          {slotCount} {slotCount === 1 ? "slot" : "slots"}
+        </span>
       </Button>
     );
   };
 
+  // Loading skeleton for mobile tiles
+  const MobileLoadingSkeleton = () => (
+    <div className="flex flex-col gap-4">
+      <MobileWeekHeader />
+      <div className="mt-2 flex flex-col gap-3 px-4">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-16 rounded-xl border bg-muted/50 animate-pulse"
+          />
+        ))}
+      </div>
+    </div>
+  );
+
+  // Empty week message
+  const EmptyWeekMessage = () => (
+    <div className="flex flex-col items-center justify-center py-8 text-center">
+      <p className="text-muted-foreground">No availability this week.</p>
+      <p className="text-sm text-muted-foreground mt-1">Try next week.</p>
+    </div>
+  );
+
+  // Error retry component
+  const ErrorRetry = () => (
+    <div className="flex flex-col items-center justify-center py-8 text-center border rounded-lg bg-destructive/5 border-destructive/20 mx-4">
+      <p className="text-sm text-destructive mb-2">Failed to load availability</p>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => {
+          setError(null);
+          setCurrentDisplayMonth(new Date(currentDisplayMonth));
+        }}
+      >
+        Retry
+      </Button>
+    </div>
+  );
+
   const renderMobileWeekView = () => {
+    if (isLoadingAvailability) {
+      return <MobileLoadingSkeleton />;
+    }
+
     const weekDays = getDisplayedWeek(currentDisplayMonth);
+    const today = new Date();
+    
+    // Check if entire week has no availability
+    const weekHasSlots = weekDays.some(d => 
+      getSlotsForDate(d, availableSlots || []).length > 0
+    );
 
     const handleSelectDay = (date: Date) => {
       setSelectedDate(date);
+      setLastSelectedDate(date);
       setView("day");
     };
 
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col">
         <MobileWeekHeader />
-        <div className="mt-2 flex flex-col gap-3 px-4">
+        
+        {error && <ErrorRetry />}
+        
+        <div ref={tilesContainerRef} className="mt-2 flex flex-col gap-3 px-4 max-h-[70vh] overflow-y-auto">
+          {!weekHasSlots && !error && <EmptyWeekMessage />}
+          
           {weekDays.map((d) => {
             const daySlots = getSlotsForDate(d, availableSlots || []);
-            const isAvailable = daySlots.length > 0;
+            const slotCount = daySlots.length;
+            const isAvailable = slotCount > 0;
+            const dayIsToday = isSameDay(d, today);
+            const selected = !!lastSelectedDate && isSameDay(d, lastSelectedDate);
 
             return (
               <DayTile
                 key={d.toISOString()}
                 date={d}
                 isAvailable={isAvailable}
+                slotCount={slotCount}
+                isToday={dayIsToday}
+                selected={selected}
                 onSelect={handleSelectDay}
               />
             );
