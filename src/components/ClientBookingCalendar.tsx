@@ -10,6 +10,16 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import UniversalSessionModal from '@/components/UniversalSessionModal';
 import { useIsMobile } from "@/hooks/use-mobile";
 
+// Helper functions for mobile week view
+const getSlotsForDate = (date: Date, slots: { start: Date; end: Date }[]) => {
+  return slots.filter((s) => isSameDay(new Date(s.start), date));
+};
+
+const getDisplayedWeek = (anchor: Date) => {
+  const weekStart = startOfWeek(anchor, { weekStartsOn: 1 });
+  return eachDayOfInterval({ start: weekStart, end: addDays(weekStart, 6) });
+};
+
 const localizer = momentLocalizer(moment);
 
 interface AvailableSlot {
@@ -291,12 +301,103 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     setCurrentDisplayMonth(prevDate => addWeeks(prevDate, 1));
   };
 
-  const renderMobileWeekView = () => {
+  // Mobile Week Header Component
+  const MobileWeekHeader = () => {
+    const days = getDisplayedWeek(currentDisplayMonth);
+    const label = `${format(days[0], "MMM dd")} – ${format(days[6], "MMM dd, yyyy")}`;
+
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center">
-        <p className="text-lg font-medium text-gray-600">Mobile Week View</p>
-        <p className="text-sm text-gray-500 mt-2">Coming soon...</p>
-        <p className="text-xs text-gray-400 mt-4">Screen width: {isMobile ? 'Mobile' : 'Desktop'}</p>
+      <div className="flex items-center justify-between gap-3 px-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handlePrevWeek}
+          className="text-sm"
+        >
+          Previous
+        </Button>
+        <div className="text-sm font-medium">{label}</div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleNextWeek}
+          className="text-sm"
+        >
+          Next
+        </Button>
+      </div>
+    );
+  };
+
+  // Day Tile Component
+  type DayTileProps = {
+    date: Date;
+    isAvailable: boolean;
+    onSelect: (date: Date) => void;
+  };
+
+  const DayTile = ({ date, isAvailable, onSelect }: DayTileProps) => {
+    const dayName = format(date, "EEEE");
+    const dayLabel = format(date, "MMM d");
+
+    if (!isAvailable) {
+      return (
+        <div
+          className="opacity-60 pointer-events-none rounded-xl border bg-muted px-4 py-3"
+          aria-disabled="true"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-base font-semibold text-muted-foreground">{dayName}</span>
+              <span className="text-xs text-muted-foreground">{dayLabel}</span>
+            </div>
+            <span className="text-sm text-muted-foreground">No availability</span>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <Button
+        onClick={() => onSelect(date)}
+        variant="outline"
+        className="h-auto w-full justify-between rounded-xl px-4 py-3 text-left hover:bg-accent hover:text-accent-foreground active:scale-[0.99]"
+      >
+        <div className="flex flex-col">
+          <span className="text-base font-semibold">{dayName}</span>
+          <span className="text-xs text-muted-foreground">{dayLabel}</span>
+        </div>
+        <span className="text-sm font-medium text-primary">Available</span>
+      </Button>
+    );
+  };
+
+  const renderMobileWeekView = () => {
+    const weekDays = getDisplayedWeek(currentDisplayMonth);
+
+    const handleSelectDay = (date: Date) => {
+      setSelectedDate(date);
+      setView("day");
+    };
+
+    return (
+      <div className="flex flex-col gap-4">
+        <MobileWeekHeader />
+        <div className="mt-2 flex flex-col gap-3 px-4">
+          {weekDays.map((d) => {
+            const daySlots = getSlotsForDate(d, availableSlots || []);
+            const isAvailable = daySlots.length > 0;
+
+            return (
+              <DayTile
+                key={d.toISOString()}
+                date={d}
+                isAvailable={isAvailable}
+                onSelect={handleSelectDay}
+              />
+            );
+          })}
+        </div>
       </div>
     );
   };
