@@ -8,6 +8,7 @@ import { Calendar, momentLocalizer, View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import UniversalSessionModal from '@/components/UniversalSessionModal';
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const localizer = momentLocalizer(moment);
 
@@ -44,6 +45,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSlotForModal, setSelectedSlotForModal] = useState<{ start: Date; end: Date } | null>(null);
   const [bookedSessions, setBookedSessions] = useState<any[]>([]);
+  const isMobile = useIsMobile();
 
   // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
   const getDayNumberFromString = (dayName: string): number | undefined => {
@@ -289,7 +291,21 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     setCurrentDisplayMonth(prevDate => addWeeks(prevDate, 1));
   };
 
+  const renderMobileWeekView = () => {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 text-center">
+        <p className="text-lg font-medium text-gray-600">Mobile Week View</p>
+        <p className="text-sm text-gray-500 mt-2">Coming soon...</p>
+        <p className="text-xs text-gray-400 mt-4">Screen width: {isMobile ? 'Mobile' : 'Desktop'}</p>
+      </div>
+    );
+  };
+
   const renderWeekView = () => {
+    if (isMobile) {
+      return renderMobileWeekView();
+    }
+
     const weekStart = startOfWeek(currentDisplayMonth, { weekStartsOn: 1 }); // 1 = Monday
     const daysOfWeek = eachDayOfInterval({ start: weekStart, end: addDays(weekStart, 6) });
 
