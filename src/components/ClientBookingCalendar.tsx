@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, addDays, setHours, setMinutes, isSameDay, startOfWeek, isToday, isAfter, isBefore, addMinutes, isWithinInterval, addWeeks, subWeeks } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -9,6 +9,7 @@ import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import UniversalSessionModal from '@/components/UniversalSessionModal';
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useSwipeGesture } from "@/hooks/useSwipeGesture";
 
 // Helper functions for mobile week view
 const getSlotsForDate = (date: Date, slots: { start: Date; end: Date }[]) => {
@@ -21,6 +22,9 @@ const getDisplayedWeek = (anchor: Date) => {
 };
 
 const localizer = momentLocalizer(moment);
+
+// Enable micro-interactions
+const ENABLE_VIBRATION = true;
 
 interface AvailableSlot {
   start: Date;
@@ -55,7 +59,9 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSlotForModal, setSelectedSlotForModal] = useState<{ start: Date; end: Date } | null>(null);
   const [bookedSessions, setBookedSessions] = useState<any[]>([]);
+  const [lastSelectedDate, setLastSelectedDate] = useState<Date | null>(null);
   const isMobile = useIsMobile();
+  const tilesContainerRef = useRef<HTMLDivElement>(null);
 
   // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
   const getDayNumberFromString = (dayName: string): number | undefined => {
@@ -293,13 +299,56 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     setIsModalOpen(true);
   };
 
-  const handlePrevWeek = () => {
+  const handlePrevWeek = useCallback(() => {
     setCurrentDisplayMonth(prevDate => subWeeks(prevDate, 1));
-  };
+    // Scroll to top after week change
+    requestAnimationFrame(() => {
+      tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }, []);
 
-  const handleNextWeek = () => {
+  const handleNextWeek = useCallback(() => {
     setCurrentDisplayMonth(prevDate => addWeeks(prevDate, 1));
-  };
+    // Scroll to top after week change
+    requestAnimationFrame(() => {
+      tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }, []);
+
+  const handleTodayJump = useCallback(() => {
+    setCurrentDisplayMonth(new Date());
+    requestAnimationFrame(() => {
+      tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }, []);
+
+  // Performance optimization: memoize week days and slots by day
+  const weekDays = useMemo(() => getDisplayedWeek(currentDisplayMonth), [currentDisplayMonth]);
+  
+  const slotsByDay = useMemo(() => {
+    const byDay: Record<string, {count: number; slots: {start: Date; end: Date}[]}> = {};
+    weekDays.forEach(d => { 
+      byDay[d.toDateString()] = { count: 0, slots: [] }; 
+    });
+    for (const s of (availableSlots ?? [])) {
+      const d = new Date(s.start);
+      const key = d.toDateString();
+      if (byDay[key]) { 
+        byDay[key].count++; 
+        byDay[key].slots.push(s); 
+      }
+    }
+    return byDay;
+  }, [availableSlots, weekDays]);
+
+  // Swipe gesture setup
+  const swipeRef = useSwipeGesture({
+    onSwipeLeft: handleNextWeek,
+    onSwipeRight: handlePrevWeek,
+    enabled: isMobile && !isLoadingAvailability,
+    threshold: 60,
+    maxVerticalMovement: 40
+  });
 
   // Mobile Week Header Component
   const MobileWeekHeader = () => {
@@ -307,24 +356,36 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     const label = `${format(days[0], "MMM dd")} – ${format(days[6], "MMM dd, yyyy")}`;
 
     return (
-      <div className="flex items-center justify-between gap-3 px-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handlePrevWeek}
-          className="text-sm"
-        >
-          Previous
-        </Button>
-        <div className="text-sm font-medium">{label}</div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleNextWeek}
-          className="text-sm"
-        >
-          Next
-        </Button>
+      <div className="sticky top-0 z-10 bg-background/90 backdrop-blur border-b">
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePrevWeek}
+            className="text-sm"
+          >
+            Previous
+          </Button>
+          <div className="text-sm font-medium">{label}</div>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleTodayJump}
+              className="text-sm"
+            >
+              Today
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNextWeek}
+              className="text-sm"
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       </div>
     );
   };
@@ -333,12 +394,24 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   type DayTileProps = {
     date: Date;
     isAvailable: boolean;
+    slotCount: number;
+    isToday: boolean;
+    selected?: boolean;
     onSelect: (date: Date) => void;
   };
 
-  const DayTile = ({ date, isAvailable, onSelect }: DayTileProps) => {
+  const DayTile = ({ date, isAvailable, slotCount, isToday, selected, onSelect }: DayTileProps) => {
     const dayName = format(date, "EEEE");
     const dayLabel = format(date, "MMM d");
+
+    const handleTileClick = () => {
+      // Haptic feedback
+      if (ENABLE_VIBRATION && navigator.vibrate) {
+        navigator.vibrate(10);
+      }
+      setLastSelectedDate(date);
+      onSelect(date);
+    };
 
     if (!isAvailable) {
       return (
@@ -348,6 +421,11 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
         >
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
+              {isToday && (
+                <span className="mb-1 inline-block rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide w-fit bg-primary/10 text-primary">
+                  Today
+                </span>
+              )}
               <span className="text-base font-semibold text-muted-foreground">{dayName}</span>
               <span className="text-xs text-muted-foreground">{dayLabel}</span>
             </div>
@@ -359,21 +437,32 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
     return (
       <Button
-        onClick={() => onSelect(date)}
+        onClick={handleTileClick}
         variant="outline"
-        className="h-auto w-full justify-between rounded-xl px-4 py-3 text-left hover:bg-accent hover:text-accent-foreground active:scale-[0.99]"
+        className={`h-auto w-full justify-between rounded-xl px-4 py-3 text-left hover:bg-accent hover:text-accent-foreground 
+          transition-all duration-150 ease-out active:scale-[0.98] 
+          ${selected ? 'ring-1 ring-primary/60 shadow-sm' : ''}
+          motion-reduce:transition-none motion-reduce:active:scale-100`}
+        aria-pressed={false}
       >
         <div className="flex flex-col">
+          {isToday && (
+            <span className="mb-1 inline-block rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide w-fit bg-primary/10 text-primary">
+              Today
+            </span>
+          )}
           <span className="text-base font-semibold">{dayName}</span>
           <span className="text-xs text-muted-foreground">{dayLabel}</span>
         </div>
-        <span className="text-sm font-medium text-primary">Available</span>
+        <span className="text-sm font-medium text-primary">
+          {slotCount} {slotCount === 1 ? "slot" : "slots"}
+        </span>
       </Button>
     );
   };
 
   const renderMobileWeekView = () => {
-    const weekDays = getDisplayedWeek(currentDisplayMonth);
+    const today = new Date();
 
     const handleSelectDay = (date: Date) => {
       setSelectedDate(date);
@@ -383,20 +472,32 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     return (
       <div className="flex flex-col gap-4">
         <MobileWeekHeader />
-        <div className="mt-2 flex flex-col gap-3 px-4">
-          {weekDays.map((d) => {
-            const daySlots = getSlotsForDate(d, availableSlots || []);
-            const isAvailable = daySlots.length > 0;
+        <div 
+          ref={swipeRef}
+          className="mt-2 flex flex-col gap-3 px-4"
+        >
+          <div ref={tilesContainerRef} className="flex flex-col gap-3">
+            {weekDays.map((d) => {
+              const dayKey = d.toDateString();
+              const dayData = slotsByDay[dayKey] || { count: 0, slots: [] };
+              const slotCount = dayData.count;
+              const isAvailable = slotCount > 0;
+              const isCurrentToday = isSameDay(d, today);
+              const selected = !!lastSelectedDate && isSameDay(d, lastSelectedDate);
 
-            return (
-              <DayTile
-                key={d.toISOString()}
-                date={d}
-                isAvailable={isAvailable}
-                onSelect={handleSelectDay}
-              />
-            );
-          })}
+              return (
+                <DayTile
+                  key={d.toISOString()}
+                  date={d}
+                  isAvailable={isAvailable}
+                  slotCount={slotCount}
+                  isToday={isCurrentToday}
+                  selected={selected}
+                  onSelect={handleSelectDay}
+                />
+              );
+            })}
+          </div>
         </div>
       </div>
     );
