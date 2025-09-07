@@ -937,7 +937,7 @@ export default function UniversalSessionModal({
               <div className="text-sm font-medium mt-1">
                 {(() => {
                   try {
-                    return sessionData?.session_date ? format(new Date(sessionData.session_date), 'PPP') : 'N/A';
+                    return sessionData?.session_date ? format(new Date(sessionData.session_date), 'EEEE, PPP') : 'N/A';
                   } catch (error) {
                     console.error('Error formatting session date:', error);
                     return 'Invalid Date';
@@ -1224,7 +1224,7 @@ export default function UniversalSessionModal({
                             )}
                           >
                             {field.value ? (
-                              format(field.value, "PPP")
+                              format(field.value, "EEEE, PPP")
                             ) : (
                               <span>Pick a date</span>
                             )}

@@ -98,7 +98,7 @@ export default function CancellationPenaltyModal({
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="h-4 w-4" />
                   <span>
-                    Session: {format(new Date(session.session_date), 'MMM dd, yyyy at h:mm a')}
+                    Session: {format(new Date(session.session_date), 'EEEE, MMM dd, yyyy at h:mm a')}
                   </span>
                 </div>
                 
@@ -143,7 +143,7 @@ export default function CancellationPenaltyModal({
                     This action cannot be undone
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Your session on {format(new Date(session.session_date), 'MMM dd, yyyy at h:mm a')} will be permanently cancelled with penalty applied.
+                    Your session on {format(new Date(session.session_date), 'EEEE, MMM dd, yyyy at h:mm a')} will be permanently cancelled with penalty applied.
                   </p>
                 </div>
                 
