@@ -357,30 +357,28 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
     return (
       <div className="sticky top-0 z-10 bg-background/90 backdrop-blur border-b">
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePrevWeek}
-            className="text-sm"
-          >
-            Previous
-          </Button>
-          <div className="text-sm font-medium">{label}</div>
-          <div className="flex gap-2">
+        <div className="px-4 py-2">
+          {/* Week range label ABOVE the buttons */}
+          <div className="text-center text-sm font-medium mb-2">{label}</div>
+
+          {/* Buttons row */}
+          <div className="flex items-center justify-between gap-3">
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              onClick={handleTodayJump}
+              onClick={handlePrevWeek}
               className="text-sm"
+              aria-label="Previous week"
             >
-              Today
+              Previous
             </Button>
+
             <Button
               variant="outline"
               size="sm"
               onClick={handleNextWeek}
               className="text-sm"
+              aria-label="Next week"
             >
               Next
             </Button>
@@ -394,13 +392,12 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   type DayTileProps = {
     date: Date;
     isAvailable: boolean;
-    slotCount: number;
     isToday: boolean;
     selected?: boolean;
     onSelect: (date: Date) => void;
   };
 
-  const DayTile = ({ date, isAvailable, slotCount, isToday, selected, onSelect }: DayTileProps) => {
+  const DayTile = ({ date, isAvailable, isToday, selected, onSelect }: DayTileProps) => {
     const dayName = format(date, "EEEE");
     const dayLabel = format(date, "MMM d");
 
@@ -454,9 +451,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
           <span className="text-base font-semibold">{dayName}</span>
           <span className="text-xs text-muted-foreground">{dayLabel}</span>
         </div>
-        <span className="text-sm font-medium text-primary">
-          {slotCount} {slotCount === 1 ? "slot" : "slots"}
-        </span>
+        <span className="text-sm font-medium text-primary">Available</span>
       </Button>
     );
   };
@@ -490,7 +485,6 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
                   key={d.toISOString()}
                   date={d}
                   isAvailable={isAvailable}
-                  slotCount={slotCount}
                   isToday={isCurrentToday}
                   selected={selected}
                   onSelect={handleSelectDay}
