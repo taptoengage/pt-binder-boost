@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, isWithinInterval, isToday, eachDayOfInterval, isSameMonth, isSameDay, parse, setMinutes, setHours, addMinutes, isBefore } from 'date-fns';
-import { ArrowLeft, ArrowRight, CalendarOff } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarOff, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -118,6 +118,98 @@ const getEffectiveDayAvailabilityRanges = (
   return effectiveAvailableRanges;
 };
 
+// NEW: Helper function to get time slots that should be displayed (including session-occupied slots)
+const getSlotsToDisplayForDay = (
+  day: Date,
+  effectiveAvailableRanges: Array<{ start: Date; end: Date }>,
+  sessionsForDay: any[],
+  isFullDayUnavailable: boolean
+) => {
+  if (isFullDayUnavailable) {
+    // For full day unavailable, still show sessions if any exist
+    const sessionSlots = new Set<string>();
+    sessionsForDay.forEach(session => {
+      const sessionStart = new Date(session.session_date);
+      const sessionTime = format(sessionStart, 'HH:mm');
+      
+      // Add the exact session time and a few slots around it for visibility
+      const sessionMinutes = sessionStart.getHours() * 60 + sessionStart.getMinutes();
+      const roundedDown = Math.floor(sessionMinutes / 30) * 30;
+      
+      for (let i = 0; i < 2; i++) { // Show 1 hour (2 slots of 30min each)
+        const slotMinutes = roundedDown + (i * 30);
+        if (slotMinutes < 24 * 60) { // Don't go past midnight
+          const slotHours = Math.floor(slotMinutes / 60);
+          const slotMins = slotMinutes % 60;
+          const slotTime = `${slotHours.toString().padStart(2, '0')}:${slotMins.toString().padStart(2, '0')}`;
+          sessionSlots.add(slotTime);
+        }
+      }
+    });
+    
+    return Array.from(sessionSlots).sort();
+  }
+
+  // Generate slots from availability ranges
+  const availabilitySlots = effectiveAvailableRanges.flatMap(range => {
+    const rangeSlots = [];
+    let currentSlotTime = range.start;
+    while (isBefore(currentSlotTime, range.end)) {
+      rangeSlots.push(format(currentSlotTime, 'HH:mm'));
+      currentSlotTime = addMinutes(currentSlotTime, 30);
+    }
+    return rangeSlots;
+  });
+
+  // Add slots for sessions that fall outside availability
+  const sessionSlots = new Set<string>();
+  sessionsForDay.forEach(session => {
+    const sessionStart = new Date(session.session_date);
+    const sessionTime = format(sessionStart, 'HH:mm');
+    
+    // Check if this session falls within any availability range
+    const sessionFallsWithinAvailability = effectiveAvailableRanges.some(range => {
+      const sessionEnd = addMinutes(sessionStart, 60); // Assuming 1-hour sessions
+      return sessionStart >= range.start && sessionEnd <= range.end;
+    });
+
+    // If session is outside availability, add slots to display it
+    if (!sessionFallsWithinAvailability) {
+      const sessionMinutes = sessionStart.getHours() * 60 + sessionStart.getMinutes();
+      const roundedDown = Math.floor(sessionMinutes / 30) * 30;
+      
+      // Add slots to cover the full session duration
+      for (let i = 0; i < 2; i++) { // Show 1 hour (2 slots of 30min each)
+        const slotMinutes = roundedDown + (i * 30);
+        if (slotMinutes < 24 * 60) {
+          const slotHours = Math.floor(slotMinutes / 60);
+          const slotMins = slotMinutes % 60;
+          const slotTime = `${slotHours.toString().padStart(2, '0')}:${slotMins.toString().padStart(2, '0')}`;
+          sessionSlots.add(slotTime);
+        }
+      }
+    }
+  });
+
+  // Combine and deduplicate slots
+  const allSlots = new Set([...availabilitySlots, ...sessionSlots]);
+  return Array.from(allSlots).sort();
+};
+
+// NEW: Helper function to determine if a slot is outside normal availability
+const isSlotOutsideAvailability = (
+  slotTime: string,
+  day: Date,
+  effectiveAvailableRanges: Array<{ start: Date; end: Date }>
+) => {
+  const slotStart = parse(slotTime, 'HH:mm', day);
+  const slotEnd = addMinutes(slotStart, 30);
+  
+  return !effectiveAvailableRanges.some(range =>
+    slotStart >= range.start && slotEnd <= range.end
+  );
+};
+
 export default function ViewSchedule() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -175,7 +267,7 @@ export default function ViewSchedule() {
       return data || [];
     },
     enabled: !!user?.id,
-    staleTime: 60 * 1000, // Cache for 1 minute
+    staleTime: 60 * 1000,
   });
 
   // Fetch trainer's one-off availability exceptions
@@ -197,9 +289,8 @@ export default function ViewSchedule() {
       return data || [];
     },
     enabled: !!user?.id,
-    staleTime: 60 * 1000, // Cache for 1 minute
+    staleTime: 60 * 1000,
   });
-
 
   // Calculate period start and end dates based on currentView and selectedDate
   const { periodStart, periodEnd, formattedPeriod } = useMemo(() => {
@@ -360,28 +451,17 @@ export default function ViewSchedule() {
                     ex.exception_type === 'unavailable_full_day'
                 );
 
-                // Generate 30-minute slots ONLY within the effective available ranges
-                const slotsToDisplay = effectiveAvailableRangesForDay.flatMap(range => {
-                    const rangeSlots = [];
-                    let currentSlotTime = range.start;
-                    // Generate slots as long as they are within the available block
-                    while (isBefore(currentSlotTime, range.end)) {
-                        rangeSlots.push(format(currentSlotTime, 'HH:mm'));
-                        currentSlotTime = addMinutes(currentSlotTime, 30);
-                    }
-                    return rangeSlots;
-                });
+                const slotsToDisplay = getSlotsToDisplayForDay(
+                  selectedDate,
+                  effectiveAvailableRangesForDay,
+                  filteredSessions,
+                  isFullDayUnavailable
+                );
 
-                if (slotsToDisplay.length === 0 && !isFullDayUnavailable) {
+                if (slotsToDisplay.length === 0) {
                     return (
                         <div className="text-center py-12 text-gray-500">
-                            No availability set for this day.
-                        </div>
-                    );
-                } else if (isFullDayUnavailable) {
-                     return (
-                        <div className="text-center py-12 text-gray-500 bg-red-100 border-red-200 rounded-lg">
-                            Trainer is unavailable for the entire day.
+                            No availability or sessions for this day.
                         </div>
                     );
                 }
@@ -398,19 +478,43 @@ export default function ViewSchedule() {
                                        (slotStart >= sessionStart && slotStart < sessionEnd);
                             });
 
+                            const isOutsideAvailability = isSlotOutsideAvailability(
+                              slotTime, 
+                              selectedDate, 
+                              effectiveAvailableRangesForDay
+                            );
+
                             return (
                                 <div
                                     key={slotTime}
                                     className={cn(
                                         "relative h-12 border-b border-gray-200",
-                                        { 'bg-blue-50': true }
+                                        {
+                                          'bg-blue-50': !isOutsideAvailability,
+                                          'bg-orange-50 border-orange-200': isOutsideAvailability
+                                        }
                                     )}
                                 >
-                                    <span className="absolute left-2 top-1 text-xs text-gray-500">{slotTime}</span>
+                                    <span className={cn(
+                                      "absolute left-2 top-1 text-xs flex items-center gap-1",
+                                      {
+                                        'text-gray-500': !isOutsideAvailability,
+                                        'text-orange-600': isOutsideAvailability
+                                      }
+                                    )}>
+                                      {slotTime}
+                                      {isOutsideAvailability && <Clock className="h-3 w-3" />}
+                                    </span>
                                     {sessionsInSlot.map((session: any) => (
                                         <Card
                                             key={session.id}
-                                            className="absolute left-16 right-0 top-0 bottom-0 p-1 cursor-pointer hover:bg-blue-200 transition-colors flex items-center"
+                                            className={cn(
+                                              "absolute left-16 right-0 top-0 bottom-0 p-1 cursor-pointer transition-colors flex items-center",
+                                              {
+                                                'hover:bg-blue-200': !isOutsideAvailability,
+                                                'bg-orange-100 hover:bg-orange-200 border-orange-300': isOutsideAvailability
+                                              }
+                                            )}
                                             onClick={() => {
                                                 setSelectedSessionForModal(session);
                                                 setIsSessionDetailModalOpen(true);
@@ -448,37 +552,30 @@ export default function ViewSchedule() {
                 </div>
               ))}
 
-              {/* Week days with FILTERED time slots */}
+              {/* Week days with sessions that may be outside availability */}
               {eachDayOfInterval({ start: periodStart, end: periodEnd }).map(day => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const sessionsForDay = groupedSessionsByDay[dateKey] || [];
                 const isCurrentDay = isSameDay(day, new Date());
                 const isWeekend = day.getDay() === 0 || day.getDay() === 6;
 
-                // Get effective available ranges for THIS specific day in the week
                 const effectiveAvailableRangesForDay = getEffectiveDayAvailabilityRanges(
                   day,
                   recurringTemplates || [],
                   exceptions || []
                 );
 
-                // Determine if it's a full day unavailable exception
                 const isFullDayUnavailable = (exceptions || []).some(ex =>
                   format(new Date(ex.exception_date), 'yyyy-MM-dd') === dateKey &&
                   ex.exception_type === 'unavailable_full_day'
                 );
 
-                // Generate 30-minute slots ONLY within the effective available ranges
-                const slotsToDisplay = effectiveAvailableRangesForDay.flatMap(range => {
-                  const rangeSlots = [];
-                  let currentSlotTime = range.start;
-                  // Generate slots as long as they are within the available block
-                  while (isBefore(currentSlotTime, range.end)) {
-                    rangeSlots.push(format(currentSlotTime, 'HH:mm'));
-                    currentSlotTime = addMinutes(currentSlotTime, 30);
-                  }
-                  return rangeSlots;
-                });
+                const slotsToDisplay = getSlotsToDisplayForDay(
+                  day,
+                  effectiveAvailableRangesForDay,
+                  sessionsForDay,
+                  isFullDayUnavailable
+                );
 
                 return (
                   <div key={dateKey} className={cn(
@@ -502,20 +599,45 @@ export default function ViewSchedule() {
                                    (slotStart >= sessionStart && slotStart < sessionEnd);
                           });
 
+                          const isOutsideAvailability = isSlotOutsideAvailability(
+                            slotTime, 
+                            day, 
+                            effectiveAvailableRangesForDay
+                          );
+
                           return (
                             <div
                               key={slotTime}
                               className={cn(
                                 "relative h-8 border-b border-gray-100 last:border-b-0",
-                                { 'bg-blue-50': !isWeekend },
-                                { 'bg-blue-100': isWeekend }
+                                {
+                                  'bg-blue-50': !isWeekend && !isOutsideAvailability,
+                                  'bg-blue-100': isWeekend && !isOutsideAvailability,
+                                  'bg-orange-50': isOutsideAvailability && !isWeekend,
+                                  'bg-orange-100': isOutsideAvailability && isWeekend
+                                }
                               )}
                             >
-                              <span className="absolute left-1 top-0 text-[8px] text-gray-400">{slotTime}</span>
+                              <span className={cn(
+                                "absolute left-1 top-0 text-[8px] flex items-center gap-0.5",
+                                {
+                                  'text-gray-400': !isOutsideAvailability,
+                                  'text-orange-600': isOutsideAvailability
+                                }
+                              )}>
+                                {slotTime}
+                                {isOutsideAvailability && <Clock className="h-2 w-2" />}
+                              </span>
                               {sessionsInSlot.map((session: any) => (
                                 <div
                                   key={session.id}
-                                  className="absolute left-8 right-0 top-0 bottom-0 p-0.5 bg-blue-200 rounded-sm hover:bg-blue-300 cursor-pointer flex items-center justify-between"
+                                  className={cn(
+                                    "absolute left-8 right-0 top-0 bottom-0 p-0.5 rounded-sm cursor-pointer flex items-center justify-between",
+                                    {
+                                      'bg-blue-200 hover:bg-blue-300': !isOutsideAvailability,
+                                      'bg-orange-200 hover:bg-orange-300 border border-orange-400': isOutsideAvailability
+                                    }
+                                  )}
                                   onClick={() => {
                                     setSelectedSessionForModal(session);
                                     setIsSessionDetailModalOpen(true);
@@ -562,14 +684,31 @@ export default function ViewSchedule() {
                 const sessionsForDayCount = groupedSessionsByDay[dateKey]?.length || 0;
                 const isCurrentMonth = isSameMonth(day, selectedDate);
                 const isCurrentDay = isSameDay(day, new Date());
+                
+                // Check if any sessions are outside availability for visual indication
+                const sessionsForDay = groupedSessionsByDay[dateKey] || [];
+                const effectiveAvailableRanges = getEffectiveDayAvailabilityRanges(
+                  day,
+                  recurringTemplates || [],
+                  exceptions || []
+                );
+                
+                const hasSessionsOutsideAvailability = sessionsForDay.some(session => {
+                  const sessionStart = new Date(session.session_date);
+                  const sessionEnd = addMinutes(sessionStart, 60);
+                  return !effectiveAvailableRanges.some(range =>
+                    sessionStart >= range.start && sessionEnd <= range.end
+                  );
+                });
 
                 return (
                   <div
                     key={dateKey}
                     className={cn(
                       "bg-white p-2 border-b border-r last:border-r-0 cursor-pointer hover:bg-gray-100 transition-colors",
-                      { 'text-gray-400 bg-gray-50': !isCurrentMonth }, // Mute days outside current month
-                      { 'bg-blue-50 border-blue-200': isCurrentDay } // Highlight today
+                      { 'text-gray-400 bg-gray-50': !isCurrentMonth },
+                      { 'bg-blue-50 border-blue-200': isCurrentDay },
+                      { 'ring-1 ring-orange-300': hasSessionsOutsideAvailability && isCurrentMonth }
                     )}
                     onClick={() => {
                       setSelectedDate(day);
@@ -577,12 +716,23 @@ export default function ViewSchedule() {
                     }}
                   >
                     <div className="flex justify-between items-center text-xs font-semibold mb-1">
-                      <span>{format(day, 'd')}</span> {/* Day number */}
-                      {sessionsForDayCount > 0 && (
-                        <Badge variant="default" className="h-4 px-1 rounded-full text-xs">
-                          {sessionsForDayCount}
-                        </Badge>
-                      )}
+                      <span>{format(day, 'd')}</span>
+                      <div className="flex items-center gap-1">
+                        {sessionsForDayCount > 0 && (
+                          <Badge 
+                            variant="default" 
+                            className={cn(
+                              "h-4 px-1 rounded-full text-xs",
+                              { 'bg-orange-500': hasSessionsOutsideAvailability }
+                            )}
+                          >
+                            {sessionsForDayCount}
+                          </Badge>
+                        )}
+                        {hasSessionsOutsideAvailability && (
+                          <Clock className="h-3 w-3 text-orange-500" />
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -590,12 +740,41 @@ export default function ViewSchedule() {
             </div>
           )}
 
-          {filteredSessions.length === 0 && currentView !== 'month' && ( // Only show "No sessions" for day/week if filtered is empty
+          {filteredSessions.length === 0 && currentView !== 'month' && (
             <div className="text-center py-12 text-gray-500">
               No sessions scheduled for this {currentView} view.
             </div>
           )}
         </div>
+
+        {/* Legend for outside-availability sessions */}
+        {currentView !== 'month' && filteredSessions.some(session => {
+          const sessionDay = new Date(session.session_date);
+          const dayInPeriod = isWithinInterval(sessionDay, { start: periodStart, end: periodEnd });
+          if (!dayInPeriod) return false;
+          
+          const effectiveRanges = getEffectiveDayAvailabilityRanges(
+            sessionDay,
+            recurringTemplates || [],
+            exceptions || []
+          );
+          
+          const sessionStart = new Date(session.session_date);
+          const sessionEnd = addMinutes(sessionStart, 60);
+          return !effectiveRanges.some(range =>
+            sessionStart >= range.start && sessionEnd <= range.end
+          );
+        }) && (
+          <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="flex items-center gap-2 text-sm text-orange-700">
+              <Clock className="h-4 w-4" />
+              <span className="font-medium">Sessions outside standard availability</span>
+            </div>
+            <p className="text-xs text-orange-600 mt-1">
+              Orange highlighted sessions were scheduled outside your regular availability hours.
+            </p>
+          </div>
+        )}
 
         {/* Render the session detail modal */}
         <UniversalSessionModal
@@ -606,6 +785,10 @@ export default function ViewSchedule() {
             setSelectedSessionForModal(null);
           }}
           session={selectedSessionForModal}
+          onSessionUpdated={() => {
+            // Refresh the sessions data when a session is updated
+            queryClient.invalidateQueries({ queryKey: ['trainerSessions', user?.id] });
+          }}
         />
 
         {/* Render the block availability modal */}
