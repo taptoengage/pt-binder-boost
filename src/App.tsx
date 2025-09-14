@@ -33,6 +33,7 @@ import MyProfile from "./pages/MyProfile";
 import ClientProfile from "./pages/ClientProfile";
 import ManageAvailability from "./pages/ManageAvailability";
 import UnderConstruction from "./components/UnderConstruction";
+import AuthCallback from "./pages/AuthCallback";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ function App() {
               {/* Public routes that are always accessible */}
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<AuthRedirect />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/under-construction" element={<UnderConstruction />} />
 
               {/* All protected routes are now children of the AuthGuard */}
