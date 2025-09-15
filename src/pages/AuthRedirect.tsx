@@ -11,14 +11,11 @@ const AuthRedirect = () => {
   useEffect(() => {
     const initiateOAuth = async () => {
       try {
-        // Get the current domain for the redirect URL
-        const currentOrigin = window.location.origin;
-        
-        // Trigger Google OAuth with redirect to dashboard
+        // Trigger Google OAuth with custom auth domain
         const { error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
-            redirectTo: `${currentOrigin}/dashboard`
+            redirectTo: 'https://login.optimisedtrainer.online/auth/callback'
           }
         });
 
