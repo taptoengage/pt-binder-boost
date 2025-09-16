@@ -15,9 +15,11 @@ export default function AuthCallback() {
   const { loading, authStatus } = useAuth();
 
   useEffect(() => {
+    console.info('AUTH_CALLBACK_DEBUG', { href: window.location.href });
     (async () => {
       // Ensure the SDK consumes the URL hash and stores session for THIS domain
-      await supabase.auth.getSession();
+      const { data } = await supabase.auth.getSession();
+      console.info('AUTH_SESSION', !!data.session);
     })();
   }, []);
 
