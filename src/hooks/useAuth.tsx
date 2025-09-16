@@ -206,7 +206,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signInWithGoogle = async () => {
-    console.info('OAUTH_DEBUG', { origin: window.location.origin, redirectTo: 'https://optimisedtrainer.online/auth/callback', supabaseUrl: (supabase as any).rest?.url || 'unknown' });
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {

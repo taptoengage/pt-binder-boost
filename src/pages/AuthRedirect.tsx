@@ -12,7 +12,6 @@ const AuthRedirect = () => {
     const initiateOAuth = async () => {
       try {
         // Trigger Google OAuth with custom auth domain
-        console.info('OAUTH_DEBUG', { origin: window.location.origin, redirectTo: 'https://optimisedtrainer.online/auth/callback', supabaseUrl: (supabase as any).rest?.url || 'unknown' });
         const { error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
