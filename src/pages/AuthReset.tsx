@@ -63,17 +63,24 @@ const AuthReset = () => {
 
   // Check if we have valid reset tokens
   useEffect(() => {
-    const accessToken = searchParams.get('access_token');
-    const refreshToken = searchParams.get('refresh_token');
+    const token = searchParams.get('token');
     const type = searchParams.get('type');
 
-    if (type === 'recovery' && accessToken && refreshToken) {
-      setIsValidToken(true);
-      // Set the session with the tokens
-      supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
+    if (type === 'recovery' && token) {
+      // Exchange the recovery token for a session
+      supabase.auth.exchangeCodeForSession(token)
+        .then(({ error }) => {
+          if (error) {
+            console.error('Token exchange error:', error);
+            setIsValidToken(false);
+          } else {
+            setIsValidToken(true);
+          }
+        })
+        .catch((error) => {
+          console.error('Token exchange failed:', error);
+          setIsValidToken(false);
+        });
     } else {
       setIsValidToken(false);
     }
