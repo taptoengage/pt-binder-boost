@@ -66,7 +66,7 @@ const getPasswordStrength = (password: string) => {
 const Auth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { authStatus, loading, signInWithGoogle } = useAuth();
+  const { authStatus, loading, signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword } = useAuth();
   const [activeTab, setActiveTab] = useState<'oauth' | 'signup' | 'signin' | 'forgot'>('oauth');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -118,13 +118,7 @@ const Auth = () => {
   const handleSignUp = async (data: SignUpForm) => {
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/`
-        }
-      });
+      const { error } = await signUpWithEmail(data.email, data.password);
 
       if (error) {
         if (error.message.includes('already registered')) {
@@ -165,10 +159,7 @@ const Auth = () => {
   const handleSignIn = async (data: SignInForm) => {
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
-      });
+      const { error } = await signInWithEmail(data.email, data.password);
 
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
@@ -207,9 +198,7 @@ const Auth = () => {
   const handleForgotPassword = async (data: ForgotPasswordForm) => {
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
-        redirectTo: `${window.location.origin}/auth/reset`,
-      });
+      const { error } = await resetPassword(data.email);
 
       if (error) {
         toast({
