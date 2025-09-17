@@ -494,6 +494,67 @@ async function handleCancelSession(requestData: any, user: any, supabaseClient: 
     return createErrorResponse('Failed to cancel session', 500);
   }
 
+  // Send cancellation notification emails
+  const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
+  if (internalToken) {
+    // Fetch client and trainer emails
+    const { data: clientRow } = await supabaseClient
+      .from('clients')
+      .select('email')
+      .eq('id', session.client_id)
+      .single();
+    const { data: trainerRow } = await supabaseClient
+      .from('trainers')
+      .select('contact_email')
+      .eq('id', session.trainer_id)
+      .single();
+
+    // Human-readable session date
+    const sessionDateReadable = new Date(session.session_date)
+      .toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
+
+    // Craft email content
+    const subject = 'Session cancelled';
+    let body = `Your session on ${sessionDateReadable} has been cancelled.`;
+    if (doPenalize) {
+      body += ' A penalty applies.';
+    } else {
+      body += ' No penalty will be charged.';
+    }
+
+    // Send email to client
+    if (clientRow?.email) {
+      try {
+        await supabaseClient.functions.invoke('send-transactional-email', {
+          body: {
+            type: 'GENERIC',
+            to: clientRow.email,
+            data: { subject, body },
+          },
+          headers: { 'x-ot-internal-token': internalToken },
+        });
+      } catch (emailError) {
+        console.warn('Failed to send client cancellation email:', emailError);
+      }
+    }
+
+    // Send email to trainer
+    if (trainerRow?.contact_email) {
+      try {
+        await supabaseClient.functions.invoke('send-transactional-email', {
+          body: {
+            type: 'GENERIC',
+            to: trainerRow.contact_email,
+            data: { subject, body },
+          },
+          headers: { 'x-ot-internal-token': internalToken },
+        });
+      } catch (emailError) {
+        console.warn('Failed to send trainer cancellation email:', emailError);
+      }
+    }
+  }
+
   return new Response(JSON.stringify({ success: true, session: updated }), {
     status: 200,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -511,6 +572,9 @@ async function handleEditSession(requestData: any, user: any, supabaseClient: an
   console.log('Edit session request:', { sessionId, sessionDate, notes });
 
   const { session, isTrainer, isClient } = await checkSessionPermissions(sessionId, user, supabaseUserClient);
+
+  // Store original session date for reschedule notification
+  const previousDate = session.session_date;
 
   // Check 24-hour policy
   const now = new Date();
@@ -566,6 +630,64 @@ async function handleEditSession(requestData: any, user: any, supabaseClient: an
   }
 
   console.log('Session updated successfully:', updatedSession);
+
+  // Send reschedule notification emails
+  const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
+  if (internalToken) {
+    // Fetch client and trainer emails
+    const { data: clientRow } = await supabaseClient
+      .from('clients')
+      .select('email')
+      .eq('id', session.client_id)
+      .single();
+    const { data: trainerRow } = await supabaseClient
+      .from('trainers')
+      .select('contact_email')
+      .eq('id', session.trainer_id)
+      .single();
+
+    // Human-readable dates
+    const oldDateReadable = new Date(previousDate)
+      .toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
+    const newDateReadable = new Date(sessionDate)
+      .toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
+
+    // Craft email content
+    const subject = 'Session rescheduled';
+    const body = `Your session originally set for ${oldDateReadable} has been rescheduled to ${newDateReadable}.`;
+
+    // Send email to client
+    if (clientRow?.email) {
+      try {
+        await supabaseClient.functions.invoke('send-transactional-email', {
+          body: {
+            type: 'GENERIC',
+            to: clientRow.email,
+            data: { subject, body },
+          },
+          headers: { 'x-ot-internal-token': internalToken },
+        });
+      } catch (emailError) {
+        console.warn('Failed to send client reschedule email:', emailError);
+      }
+    }
+
+    // Send email to trainer
+    if (trainerRow?.contact_email) {
+      try {
+        await supabaseClient.functions.invoke('send-transactional-email', {
+          body: {
+            type: 'GENERIC',
+            to: trainerRow.contact_email,
+            data: { subject, body },
+          },
+          headers: { 'x-ot-internal-token': internalToken },
+        });
+      } catch (emailError) {
+        console.warn('Failed to send trainer reschedule email:', emailError);
+      }
+    }
+  }
 
   return new Response(JSON.stringify({ success: true, updatedSession }), { 
     status: 200, 
