@@ -305,6 +305,57 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
 
   console.log('Session created successfully:', newSession);
 
+  // Send booking confirmation emails
+  const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
+  if (internalToken) {
+    // Fetch trainer's contact email
+    const { data: trainerRecord, error: trainerErr } = await supabaseClient
+      .from('trainers')
+      .select('contact_email')
+      .eq('id', trainerId)
+      .single();
+    const trainerEmail = trainerRecord?.contact_email;
+
+    // Human-readable date/time
+    const humanDate = bookingDateTime.toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
+
+    try {
+      // Send email to client
+      await supabaseClient.functions.invoke('send-transactional-email', {
+        body: {
+          type: 'GENERIC',
+          to: clientData.email,
+          data: {
+            subject: 'Session booked',
+            body: `Your session on ${humanDate} has been booked.`
+          }
+        },
+        headers: { 'x-ot-internal-token': internalToken }
+      });
+    } catch (emailError) {
+      console.warn('Failed to send client booking confirmation email:', emailError);
+    }
+
+    if (trainerEmail) {
+      try {
+        // Send email to trainer
+        await supabaseClient.functions.invoke('send-transactional-email', {
+          body: {
+            type: 'GENERIC',
+            to: trainerEmail,
+            data: {
+              subject: 'New session booked',
+              body: `A new session with client ID ${clientId} is scheduled for ${humanDate}.`
+            }
+          },
+          headers: { 'x-ot-internal-token': internalToken }
+        });
+      } catch (emailError) {
+        console.warn('Failed to send trainer booking confirmation email:', emailError);
+      }
+    }
+  }
+
   return new Response(
     JSON.stringify({ 
       success: true, 
