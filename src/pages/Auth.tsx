@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Eye, EyeOff, Check, X, Chrome } from "lucide-react";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Badge } from "@/components/ui/badge";
+import { sendTransactionalEmail } from "@/lib/sendTransactionalEmail";
 
 // Feature flag for email authentication
 const EMAIL_AUTH_ENABLED = import.meta.env.VITE_EMAIL_AUTH_ENABLED === 'true';
@@ -141,6 +142,18 @@ const Auth = () => {
           title: "Account Created",
           description: "Please check your email to verify your account.",
         });
+        
+        // Send welcome email
+        try {
+          await sendTransactionalEmail({
+            type: "WELCOME",
+            to: data.email,
+            data: { ctaUrl: window.location.origin },
+          });
+        } catch (e) {
+          console.warn("Welcome email failed", e);
+        }
+        
         setActiveTab('signin');
         signInForm.setValue('email', data.email);
       }
