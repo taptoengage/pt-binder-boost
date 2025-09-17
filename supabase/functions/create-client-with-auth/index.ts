@@ -149,7 +149,7 @@ serve(async (req) => {
       type: 'recovery',
       email: email,
       options: {
-        redirectTo: `${req.headers.get('origin') || 'http://localhost:5173'}/auth?mode=reset`
+        redirectTo: `${req.headers.get('origin') || 'http://localhost:5173'}/auth/reset`
       }
     })
 

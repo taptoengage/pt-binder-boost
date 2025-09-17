@@ -63,27 +63,62 @@ const AuthReset = () => {
 
   // Check if we have valid reset tokens
   useEffect(() => {
+    const code = searchParams.get('code');
     const token = searchParams.get('token');
     const type = searchParams.get('type');
+    const accessToken = searchParams.get('access_token');
+    const refreshToken = searchParams.get('refresh_token');
 
-    if (type === 'recovery' && token) {
-      // Exchange the recovery token for a session
-      supabase.auth.exchangeCodeForSession(token)
-        .then(({ error }) => {
+    const validateToken = async () => {
+      try {
+        // Try modern format first: code + type=recovery
+        if (type === 'recovery' && code) {
+          console.log('AuthReset: Using code parameter (modern format)');
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            console.error('Code exchange error:', error);
+            setIsValidToken(false);
+          } else {
+            setIsValidToken(true);
+          }
+        }
+        // Fall back to current format: token + type=recovery
+        else if (type === 'recovery' && token) {
+          console.log('AuthReset: Using token parameter (current format)');
+          const { error } = await supabase.auth.exchangeCodeForSession(token);
           if (error) {
             console.error('Token exchange error:', error);
             setIsValidToken(false);
           } else {
             setIsValidToken(true);
           }
-        })
-        .catch((error) => {
-          console.error('Token exchange failed:', error);
+        }
+        // Final fallback: access_token + refresh_token (legacy)
+        else if (accessToken && refreshToken) {
+          console.log('AuthReset: Using access/refresh tokens (legacy format)');
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (error) {
+            console.error('Session set error:', error);
+            setIsValidToken(false);
+          } else {
+            setIsValidToken(true);
+          }
+        }
+        // No valid parameters found
+        else {
+          console.log('AuthReset: No valid reset parameters found');
           setIsValidToken(false);
-        });
-    } else {
-      setIsValidToken(false);
-    }
+        }
+      } catch (error) {
+        console.error('Token validation failed:', error);
+        setIsValidToken(false);
+      }
+    };
+
+    validateToken();
   }, [searchParams]);
 
   const handleResetPassword = async (data: ResetPasswordForm) => {
