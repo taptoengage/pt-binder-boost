@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { isEmailSendingEnabled, safeInvokeEmail } from '../_shared/email.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -161,18 +162,12 @@ serve(async (req) => {
     // Send welcome email to the new client
     const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
     if (internalToken) {
-      const { data: welcomeData, error: welcomeError } =
-        await supabaseAdmin.functions.invoke('send-transactional-email', {
-          body: {
-            type: 'WELCOME',
-            to: email,
-            data: { ctaUrl: req.headers.get('origin') || 'https://optimisedtrainer.online' },
-          },
-          headers: { 'x-ot-internal-token': internalToken },
-        });
-      if (welcomeError) {
-        console.warn('Failed to send welcome email:', welcomeError);
-      }
+      await safeInvokeEmail(supabaseAdmin, {
+        to: email,
+        type: 'WELCOME',
+        data: { ctaUrl: req.headers.get('origin') || 'https://optimisedtrainer.online' },
+        internalToken
+      });
     }
 
     return new Response(

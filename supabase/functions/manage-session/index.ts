@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { addMinutes, parseISO, addHours, getDay, startOfWeek, endOfWeek } from 'https://esm.sh/date-fns@3.3.1'
+import { isEmailSendingEnabled, safeInvokeEmail } from '../_shared/email.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -319,40 +320,28 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     // Human-readable date/time
     const humanDate = bookingDateTime.toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
 
-    try {
-      // Send email to client
-      await supabaseClient.functions.invoke('send-transactional-email', {
-        body: {
-          type: 'GENERIC',
-          to: clientData.email,
-          data: {
-            subject: 'Session booked',
-            body: `Your session on ${humanDate} has been booked.`
-          }
-        },
-        headers: { 'x-ot-internal-token': internalToken }
-      });
-    } catch (emailError) {
-      console.warn('Failed to send client booking confirmation email:', emailError);
-    }
+    // Send email to client
+    await safeInvokeEmail(supabaseClient, {
+      to: clientData.email,
+      type: 'GENERIC',
+      data: {
+        subject: 'Session booked',
+        body: `Your session on ${humanDate} has been booked.`
+      },
+      internalToken
+    });
 
     if (trainerEmail) {
-      try {
-        // Send email to trainer
-        await supabaseClient.functions.invoke('send-transactional-email', {
-          body: {
-            type: 'GENERIC',
-            to: trainerEmail,
-            data: {
-              subject: 'New session booked',
-              body: `A new session with client ID ${clientId} is scheduled for ${humanDate}.`
-            }
-          },
-          headers: { 'x-ot-internal-token': internalToken }
-        });
-      } catch (emailError) {
-        console.warn('Failed to send trainer booking confirmation email:', emailError);
-      }
+      // Send email to trainer
+      await safeInvokeEmail(supabaseClient, {
+        to: trainerEmail,
+        type: 'GENERIC',
+        data: {
+          subject: 'New session booked',
+          body: `A new session with client ID ${clientId} is scheduled for ${humanDate}.`
+        },
+        internalToken
+      });
     }
   }
 
@@ -524,34 +513,22 @@ async function handleCancelSession(requestData: any, user: any, supabaseClient: 
 
     // Send email to client
     if (clientRow?.email) {
-      try {
-        await supabaseClient.functions.invoke('send-transactional-email', {
-          body: {
-            type: 'GENERIC',
-            to: clientRow.email,
-            data: { subject, body },
-          },
-          headers: { 'x-ot-internal-token': internalToken },
-        });
-      } catch (emailError) {
-        console.warn('Failed to send client cancellation email:', emailError);
-      }
+      await safeInvokeEmail(supabaseClient, {
+        to: clientRow.email,
+        type: 'GENERIC',
+        data: { subject, body },
+        internalToken
+      });
     }
 
     // Send email to trainer
     if (trainerRow?.contact_email) {
-      try {
-        await supabaseClient.functions.invoke('send-transactional-email', {
-          body: {
-            type: 'GENERIC',
-            to: trainerRow.contact_email,
-            data: { subject, body },
-          },
-          headers: { 'x-ot-internal-token': internalToken },
-        });
-      } catch (emailError) {
-        console.warn('Failed to send trainer cancellation email:', emailError);
-      }
+      await safeInvokeEmail(supabaseClient, {
+        to: trainerRow.contact_email,
+        type: 'GENERIC',
+        data: { subject, body },
+        internalToken
+      });
     }
   }
 
@@ -658,34 +635,22 @@ async function handleEditSession(requestData: any, user: any, supabaseClient: an
 
     // Send email to client
     if (clientRow?.email) {
-      try {
-        await supabaseClient.functions.invoke('send-transactional-email', {
-          body: {
-            type: 'GENERIC',
-            to: clientRow.email,
-            data: { subject, body },
-          },
-          headers: { 'x-ot-internal-token': internalToken },
-        });
-      } catch (emailError) {
-        console.warn('Failed to send client reschedule email:', emailError);
-      }
+      await safeInvokeEmail(supabaseClient, {
+        to: clientRow.email,
+        type: 'GENERIC',
+        data: { subject, body },
+        internalToken
+      });
     }
 
     // Send email to trainer
     if (trainerRow?.contact_email) {
-      try {
-        await supabaseClient.functions.invoke('send-transactional-email', {
-          body: {
-            type: 'GENERIC',
-            to: trainerRow.contact_email,
-            data: { subject, body },
-          },
-          headers: { 'x-ot-internal-token': internalToken },
-        });
-      } catch (emailError) {
-        console.warn('Failed to send trainer reschedule email:', emailError);
-      }
+      await safeInvokeEmail(supabaseClient, {
+        to: trainerRow.contact_email,
+        type: 'GENERIC',
+        data: { subject, body },
+        internalToken
+      });
     }
   }
 
