@@ -98,7 +98,7 @@ export function ClientPackDetailModal({ isOpen, onOpenChange, pack, onCancelRequ
                 <TableBody>
                   {sessions.map((session) => (
                     <TableRow key={session.id}>
-                      <TableCell>{session.session_date ? format(new Date(session.session_date), 'PPP') : 'Unscheduled'}</TableCell>
+                      <TableCell>{session.session_date ? format(new Date(session.session_date), 'EEEE, PPP') : 'Unscheduled'}</TableCell>
                       <TableCell>
                         <Badge variant={session.status === 'completed' ? 'default' : 'outline'}>
                           {session.status}

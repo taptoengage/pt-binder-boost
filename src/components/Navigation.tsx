@@ -297,6 +297,14 @@ export function DashboardNavigation() {
                 <span>Admin</span>
               </button>
             )}
+            {/* Profile Link */}
+            <button 
+              onClick={() => handleMobileNavClick('/profile')}
+              className="flex items-center space-x-3 text-body hover:text-primary transition-colors py-2 px-1"
+            >
+              <User className="w-4 h-4" />
+              <span>Profile</span>
+            </button>
             <div className="border-t border-border pt-4">
               <button 
                 onClick={() => {

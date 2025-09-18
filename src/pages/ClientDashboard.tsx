@@ -442,7 +442,7 @@ export default function ClientDashboard() {
                     {clientSessions.map((session) => (
                       <TableRow key={session.id}>
                         <TableCell>
-                          {format(new Date(session.session_date), 'MMM dd, yyyy')}
+                          {format(new Date(session.session_date), 'EEEE, MMM dd, yyyy')}
                         </TableCell>
                         <TableCell>
                           {format(new Date(session.session_date), 'h:mm a')}

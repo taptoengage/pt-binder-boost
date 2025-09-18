@@ -7,7 +7,7 @@ const AuthRedirect = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const code = params.get("code") || params.get("token");
+    const code = params.get("code") || params.get("token"); // support both formats
 
     (async () => {
       try {
@@ -15,22 +15,25 @@ const AuthRedirect = () => {
           console.log("[AuthRedirect] Processing auth code/token");
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
-          
+
           console.log("[AuthRedirect] Session exchange successful");
           navigate("/dashboard", { replace: true });
           return;
         }
-        
-        console.log("[AuthRedirect] No auth code/token found");
+
+        console.log("[AuthRedirect] No code/token found — redirecting to /auth");
         navigate("/auth", { replace: true });
       } catch (err: any) {
-        console.error("[AuthRedirect] Exchange failed:", err?.message || "Unknown error");
+        console.error(
+          "[AuthRedirect] Exchange failed:",
+          err?.message || "Unknown error"
+        );
         navigate("/auth", { replace: true });
       }
     })();
   }, [navigate]);
 
-  return null;
+  return null; // Optionally: return a spinner/loading state
 };
 
 export default AuthRedirect;

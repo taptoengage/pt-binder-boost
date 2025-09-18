@@ -165,7 +165,7 @@ export default function ClientProfile() {
             <p className="text-center text-muted-foreground">
               Error loading profile data. Please try again.
             </p>
-            <Button onClick={() => navigate('/client')} className="w-full mt-4">
+            <Button onClick={() => navigate('/client/dashboard')} className="w-full mt-4">
               Return to Dashboard
             </Button>
           </CardContent>
@@ -183,7 +183,7 @@ export default function ClientProfile() {
             <h1 className="text-3xl font-bold">My Profile</h1>
             <p className="text-muted-foreground">Manage your personal information and preferences</p>
           </div>
-          <Button onClick={() => navigate('/client')} variant="outline">
+          <Button onClick={() => navigate('/client/dashboard')} variant="outline">
             Back to Dashboard
           </Button>
         </div>
