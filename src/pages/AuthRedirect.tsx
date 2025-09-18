@@ -1,64 +1,39 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const AuthRedirect = () => {
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const initiateOAuth = async () => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code") || params.get("token"); // support both formats
+
+    (async () => {
       try {
-        // Trigger Google OAuth with custom auth domain
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: 'https://optimisedtrainer.online/auth/callback'
-          }
-        });
+        if (code) {
+          console.log("[AuthRedirect] Processing auth code/token");
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
 
-        if (error) {
-          console.error('OAuth error:', error);
-          toast({
-            title: "Authentication Error",
-            description: "Failed to initiate login. Please try again.",
-            variant: "destructive",
-          });
-          // Redirect back to landing page on error
-          navigate('/');
+          console.log("[AuthRedirect] Session exchange successful");
+          navigate("/dashboard", { replace: true });
+          return;
         }
-      } catch (error) {
-        console.error('Unexpected error during OAuth:', error);
-        toast({
-          title: "Authentication Error", 
-          description: "An unexpected error occurred. Please try again.",
-          variant: "destructive",
-        });
-        navigate('/');
-      } finally {
-        setIsLoading(false);
+
+        console.log("[AuthRedirect] No code/token found — redirecting to /auth");
+        navigate("/auth", { replace: true });
+      } catch (err: any) {
+        console.error(
+          "[AuthRedirect] Exchange failed:",
+          err?.message || "Unknown error"
+        );
+        navigate("/auth", { replace: true });
       }
-    };
+    })();
+  }, [navigate]);
 
-    initiateOAuth();
-  }, [navigate, toast]);
-
-  // Show minimal loading state while OAuth is being initiated
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center space-y-4">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-muted-foreground">Redirecting to login...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // This component should redirect before reaching this point
-  return null;
+  return null; // Optionally: return a spinner/loading state
 };
 
 export default AuthRedirect;

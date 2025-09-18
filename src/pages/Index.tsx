@@ -25,7 +25,7 @@ const Index = () => {
               size="lg"
               className="text-lg px-8 py-6 bg-gradient-primary hover:opacity-90 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-glow"
             >
-              Sign In with Google
+              Get Started
             </Button>
           </div>
         </div>

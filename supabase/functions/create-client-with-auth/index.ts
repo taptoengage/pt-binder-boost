@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { isEmailSendingEnabled, safeInvokeEmail } from '../_shared/email.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -149,13 +150,24 @@ serve(async (req) => {
       type: 'recovery',
       email: email,
       options: {
-        redirectTo: `${req.headers.get('origin') || 'http://localhost:5173'}/auth?mode=reset`
+        redirectTo: `${req.headers.get('origin') || 'http://localhost:5173'}/auth/reset`
       }
     })
 
     if (resetError) {
       console.warn('Failed to send password reset email:', resetError)
       // Don't fail the whole operation for this
+    }
+
+    // Send welcome email to the new client
+    const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
+    if (internalToken) {
+      await safeInvokeEmail(supabaseAdmin, {
+        to: email,
+        type: 'WELCOME',
+        data: { ctaUrl: req.headers.get('origin') || 'https://optimisedtrainer.online' },
+        internalToken
+      });
     }
 
     return new Response(

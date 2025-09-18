@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { addMinutes, parseISO, addHours, getDay, startOfWeek, endOfWeek } from 'https://esm.sh/date-fns@3.3.1'
+import { isEmailSendingEnabled, safeInvokeEmail } from '../_shared/email.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -305,6 +306,45 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
 
   console.log('Session created successfully:', newSession);
 
+  // Send booking confirmation emails
+  const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
+  if (internalToken) {
+    // Fetch trainer's contact email
+    const { data: trainerRecord, error: trainerErr } = await supabaseClient
+      .from('trainers')
+      .select('contact_email')
+      .eq('id', trainerId)
+      .single();
+    const trainerEmail = trainerRecord?.contact_email;
+
+    // Human-readable date/time
+    const humanDate = bookingDateTime.toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
+
+    // Send email to client
+    await safeInvokeEmail(supabaseClient, {
+      to: clientData.email,
+      type: 'GENERIC',
+      data: {
+        subject: 'Session booked',
+        body: `Your session on ${humanDate} has been booked.`
+      },
+      internalToken
+    });
+
+    if (trainerEmail) {
+      // Send email to trainer
+      await safeInvokeEmail(supabaseClient, {
+        to: trainerEmail,
+        type: 'GENERIC',
+        data: {
+          subject: 'New session booked',
+          body: `A new session with client ID ${clientId} is scheduled for ${humanDate}.`
+        },
+        internalToken
+      });
+    }
+  }
+
   return new Response(
     JSON.stringify({ 
       success: true, 
@@ -443,6 +483,55 @@ async function handleCancelSession(requestData: any, user: any, supabaseClient: 
     return createErrorResponse('Failed to cancel session', 500);
   }
 
+  // Send cancellation notification emails
+  const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
+  if (internalToken) {
+    // Fetch client and trainer emails
+    const { data: clientRow } = await supabaseClient
+      .from('clients')
+      .select('email')
+      .eq('id', session.client_id)
+      .single();
+    const { data: trainerRow } = await supabaseClient
+      .from('trainers')
+      .select('contact_email')
+      .eq('id', session.trainer_id)
+      .single();
+
+    // Human-readable session date
+    const sessionDateReadable = new Date(session.session_date)
+      .toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
+
+    // Craft email content
+    const subject = 'Session cancelled';
+    let body = `Your session on ${sessionDateReadable} has been cancelled.`;
+    if (doPenalize) {
+      body += ' A penalty applies.';
+    } else {
+      body += ' No penalty will be charged.';
+    }
+
+    // Send email to client
+    if (clientRow?.email) {
+      await safeInvokeEmail(supabaseClient, {
+        to: clientRow.email,
+        type: 'GENERIC',
+        data: { subject, body },
+        internalToken
+      });
+    }
+
+    // Send email to trainer
+    if (trainerRow?.contact_email) {
+      await safeInvokeEmail(supabaseClient, {
+        to: trainerRow.contact_email,
+        type: 'GENERIC',
+        data: { subject, body },
+        internalToken
+      });
+    }
+  }
+
   return new Response(JSON.stringify({ success: true, session: updated }), {
     status: 200,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -460,6 +549,9 @@ async function handleEditSession(requestData: any, user: any, supabaseClient: an
   console.log('Edit session request:', { sessionId, sessionDate, notes });
 
   const { session, isTrainer, isClient } = await checkSessionPermissions(sessionId, user, supabaseUserClient);
+
+  // Store original session date for reschedule notification
+  const previousDate = session.session_date;
 
   // Check 24-hour policy
   const now = new Date();
@@ -515,6 +607,52 @@ async function handleEditSession(requestData: any, user: any, supabaseClient: an
   }
 
   console.log('Session updated successfully:', updatedSession);
+
+  // Send reschedule notification emails
+  const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
+  if (internalToken) {
+    // Fetch client and trainer emails
+    const { data: clientRow } = await supabaseClient
+      .from('clients')
+      .select('email')
+      .eq('id', session.client_id)
+      .single();
+    const { data: trainerRow } = await supabaseClient
+      .from('trainers')
+      .select('contact_email')
+      .eq('id', session.trainer_id)
+      .single();
+
+    // Human-readable dates
+    const oldDateReadable = new Date(previousDate)
+      .toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
+    const newDateReadable = new Date(sessionDate)
+      .toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
+
+    // Craft email content
+    const subject = 'Session rescheduled';
+    const body = `Your session originally set for ${oldDateReadable} has been rescheduled to ${newDateReadable}.`;
+
+    // Send email to client
+    if (clientRow?.email) {
+      await safeInvokeEmail(supabaseClient, {
+        to: clientRow.email,
+        type: 'GENERIC',
+        data: { subject, body },
+        internalToken
+      });
+    }
+
+    // Send email to trainer
+    if (trainerRow?.contact_email) {
+      await safeInvokeEmail(supabaseClient, {
+        to: trainerRow.contact_email,
+        type: 'GENERIC',
+        data: { subject, body },
+        internalToken
+      });
+    }
+  }
 
   return new Response(JSON.stringify({ success: true, updatedSession }), { 
     status: 200, 

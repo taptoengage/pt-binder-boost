@@ -179,6 +179,7 @@ export type Database = {
           created_at: string
           default_session_rate: number
           email: string
+          email_notifications_enabled: boolean
           first_name: string
           id: string
           last_name: string
@@ -187,6 +188,7 @@ export type Database = {
           physical_activity_readiness: string | null
           profile_photo_url: string | null
           rough_goals: string | null
+          sms_notifications_enabled: boolean
           trainer_id: string
           training_age: number | null
           updated_at: string
@@ -196,6 +198,7 @@ export type Database = {
           created_at?: string
           default_session_rate?: number
           email: string
+          email_notifications_enabled?: boolean
           first_name?: string
           id?: string
           last_name?: string
@@ -204,6 +207,7 @@ export type Database = {
           physical_activity_readiness?: string | null
           profile_photo_url?: string | null
           rough_goals?: string | null
+          sms_notifications_enabled?: boolean
           trainer_id: string
           training_age?: number | null
           updated_at?: string
@@ -213,6 +217,7 @@ export type Database = {
           created_at?: string
           default_session_rate?: number
           email?: string
+          email_notifications_enabled?: boolean
           first_name?: string
           id?: string
           last_name?: string
@@ -221,6 +226,7 @@ export type Database = {
           physical_activity_readiness?: string | null
           profile_photo_url?: string | null
           rough_goals?: string | null
+          sms_notifications_enabled?: boolean
           trainer_id?: string
           training_age?: number | null
           updated_at?: string
@@ -235,6 +241,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      email_logs: {
+        Row: {
+          created_at: string
+          email_to: string
+          email_type: string
+          error: string | null
+          id: string
+          metadata: Json | null
+          provider_id: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          email_to: string
+          email_type: string
+          error?: string | null
+          id?: string
+          metadata?: Json | null
+          provider_id?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          email_to?: string
+          email_type?: string
+          error?: string | null
+          id?: string
+          metadata?: Json | null
+          provider_id?: string | null
+          status?: string
+        }
+        Relationships: []
       }
       payments: {
         Row: {
@@ -319,6 +358,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      security_rate_limits: {
+        Row: {
+          bucket: string
+          count: number
+          created_at: string | null
+          id: string
+          rate_key: string
+          updated_at: string | null
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          bucket: string
+          count?: number
+          created_at?: string | null
+          id?: string
+          rate_key: string
+          updated_at?: string | null
+          window_end: string
+          window_start?: string
+        }
+        Update: {
+          bucket?: string
+          count?: number
+          created_at?: string | null
+          id?: string
+          rate_key?: string
+          updated_at?: string | null
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: []
       }
       service_types: {
         Row: {
@@ -783,11 +855,51 @@ export type Database = {
           },
         ]
       }
+      trainer_client_assignments: {
+        Row: {
+          assigned_by: string | null
+          client_id: string
+          created_at: string
+          id: string
+          trainer_id: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          client_id: string
+          created_at?: string
+          id?: string
+          trainer_id: string
+        }
+        Update: {
+          assigned_by?: string | null
+          client_id?: string
+          created_at?: string
+          id?: string
+          trainer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trainer_client_assignments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trainer_client_assignments_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trainers: {
         Row: {
           business_name: string
           contact_email: string
           created_at: string | null
+          email_notifications_enabled: boolean
           facebook_id: string | null
           first_name: string
           id: string
@@ -795,6 +907,7 @@ export type Database = {
           last_name: string
           phone: string | null
           profile_photo_url: string | null
+          sms_notifications_enabled: boolean
           trainerize_id: string | null
           updated_at: string | null
           wechat_id: string | null
@@ -804,6 +917,7 @@ export type Database = {
           business_name: string
           contact_email: string
           created_at?: string | null
+          email_notifications_enabled?: boolean
           facebook_id?: string | null
           first_name?: string
           id?: string
@@ -811,6 +925,7 @@ export type Database = {
           last_name?: string
           phone?: string | null
           profile_photo_url?: string | null
+          sms_notifications_enabled?: boolean
           trainerize_id?: string | null
           updated_at?: string | null
           wechat_id?: string | null
@@ -820,6 +935,7 @@ export type Database = {
           business_name?: string
           contact_email?: string
           created_at?: string | null
+          email_notifications_enabled?: boolean
           facebook_id?: string | null
           first_name?: string
           id?: string
@@ -827,6 +943,7 @@ export type Database = {
           last_name?: string
           phone?: string | null
           profile_photo_url?: string | null
+          sms_notifications_enabled?: boolean
           trainerize_id?: string | null
           updated_at?: string | null
           wechat_id?: string | null
@@ -903,20 +1020,8 @@ export type Database = {
     }
     Functions: {
       add_to_waitlist: {
-        Args: {
-          p_email: string
-          p_ip_address?: string
-          p_metadata?: Json
-          p_referrer?: string
-          p_source?: string
-          p_user_agent?: string
-        }
-        Returns: {
-          created_at: string
-          duplicate: boolean
-          email: string
-          id: string
-        }[]
+        Args: { email_input: string }
+        Returns: Json
       }
       decrement_pack_sessions: {
         Args: {
