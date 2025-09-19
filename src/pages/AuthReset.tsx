@@ -61,20 +61,31 @@ const AuthReset = () => {
   const password = form.watch("password");
   const passwordStrength = password ? getPasswordStrength(password) : null;
 
+  // Helper to merge params from search and hash
+  const getAllURLParams = () => {
+    const search = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash);
+
+    const get = (k: string) => search.get(k) ?? hash.get(k);
+    return {
+      type: get('type'),
+      code: get('code'),
+      token: get('token'),
+      access_token: get('access_token'),
+      refresh_token: get('refresh_token'),
+    };
+  };
+
   // Check if we have valid reset tokens
   useEffect(() => {
-    const code = searchParams.get('code');
-    const token = searchParams.get('token');
-    const type = searchParams.get('type');
-    const accessToken = searchParams.get('access_token');
-    const refreshToken = searchParams.get('refresh_token');
+    const params = getAllURLParams();
 
     const validateToken = async () => {
       try {
         // Try modern format first: code + type=recovery
-        if (type === 'recovery' && code) {
-          console.log('AuthReset: Using code parameter (modern format)');
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (params.type === 'recovery' && params.code) {
+          console.log('AuthReset: recovery(code)');
+          const { error } = await supabase.auth.exchangeCodeForSession(params.code);
           if (error) {
             console.error('Code exchange error:', error);
             setIsValidToken(false);
@@ -83,9 +94,9 @@ const AuthReset = () => {
           }
         }
         // Fall back to current format: token + type=recovery
-        else if (type === 'recovery' && token) {
-          console.log('AuthReset: Using token parameter (current format)');
-          const { error } = await supabase.auth.exchangeCodeForSession(token);
+        else if (params.type === 'recovery' && params.token) {
+          console.log('AuthReset: recovery(token)');
+          const { error } = await supabase.auth.exchangeCodeForSession(params.token);
           if (error) {
             console.error('Token exchange error:', error);
             setIsValidToken(false);
@@ -94,11 +105,11 @@ const AuthReset = () => {
           }
         }
         // Final fallback: access_token + refresh_token (legacy)
-        else if (accessToken && refreshToken) {
-          console.log('AuthReset: Using access/refresh tokens (legacy format)');
+        else if (params.access_token && params.refresh_token) {
+          console.log('AuthReset: legacy(access/refresh)');
           const { error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
+            access_token: params.access_token,
+            refresh_token: params.refresh_token,
           });
           if (error) {
             console.error('Session set error:', error);
@@ -109,7 +120,7 @@ const AuthReset = () => {
         }
         // No valid parameters found
         else {
-          console.log('AuthReset: No valid reset parameters found');
+          console.log('AuthReset: no params');
           setIsValidToken(false);
         }
       } catch (error) {
@@ -119,7 +130,7 @@ const AuthReset = () => {
     };
 
     validateToken();
-  }, [searchParams]);
+  }, []);
 
   const handleResetPassword = async (data: ResetPasswordForm) => {
     setIsLoading(true);

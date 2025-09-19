@@ -14,10 +14,40 @@ const DEST = {
 export default function AuthCallback() {
   const { loading, authStatus } = useAuth();
 
+  // Helper to merge params from search and hash
+  const getAllURLParams = () => {
+    const search = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash);
+
+    const get = (k: string) => search.get(k) ?? hash.get(k);
+    return {
+      code: get('code'),
+      token: get('token'),
+    };
+  };
+
   useEffect(() => {
     (async () => {
-      // Ensure the SDK consumes the URL hash and stores session for THIS domain
-      await supabase.auth.getSession();
+      try {
+        const params = getAllURLParams();
+        const codeOrToken = params.code || params.token;
+        
+        if (codeOrToken) {
+          console.log('AuthCallback: processing code/token');
+          const { error } = await supabase.auth.exchangeCodeForSession(codeOrToken);
+          if (error) {
+            console.error('AuthCallback: exchange failed:', error);
+            window.location.replace('/auth');
+            return;
+          }
+        }
+        
+        // Ensure the SDK consumes the URL hash and stores session for THIS domain
+        await supabase.auth.getSession();
+      } catch (error) {
+        console.error('AuthCallback: error:', error);
+        window.location.replace('/auth');
+      }
     })();
   }, []);
 
