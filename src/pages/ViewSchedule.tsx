@@ -438,57 +438,188 @@ export default function ViewSchedule() {
           </div>
         </div>
 
-        {/* Mobile list view */}
+        {/* Mobile view */}
         {isMobile ? (
           <div className="md:hidden">
-            {(() => {
-              // Get the appropriate days for the current view
-              let daysToShow: Date[];
-              let rangeLabel: string;
-              
-              if (currentView === 'week') {
-                const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
-                const end = endOfWeek(selectedDate, { weekStartsOn: 1 });
-                daysToShow = eachDayOfInterval({ start, end });
-                rangeLabel = `${format(start, 'MMM dd')} – ${format(end, 'MMM dd, yyyy')}`;
-              } else {
-                const start = startOfMonth(selectedDate);
-                const end = endOfMonth(selectedDate);
-                daysToShow = eachDayOfInterval({ start, end });
-                rangeLabel = format(selectedDate, 'MMM yyyy');
-              }
+            {currentView === 'day' ? (
+              /* Mobile Day View */
+              <div className="space-y-4">
+                {/* Back button for mobile day view */}
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCurrentView('week')}
+                    className="flex items-center gap-2"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to Week
+                  </Button>
+                  <h3 className="text-lg font-semibold">{format(selectedDate, 'EEEE, MMM d, yyyy')}</h3>
+                </div>
 
-              const scheduleListDays = daysToShow.map((date) => {
-                const effectiveAvailableRanges = getEffectiveDayAvailabilityRanges(
-                  date,
-                  recurringTemplates || [],
-                  exceptions || []
-                );
-                const isAvailable = effectiveAvailableRanges.length > 0;
+                {/* Mobile day schedule */}
+                <div className="border rounded-lg bg-white shadow-sm">
+                  <div className="space-y-px">
+                    {(() => {
+                      const effectiveAvailableRangesForDay = getEffectiveDayAvailabilityRanges(
+                        selectedDate,
+                        recurringTemplates || [],
+                        exceptions || []
+                      );
+
+                      const isFullDayUnavailable = (exceptions || []).some(ex =>
+                          format(new Date(ex.exception_date), 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') &&
+                          ex.exception_type === 'unavailable_full_day'
+                      );
+
+                      const slotsToDisplay = getSlotsToDisplayForDay(
+                        selectedDate,
+                        effectiveAvailableRangesForDay,
+                        filteredSessions,
+                        isFullDayUnavailable
+                      );
+
+                      if (slotsToDisplay.length === 0) {
+                          return (
+                              <div className="text-center py-12 text-gray-500 p-4">
+                                  No availability or sessions for this day.
+                              </div>
+                          );
+                      }
+
+                      return (
+                          <>
+                              {slotsToDisplay.map(slotTime => {
+                                  const sessionsInSlot = filteredSessions.filter((session: any) => {
+                                      const sessionStart = new Date(session.session_date);
+                                      const sessionEnd = addMinutes(sessionStart, 60);
+                                      const slotStart = parse(slotTime, 'HH:mm', selectedDate);
+                                      const slotEnd = addMinutes(slotStart, 30);
+                                      return (sessionStart >= slotStart && sessionStart < slotEnd) ||
+                                             (slotStart >= sessionStart && slotStart < sessionEnd);
+                                  });
+
+                                  const isOutsideAvailability = isSlotOutsideAvailability(
+                                    slotTime, 
+                                    selectedDate, 
+                                    effectiveAvailableRangesForDay
+                                  );
+
+                                  return (
+                                      <div
+                                          key={slotTime}
+                                          className={cn(
+                                              "relative h-16 border-b border-gray-200 p-3",
+                                              {
+                                                'bg-blue-50': !isOutsideAvailability,
+                                                'bg-orange-50 border-orange-200': isOutsideAvailability
+                                              }
+                                          )}
+                                      >
+                                          <span className={cn(
+                                            "text-sm font-medium flex items-center gap-2",
+                                            {
+                                              'text-gray-700': !isOutsideAvailability,
+                                              'text-orange-600': isOutsideAvailability
+                                            }
+                                          )}>
+                                            {slotTime}
+                                            {isOutsideAvailability && <Clock className="h-4 w-4" />}
+                                          </span>
+                                          {sessionsInSlot.map((session: any) => (
+                                              <div
+                                                  key={session.id}
+                                                  className={cn(
+                                                    "mt-1 p-2 rounded cursor-pointer transition-colors",
+                                                    {
+                                                      'bg-blue-100 hover:bg-blue-200': !isOutsideAvailability,
+                                                      'bg-orange-100 hover:bg-orange-200 border border-orange-300': isOutsideAvailability
+                                                    }
+                                                  )}
+                                                  onClick={() => {
+                                                      setSelectedSessionForModal(session);
+                                                      setIsSessionDetailModalOpen(true);
+                                                  }}
+                                              >
+                                                  <div className="flex items-center justify-between">
+                                                      <div className="text-sm font-medium">
+                                                          {session.clients?.name}
+                                                      </div>
+                                                      <Badge className={cn(
+                                                        "text-xs",
+                                                        { 'bg-green-500': session.status === 'scheduled' },
+                                                        { 'bg-gray-500': session.status === 'completed' },
+                                                        { 'bg-red-500': session.status === 'cancelled' || session.status === 'cancelled_late' },
+                                                        { 'bg-orange-500': session.status === 'cancelled_early' }
+                                                      )}>
+                                                        {session.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                      </Badge>
+                                                  </div>
+                                                  <div className="text-xs text-gray-600 mt-1">
+                                                      {format(new Date(session.session_date), 'p')} • {session.service_types?.name}
+                                                  </div>
+                                              </div>
+                                          ))}
+                                      </div>
+                                  );
+                              })}
+                          </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Mobile List View for Week/Month */
+              (() => {
+                // Get the appropriate days for the current view
+                let daysToShow: Date[];
+                let rangeLabel: string;
                 
-                return {
-                  date,
-                  dayLabel: format(date, "EEEE"),
-                  subLabel: format(date, "MMM d"),
-                  status: isAvailable ? 'available' as const : 'none' as const,
-                  onClick: () => {
-                    setSelectedDate(date);
-                    setCurrentView('day');
-                  },
-                };
-              });
+                if (currentView === 'week') {
+                  const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
+                  const end = endOfWeek(selectedDate, { weekStartsOn: 1 });
+                  daysToShow = eachDayOfInterval({ start, end });
+                  rangeLabel = `${format(start, 'MMM dd')} – ${format(end, 'MMM dd, yyyy')}`;
+                } else {
+                  const start = startOfMonth(selectedDate);
+                  const end = endOfMonth(selectedDate);
+                  daysToShow = eachDayOfInterval({ start, end });
+                  rangeLabel = format(selectedDate, 'MMM yyyy');
+                }
 
-              return (
-                <ScheduleListView
-                  days={scheduleListDays}
-                  activeView={currentView as 'week' | 'month'}
-                  onPrev={handlePreviousPeriod}
-                  onNext={handleNextPeriod}
-                  onToggleView={(newView) => setCurrentView(newView)}
-                  rangeLabel={rangeLabel}
-                />
-              );
-            })()}
+                const scheduleListDays = daysToShow.map((date) => {
+                  const effectiveAvailableRanges = getEffectiveDayAvailabilityRanges(
+                    date,
+                    recurringTemplates || [],
+                    exceptions || []
+                  );
+                  const isAvailable = effectiveAvailableRanges.length > 0;
+                  
+                  return {
+                    date,
+                    dayLabel: format(date, "EEEE"),
+                    subLabel: format(date, "MMM d"),
+                    status: isAvailable ? 'available' as const : 'none' as const,
+                    onClick: () => {
+                      setSelectedDate(date);
+                      setCurrentView('day');
+                    },
+                  };
+                });
+
+                return (
+                  <ScheduleListView
+                    days={scheduleListDays}
+                    activeView={currentView as 'week' | 'month'}
+                    onPrev={handlePreviousPeriod}
+                    onNext={handleNextPeriod}
+                    onToggleView={(newView) => setCurrentView(newView)}
+                    rangeLabel={rangeLabel}
+                  />
+                );
+              })()
+            )}
           </div>
         ) : null}
 
