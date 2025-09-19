@@ -8,6 +8,7 @@ import { Calendar, momentLocalizer, View } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import UniversalSessionModal from '@/components/UniversalSessionModal';
+import ScheduleListView from '@/components/schedule/ScheduleListView';
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeGesture } from "@/hooks/useSwipeGesture";
 
@@ -457,43 +458,39 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   };
 
   const renderMobileWeekView = () => {
-    const today = new Date();
+    const days = getDisplayedWeek(currentDisplayMonth);
+    const label = `${format(days[0], "MMM dd")} – ${format(days[6], "MMM dd, yyyy")}`;
 
     const handleSelectDay = (date: Date) => {
       setSelectedDate(date);
       setView("day");
     };
 
-    return (
-      <div className="flex flex-col gap-4">
-        <MobileWeekHeader />
-        <div 
-          ref={swipeRef}
-          className="mt-2 flex flex-col gap-3 px-4"
-        >
-          <div ref={tilesContainerRef} className="flex flex-col gap-3">
-            {weekDays.map((d) => {
-              const dayKey = d.toDateString();
-              const dayData = slotsByDay[dayKey] || { count: 0, slots: [] };
-              const slotCount = dayData.count;
-              const isAvailable = slotCount > 0;
-              const isCurrentToday = isSameDay(d, today);
-              const selected = !!lastSelectedDate && isSameDay(d, lastSelectedDate);
+    const scheduleListDays = weekDays.map((date) => {
+      const slotsForDay = getSlotsForDate(date, availableSlots);
+      const isAvailable = slotsForDay.length > 0;
+      
+      return {
+        date,
+        dayLabel: format(date, "EEEE"),
+        subLabel: format(date, "MMM d"),
+        status: isAvailable ? 'available' as const : 'none' as const,
+        onClick: () => handleSelectDay(date),
+      };
+    });
 
-              return (
-                <DayTile
-                  key={d.toISOString()}
-                  date={d}
-                  isAvailable={isAvailable}
-                  isToday={isCurrentToday}
-                  selected={selected}
-                  onSelect={handleSelectDay}
-                />
-              );
-            })}
-          </div>
-        </div>
+    return (
+      <div ref={swipeRef}>
+        <ScheduleListView
+          days={scheduleListDays}
+          activeView={view as 'week' | 'month'}
+          onPrev={handlePrevWeek}
+          onNext={handleNextWeek}
+          onToggleView={(newView) => setView(newView)}
+          rangeLabel={label}
+        />
       </div>
+
     );
   };
 

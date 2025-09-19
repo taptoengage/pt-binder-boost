@@ -12,6 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import UniversalSessionModal from '@/components/UniversalSessionModal';
 import BlockAvailabilityModal from '@/components/BlockAvailabilityModal';
+import ScheduleListView from '@/components/schedule/ScheduleListView';
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from '@/hooks/use-toast';
 
 // Helper to generate 30-minute time slots for a day
@@ -214,6 +216,7 @@ export default function ViewSchedule() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [currentView, setCurrentView] = useState<'day' | 'week' | 'month'>('week');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isSessionDetailModalOpen, setIsSessionDetailModalOpen] = useState(false);
@@ -435,7 +438,62 @@ export default function ViewSchedule() {
           </div>
         </div>
 
-        <div className="calendar-grid-display border rounded-lg p-4 bg-white shadow-sm">
+        {/* Mobile list view */}
+        {isMobile ? (
+          <div className="md:hidden">
+            {(() => {
+              // Get the appropriate days for the current view
+              let daysToShow: Date[];
+              let rangeLabel: string;
+              
+              if (currentView === 'week') {
+                const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
+                const end = endOfWeek(selectedDate, { weekStartsOn: 1 });
+                daysToShow = eachDayOfInterval({ start, end });
+                rangeLabel = `${format(start, 'MMM dd')} – ${format(end, 'MMM dd, yyyy')}`;
+              } else {
+                const start = startOfMonth(selectedDate);
+                const end = endOfMonth(selectedDate);
+                daysToShow = eachDayOfInterval({ start, end });
+                rangeLabel = format(selectedDate, 'MMM yyyy');
+              }
+
+              const scheduleListDays = daysToShow.map((date) => {
+                const effectiveAvailableRanges = getEffectiveDayAvailabilityRanges(
+                  date,
+                  recurringTemplates || [],
+                  exceptions || []
+                );
+                const isAvailable = effectiveAvailableRanges.length > 0;
+                
+                return {
+                  date,
+                  dayLabel: format(date, "EEEE"),
+                  subLabel: format(date, "MMM d"),
+                  status: isAvailable ? 'available' as const : 'none' as const,
+                  onClick: () => {
+                    setSelectedDate(date);
+                    setCurrentView('day');
+                  },
+                };
+              });
+
+              return (
+                <ScheduleListView
+                  days={scheduleListDays}
+                  activeView={currentView as 'week' | 'month'}
+                  onPrev={handlePreviousPeriod}
+                  onNext={handleNextPeriod}
+                  onToggleView={(newView) => setCurrentView(newView)}
+                  rangeLabel={rangeLabel}
+                />
+              );
+            })()}
+          </div>
+        ) : null}
+
+        {/* Desktop grid view */}
+        <div className={`calendar-grid-display border rounded-lg p-4 bg-white shadow-sm ${isMobile ? 'hidden md:block' : ''}`}>
           {/* Conditional rendering based on currentView */}
           {currentView === 'day' && (
             <div className="space-y-px">
