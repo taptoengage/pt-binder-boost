@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Loader2, Edit, Save, X, User, Clock, MessageSquare, Phone, Mail, MessageCircle } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { useNavigate } from 'react-router-dom';
 
 // Form validation schema
@@ -29,6 +30,7 @@ export default function ClientProfile() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
+  const [emailNotifications, setEmailNotifications] = useState(false);
 
   // Fetch client profile data with trainer information
   const { data: clientProfile, isLoading, error } = useQuery({
@@ -78,6 +80,7 @@ export default function ClientProfile() {
         email: clientProfile.email || '',
         phone_number: clientProfile.phone_number || '',
       });
+      setEmailNotifications(clientProfile.email_notifications_enabled || false);
     }
   }, [clientProfile, form]);
 
@@ -123,6 +126,47 @@ export default function ClientProfile() {
       toast({
         title: "Error",
         description: `Failed to update profile: ${error.message}`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle email notifications toggle
+  const handleEmailNotificationsToggle = async (enabled: boolean) => {
+    if (!client?.id) return;
+
+    // Optimistic update
+    const previousState = emailNotifications;
+    setEmailNotifications(enabled);
+
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({
+          email_notifications_enabled: enabled,
+          email_opt_in_at: enabled ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', client.id);
+
+      if (error) throw error;
+
+      // Invalidate the query to refresh data
+      queryClient.invalidateQueries({ queryKey: ['clientProfile'] });
+      
+      toast({
+        title: enabled ? "Email notifications enabled." : "Email notifications disabled.",
+        description: enabled 
+          ? "You'll receive reminders and important updates about your sessions." 
+          : "You won't receive any email notifications.",
+      });
+    } catch (error: any) {
+      console.error('Error updating email notifications:', error);
+      // Revert optimistic update
+      setEmailNotifications(previousState);
+      toast({
+        title: "Error",
+        description: "Couldn't update preferences. Please try again.",
         variant: "destructive",
       });
     }
@@ -410,18 +454,21 @@ export default function ClientProfile() {
                   Communication Preferences
                 </CardTitle>
                 <CardDescription>
-                  Manage how your trainer contacts you (Coming Soon)
+                  Manage how you receive updates about your sessions
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="p-6 border rounded-lg bg-muted/50 text-center">
-                  <MessageSquare className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
-                  <p className="text-muted-foreground mb-4">
-                    Communication settings will include preferred messaging platforms (Instagram, Facebook, WhatsApp) and email preferences.
-                  </p>
-                  <Button variant="outline" disabled>
-                    Manage Preferences
-                  </Button>
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="space-y-1">
+                    <div className="font-medium">Receive email notifications</div>
+                    <div className="text-sm text-muted-foreground">
+                      Reminders and schedule changes for your sessions.
+                    </div>
+                  </div>
+                  <Switch
+                    checked={emailNotifications}
+                    onCheckedChange={handleEmailNotificationsToggle}
+                  />
                 </div>
               </CardContent>
             </Card>
