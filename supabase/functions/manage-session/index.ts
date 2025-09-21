@@ -154,7 +154,7 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
   // Verify that the client exists and belongs to the authenticated user via email lookup
   const { data: clientData, error: clientError } = await supabaseUserClient
     .from('clients')
-    .select('id, email')
+    .select('id, email, email_notifications_enabled')
     .eq('id', clientId)
     .eq('user_id', user.id)
     .single();
@@ -309,10 +309,10 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
   // Send booking confirmation emails
   const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
   if (internalToken) {
-    // Fetch trainer's contact email
+    // Fetch trainer's contact email and preferences
     const { data: trainerRecord, error: trainerErr } = await supabaseClient
       .from('trainers')
-      .select('contact_email')
+      .select('contact_email, email_notifications_enabled')
       .eq('id', trainerId)
       .single();
     const trainerEmail = trainerRecord?.contact_email;
@@ -320,19 +320,23 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     // Human-readable date/time
     const humanDate = bookingDateTime.toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
 
-    // Send email to client
-    await safeInvokeEmail(supabaseClient, {
-      to: clientData.email,
-      type: 'GENERIC',
-      data: {
-        subject: 'Session booked',
-        body: `Your session on ${humanDate} has been booked.`
-      },
-      internalToken
-    });
+    // Send email to client if opted in
+    if (clientData.email_notifications_enabled) {
+      await safeInvokeEmail(supabaseClient, {
+        to: clientData.email,
+        type: 'GENERIC',
+        data: {
+          subject: 'Session booked',
+          body: `Your session on ${humanDate} has been booked.`
+        },
+        internalToken
+      });
+    } else {
+      console.log('[email] skipped - recipient opted out', { recipientType: 'client', sessionId: newSession.id });
+    }
 
-    if (trainerEmail) {
-      // Send email to trainer
+    if (trainerEmail && trainerRecord?.email_notifications_enabled) {
+      // Send email to trainer if opted in
       await safeInvokeEmail(supabaseClient, {
         to: trainerEmail,
         type: 'GENERIC',
@@ -342,6 +346,8 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
         },
         internalToken
       });
+    } else if (trainerEmail) {
+      console.log('[email] skipped - recipient opted out', { recipientType: 'trainer', sessionId: newSession.id });
     }
   }
 
@@ -486,15 +492,15 @@ async function handleCancelSession(requestData: any, user: any, supabaseClient: 
   // Send cancellation notification emails
   const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
   if (internalToken) {
-    // Fetch client and trainer emails
+    // Fetch client and trainer emails with preferences
     const { data: clientRow } = await supabaseClient
       .from('clients')
-      .select('email')
+      .select('email, email_notifications_enabled')
       .eq('id', session.client_id)
       .single();
     const { data: trainerRow } = await supabaseClient
       .from('trainers')
-      .select('contact_email')
+      .select('contact_email, email_notifications_enabled')
       .eq('id', session.trainer_id)
       .single();
 
@@ -511,24 +517,28 @@ async function handleCancelSession(requestData: any, user: any, supabaseClient: 
       body += ' No penalty will be charged.';
     }
 
-    // Send email to client
-    if (clientRow?.email) {
+    // Send email to client if opted in
+    if (clientRow?.email && clientRow?.email_notifications_enabled) {
       await safeInvokeEmail(supabaseClient, {
         to: clientRow.email,
         type: 'GENERIC',
         data: { subject, body },
         internalToken
       });
+    } else if (clientRow?.email) {
+      console.log('[email] skipped - recipient opted out', { recipientType: 'client', sessionId: session.id });
     }
 
-    // Send email to trainer
-    if (trainerRow?.contact_email) {
+    // Send email to trainer if opted in
+    if (trainerRow?.contact_email && trainerRow?.email_notifications_enabled) {
       await safeInvokeEmail(supabaseClient, {
         to: trainerRow.contact_email,
         type: 'GENERIC',
         data: { subject, body },
         internalToken
       });
+    } else if (trainerRow?.contact_email) {
+      console.log('[email] skipped - recipient opted out', { recipientType: 'trainer', sessionId: session.id });
     }
   }
 
@@ -611,15 +621,15 @@ async function handleEditSession(requestData: any, user: any, supabaseClient: an
   // Send reschedule notification emails
   const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
   if (internalToken) {
-    // Fetch client and trainer emails
+    // Fetch client and trainer emails with preferences
     const { data: clientRow } = await supabaseClient
       .from('clients')
-      .select('email')
+      .select('email, email_notifications_enabled')
       .eq('id', session.client_id)
       .single();
     const { data: trainerRow } = await supabaseClient
       .from('trainers')
-      .select('contact_email')
+      .select('contact_email, email_notifications_enabled')
       .eq('id', session.trainer_id)
       .single();
 
@@ -633,24 +643,28 @@ async function handleEditSession(requestData: any, user: any, supabaseClient: an
     const subject = 'Session rescheduled';
     const body = `Your session originally set for ${oldDateReadable} has been rescheduled to ${newDateReadable}.`;
 
-    // Send email to client
-    if (clientRow?.email) {
+    // Send email to client if opted in
+    if (clientRow?.email && clientRow?.email_notifications_enabled) {
       await safeInvokeEmail(supabaseClient, {
         to: clientRow.email,
         type: 'GENERIC',
         data: { subject, body },
         internalToken
       });
+    } else if (clientRow?.email) {
+      console.log('[email] skipped - recipient opted out', { recipientType: 'client', sessionId: session.id });
     }
 
-    // Send email to trainer
-    if (trainerRow?.contact_email) {
+    // Send email to trainer if opted in
+    if (trainerRow?.contact_email && trainerRow?.email_notifications_enabled) {
       await safeInvokeEmail(supabaseClient, {
         to: trainerRow.contact_email,
         type: 'GENERIC',
         data: { subject, body },
         internalToken
       });
+    } else if (trainerRow?.contact_email) {
+      console.log('[email] skipped - recipient opted out', { recipientType: 'trainer', sessionId: session.id });
     }
   }
 

@@ -159,16 +159,9 @@ serve(async (req) => {
       // Don't fail the whole operation for this
     }
 
-    // Send welcome email to the new client
-    const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
-    if (internalToken) {
-      await safeInvokeEmail(supabaseAdmin, {
-        to: email,
-        type: 'WELCOME',
-        data: { ctaUrl: req.headers.get('origin') || 'https://optimisedtrainer.online' },
-        internalToken
-      });
-    }
+    // Note: Skip welcome email - clients are opted out by default and must explicitly opt in
+    // Welcome emails will only be sent if client later opts in to email notifications
+    console.log('[email] skipped welcome email - client opted out by default', { email });
 
     return new Response(
       JSON.stringify({ 
