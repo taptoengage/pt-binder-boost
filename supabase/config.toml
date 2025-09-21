@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.send-transactional-email]
 verify_jwt = false
+
+[functions.send-session-reminders]
+verify_jwt = false
+
+[functions.send-session-reminders.schedules.reminder5min]
+cron = "*/5 * * * *"

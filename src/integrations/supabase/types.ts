@@ -427,6 +427,35 @@ export type Database = {
           },
         ]
       }
+      session_notifications: {
+        Row: {
+          id: string
+          notification_type: string
+          sent_at: string
+          session_id: string
+        }
+        Insert: {
+          id?: string
+          notification_type: string
+          sent_at?: string
+          session_id: string
+        }
+        Update: {
+          id?: string
+          notification_type?: string
+          sent_at?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_notifications_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       session_packs: {
         Row: {
           amount_paid: number
