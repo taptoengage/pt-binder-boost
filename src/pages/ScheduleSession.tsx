@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, CalendarIcon, Clock } from 'lucide-react';
+import { bookSession } from '@/hooks/useBookSession';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionOverlapCheck, validateOverlap } from '@/hooks/useSessionOverlapCheck';
@@ -641,48 +642,23 @@ const fetchActiveClientSubscriptions = async (clientId: string) => {
         return;
       }
 
-      const sessionData = {
-        trainer_id: user?.id,
-        client_id: data.client_id,
-        service_type_id: finalServiceTypeId,
-        session_date: sessionDateTime.toISOString(),
-        status: data.status,
-        notes: data.notes || null,
-        session_pack_id: finalPackId,
-        subscription_id: finalSubscriptionId,
-        is_from_credit: finalIsFromCredit,
-        credit_id_consumed: finalCreditIdConsumed,
-      };
+      // Use shared booking pipeline via manage-session edge function
+      const bookingMethod = data.scheduleType === 'fromPack' ? 'pack' : 
+                           data.scheduleType === 'fromSubscription' ? 'subscription' : 
+                           'direct';
 
-      const { data: sessionInsertData, error: sessionInsertError } = await supabase
-        .from('sessions')
-        .insert([sessionData])
-        .select()
-        .single();
+      const sessionInsertData = await bookSession({
+        clientId: data.client_id,
+        trainerId: user?.id!,
+        sessionDate: sessionDateTime.toISOString(),
+        serviceTypeId: finalServiceTypeId,
+        bookingMethod,
+        sourcePackId: finalPackId,
+        sourceSubscriptionId: finalSubscriptionId,
+        source: 'trainer-schedule'
+      });
 
-      if (sessionInsertError) {
-        throw new Error(`Failed to schedule session: ${sessionInsertError.message}`);
-      }
-
-      // Handle credit consumption for subscription sessions
-      if (data.scheduleType === 'fromSubscription' && data.selectedCreditId) {
-        const { error: creditUpdateError } = await supabase
-          .from('subscription_session_credits')
-          .update({ 
-            status: 'used_for_session',
-            used_at: new Date().toISOString()
-          })
-          .eq('id', data.selectedCreditId);
-
-        if (creditUpdateError) {
-          console.error("Failed to update credit status:", creditUpdateError);
-          toast({
-            title: 'Warning',
-            description: 'Session scheduled, but failed to update credit status.',
-            variant: 'destructive',
-          });
-        }
-      }
+      // Credit consumption is now handled by the manage-session edge function
 
       toast({
         title: 'Success',

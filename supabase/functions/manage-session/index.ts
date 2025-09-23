@@ -60,6 +60,7 @@ Deno.serve(async (req) => {
 
     const { action, ...actionData } = requestData;
 
+    console.log('[manage-session] source', { action, source: actionData?.source || 'unknown' });
     console.log('Session management request received:', {
       action,
       actionData,
