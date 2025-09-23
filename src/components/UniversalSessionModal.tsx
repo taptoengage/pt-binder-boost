@@ -41,7 +41,7 @@ interface UniversalSessionModalProps {
   isOpen: boolean;
   onClose: () => void;
   session?: any; // For view/edit modes
-  selectedSlot?: { start: Date; end: Date }; // For book mode
+  selectedSlot?: { start: Date; end: Date }; // Optional for book mode
   clientId?: string; // For book mode
   trainerId?: string; // For book mode
   onSessionUpdated?: () => void; // Callback for data refresh
@@ -105,6 +105,10 @@ export default function UniversalSessionModal({
   const [selectedStartTime, setSelectedStartTime] = useState<string | null>(null);
   const [isLoadingBookingData, setIsLoadingBookingData] = useState(false);
   
+  // Internal slot state for trainer flow when no selectedSlot is provided
+  const [internalSlot, setInternalSlot] = useState<{ start: Date; end: Date } | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  
   const DEFAULT_SESSION_DURATION_MINUTES = 60;
 
   // Initialize form - MUST be called unconditionally
@@ -135,9 +139,10 @@ export default function UniversalSessionModal({
   }, []);
 
   const bookableTimeSlots = useMemo(() => {
-    if (!selectedSlot) return [];
-    return generateBookableTimeSlots(selectedSlot.start, selectedSlot.end);
-  }, [selectedSlot, generateBookableTimeSlots]);
+    const slot = selectedSlot || internalSlot;
+    if (!slot) return [];
+    return generateBookableTimeSlots(slot.start, slot.end);
+  }, [selectedSlot, internalSlot, generateBookableTimeSlots]);
 
   // ALL useQuery hooks MUST be called unconditionally
   // Fetch complete session data with joins (for view/edit modes)
@@ -528,10 +533,13 @@ export default function UniversalSessionModal({
     return null;
   }
 
-  if (mode === 'book' && !selectedSlot) {
-    console.error('UniversalSessionModal: Missing selectedSlot prop for book mode.');
-    return null;
-  }
+  // Logging to track slot source for debugging
+  console.log('[UniversalSessionModal] booking source', { 
+    slotSource: selectedSlot ? 'external' : 'internal',
+    mode,
+    hasSelectedSlot: !!selectedSlot,
+    hasInternalSlot: !!internalSlot 
+  });
 
   // ============= EVENT HANDLERS =============
 
@@ -718,7 +726,8 @@ export default function UniversalSessionModal({
 
   // Book mode booking handler
   const handleConfirmBooking = async () => {
-    if (!selectedSlot || !selectedStartTime || !selectedServiceTypeId || !selectedBookingOption) {
+    const slot = selectedSlot || internalSlot;
+    if (!slot || !selectedStartTime || !selectedServiceTypeId || !selectedBookingOption) {
       toast({
         title: "Error",
         description: "Please select all required options.",
@@ -751,7 +760,7 @@ export default function UniversalSessionModal({
     try {
       // Get the final session date with the selected start time
       const [hour, minute] = selectedStartTime.split(':').map(Number);
-      const sessionDateWithTime = setMinutes(setHours(selectedSlot.start, hour), minute);
+      const sessionDateWithTime = setMinutes(setHours(slot.start, hour), minute);
 
       const bookingData = {
         action: 'book',
@@ -1343,13 +1352,53 @@ export default function UniversalSessionModal({
             </div>
           ) : (
             <div className="grid gap-4 py-4">
-              {selectedSlot && (
+              {!selectedSlot && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Select Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !selectedDate && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={selectedDate}
+                          onSelect={(date) => {
+                            if (date) {
+                              setSelectedDate(date);
+                              // Create a default time slot for the selected date (9 AM - 5 PM)
+                              const start = setHours(setMinutes(date, 0), 9);
+                              const end = setHours(setMinutes(date, 0), 17);
+                              setInternalSlot({ start, end });
+                            }
+                          }}
+                          disabled={(date) => date < new Date()}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+              )}
+              
+              {(selectedSlot || internalSlot) && (
                 <p className="text-sm font-medium">
                   Session Date: {(() => {
                     try {
-                      return format(selectedSlot.start, 'MMM dd, yyyy');
+                      const slot = selectedSlot || internalSlot;
+                      return slot ? format(slot.start, 'MMM dd, yyyy') : 'No date selected';
                     } catch (error) {
-                      console.error('Error formatting selected slot date:', error);
+                      console.error('Error formatting slot date:', error);
                       return 'Invalid Date';
                     }
                   })()}
@@ -1450,7 +1499,7 @@ export default function UniversalSessionModal({
             <Button 
               type="submit" 
               onClick={handleConfirmBooking} 
-              disabled={isLoadingBookingData || isBooking || !selectedSlot || !selectedStartTime || !selectedServiceTypeId || !selectedBookingOption}
+              disabled={isLoadingBookingData || isBooking || (!selectedSlot && !internalSlot) || !selectedStartTime || !selectedServiceTypeId || !selectedBookingOption}
             >
               {isBooking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {isBooking ? 'Booking...' : 'Confirm Booking'}
