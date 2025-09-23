@@ -8,6 +8,7 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const POSTMARK_SERVER_TOKEN = Deno.env.get("POSTMARK_SERVER_TOKEN")!;
 const EMAIL_FROM = Deno.env.get("EMAIL_FROM") || "no-reply@optimisedtrainer.online";
 const INTERNAL_FUNCTION_TOKEN = Deno.env.get("INTERNAL_FUNCTION_TOKEN");
+const POSTMARK_MESSAGE_STREAM = Deno.env.get("POSTMARK_MESSAGE_STREAM") || "outbound";
 
 
 type Payload = {
@@ -62,7 +63,7 @@ async function sendEmail(p: Payload) {
       To: p.to,
       Subject: subject,
       HtmlBody: html,
-      MessageStream: "outbound",
+      MessageStream: POSTMARK_MESSAGE_STREAM,
     }),
   });
   const json = await resp.json();
@@ -134,6 +135,8 @@ serve(async (req) => {
 
   if (qErr) {
     console.error("Queue log error:", qErr);
+  } else {
+    console.log("[tx-email] queued", { id: queued?.id, to: payload.to, type: payload.type });
   }
 
   // 2) send with one retry
@@ -164,14 +167,39 @@ serve(async (req) => {
       }
   }
 
-  {
-    const targetId = queued?.id;
-    if (targetId) {
-      await supabaseAdmin
-        .from("email_logs")
-        .update({ status: "sent", provider_id: providerId ?? null })
-        .eq("id", targetId);
+  // Update to sent status with proper error handling
+  const targetId = queued?.id;
+  if (!targetId) {
+    console.error("[tx-email] missing queued.id; cannot update to sent");
+    return new Response(JSON.stringify({ ok: false, stage: "update", error: "Missing queued.id" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  try {
+    const { error: upErr, data: upRow } = await supabaseAdmin
+      .from("email_logs")
+      .update({ status: "sent", provider_id: providerId ?? null })
+      .eq("id", targetId)
+      .select("id,status,provider_id")
+      .single();
+
+    if (upErr) {
+      console.error("[tx-email] sent-status update error:", upErr);
+      return new Response(JSON.stringify({ ok: false, stage: "update", error: String(upErr?.message || upErr) }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
+
+    console.log("[tx-email] updated", upRow);
+  } catch (updateError) {
+    console.error("[tx-email] sent-status update error:", updateError);
+    return new Response(JSON.stringify({ ok: false, stage: "update", error: String(updateError) }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   return new Response(JSON.stringify({ ok: true, id: providerId ?? null }), {
