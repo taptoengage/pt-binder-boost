@@ -1418,7 +1418,8 @@ export default function UniversalSessionModal({
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select a start time" />
                   </SelectTrigger>
-                  <SelectContent>
+                  {/* Ensure dropdown renders above the Dialog */}
+                  <SelectContent position="popper" side="bottom" align="start" className="z-[70]">
                     {bookableTimeSlots?.length > 0 ? (
                       bookableTimeSlots.map((time, index) => (
                         <SelectItem key={index} value={format(time, 'HH:mm')}>
