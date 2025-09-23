@@ -736,8 +736,11 @@ export default function UniversalSessionModal({
       return;
     }
 
-    // Parse the single selectedBookingOption string
-    const [method, id] = selectedBookingOption.split(':');
+    // selectedBookingOption can be: 'pack:<id>' | 'subscription:<id>' | 'one-off'
+    const raw = selectedBookingOption;
+    const [rawMethod, rawId] = raw.includes(':') ? raw.split(':') : [raw, null];
+    const method = rawMethod === 'one-off' ? 'direct' : rawMethod;
+    const id = rawId ?? null;
 
     // Universal over-scheduling validation for pack bookings
     if (method === 'pack') {
@@ -768,7 +771,7 @@ export default function UniversalSessionModal({
         trainerId,
         sessionDate: sessionDateWithTime.toISOString(),
         serviceTypeId: selectedServiceTypeId,
-        bookingMethod: method,
+        bookingMethod: method,                         // 'pack' | 'subscription' | 'direct'
         sourcePackId: method === 'pack' ? id : null,
         sourceSubscriptionId: method === 'subscription' ? id : null,
       };
