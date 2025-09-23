@@ -3,11 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import UniversalSessionModal from '@/components/UniversalSessionModal';
+
+type MinimalClient = { id: string; name: string | null; email: string | null };
 
 export default function ScheduleSession() {
   const navigate = useNavigate();
@@ -19,9 +22,10 @@ export default function ScheduleSession() {
   const clientId = searchParams.get('clientId') || undefined;
   
   // Local state for client selection
-  const [selectedClientId, setSelectedClientId] = useState<string | undefined>(clientId);
-  const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string | undefined>(clientId || undefined);
+  const [clients, setClients] = useState<MinimalClient[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
+  const isTrainer = !!user;
 
   // Load trainer's clients
   useEffect(() => {
@@ -32,7 +36,7 @@ export default function ScheduleSession() {
         setLoadingClients(true);
         const { data, error } = await supabase
           .from('clients')
-          .select('id, name')
+          .select('id, name, email')
           .eq('trainer_id', user.id)
           .order('name', { ascending: true });
 
@@ -45,6 +49,18 @@ export default function ScheduleSession() {
       }
     })();
   }, [user?.id]);
+
+  // Validate URL clientId belongs to this trainer
+  useEffect(() => {
+    if (!clientId) return;
+    if (!clients.length) return;
+    const valid = clients.some(c => c.id === clientId);
+    setSelectedClientId(valid ? clientId : undefined);
+  }, [clientId, clients]);
+
+  const handleClientChange = (value: string) => {
+    setSelectedClientId(value);
+  };
 
   const handleSuccess = () => {
     toast({
@@ -79,46 +95,36 @@ export default function ScheduleSession() {
           <CardHeader>
             <CardTitle>Schedule a Session</CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
-              Select a client and schedule a new session.
-            </p>
+          <CardContent className="space-y-4">
+            {isTrainer && (
+              <div className="space-y-2">
+                <Label>Select Client</Label>
+                <Select value={selectedClientId ?? ''} onValueChange={handleClientChange}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={loadingClients ? 'Loading clients...' : 'Choose a client'} />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[280px] overflow-y-auto">
+                    {clients.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name || c.email || c.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!selectedClientId && (
+                  <p className="text-muted-foreground text-sm">
+                    Please select a client to proceed with booking.
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
-
-        {/* Trainer-only Client Picker */}
-        {user?.id && (
-          <div className="max-w-4xl mx-auto mt-6">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Select Client</label>
-              <Select
-                value={selectedClientId ?? ''}
-                onValueChange={(v) => setSelectedClientId(v)}
-                disabled={loadingClients || clients.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={loadingClients ? 'Loading clients…' : 'Choose a client'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        )}
-
-        {!selectedClientId && (
-          <p className="max-w-4xl mx-auto mt-4 text-sm text-muted-foreground">
-            Please select a client to proceed with booking.
-          </p>
-        )}
 
         {/* Universal Session Modal */}
         <UniversalSessionModal
           mode="book"
-          isOpen={true}
+          isOpen={!!selectedClientId}
           onClose={handleCancel}
           clientId={selectedClientId}
           trainerId={user?.id}
