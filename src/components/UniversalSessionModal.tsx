@@ -1432,11 +1432,12 @@ export default function UniversalSessionModal({
                           })()}
                         </SelectItem>
                       ))
-                    ) : (
-                      <SelectItem value="" disabled>No available time slots</SelectItem>
-                    )}
+                    ) : null}
                   </SelectContent>
                 </Select>
+                {bookableTimeSlots.length === 0 && (
+                  <p className="text-muted-foreground text-sm">No available time slots</p>
+                )}
               </div>
 
               <div className="space-y-2">
