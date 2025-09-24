@@ -15,15 +15,19 @@ type MinimalClient = { id: string; name: string | null; email: string | null };
 export default function ScheduleSession() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
+  const { user, trainer } = useAuth(); // FIX: Destructure trainer from useAuth
   const { toast } = useToast();
 
-  const clientIdFromUrl = searchParams.get('clientId');
-  const [selectedClientId, setSelectedClientId] = useState<string | undefined>(clientIdFromUrl || undefined);
+  // Get optional clientId from URL params
+  const clientId = searchParams.get('clientId') || undefined;
+  
+  // Local state for client selection
+  const [selectedClientId, setSelectedClientId] = useState<string | undefined>(clientId || undefined);
   const [clients, setClients] = useState<MinimalClient[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
   const isTrainer = !!user;
 
+  // Load trainer's clients
   useEffect(() => {
     if (!user?.id) return;
     
@@ -46,12 +50,13 @@ export default function ScheduleSession() {
     })();
   }, [user?.id]);
 
+  // Validate URL clientId belongs to this trainer
   useEffect(() => {
-    if (clientIdFromUrl && clients.length) {
-      const valid = clients.some(c => c.id === clientIdFromUrl);
-      setSelectedClientId(valid ? clientIdFromUrl : undefined);
-    }
-  }, [clientIdFromUrl, clients]);
+    if (!clientId) return;
+    if (!clients.length) return;
+    const valid = clients.some(c => c.id === clientId);
+    setSelectedClientId(valid ? clientId : undefined);
+  }, [clientId, clients]);
 
   const handleClientChange = (value: string) => {
     setSelectedClientId(value);
@@ -66,13 +71,15 @@ export default function ScheduleSession() {
   };
 
   const handleCancel = () => {
+    // When the modal is closed, we reset the selected client
+    // This allows the user to pick another client without leaving the page
     setSelectedClientId(undefined);
-    navigate('/schedule/new');
   };
 
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
+        {/* Page Header */}
         <div className="flex items-center gap-4 mb-6">
           <Button
             variant="ghost"
@@ -85,6 +92,7 @@ export default function ScheduleSession() {
           </Button>
         </div>
 
+        {/* Main Content Card */}
         <Card className="max-w-4xl mx-auto">
           <CardHeader>
             <CardTitle>Schedule a Session</CardTitle>
@@ -115,15 +123,16 @@ export default function ScheduleSession() {
           </CardContent>
         </Card>
 
+        {/* Universal Session Modal - Conditionally rendered after a client is selected */}
         {selectedClientId && (
-          <UniversalSessionModal
-            mode="book"
-            isOpen={!!selectedClientId}
-            onClose={handleCancel}
-            clientId={selectedClientId}
-            trainerId={user?.id}
-            onSessionUpdated={handleSuccess}
-          />
+            <UniversalSessionModal
+                mode="book"
+                isOpen={!!selectedClientId}
+                onClose={handleCancel}
+                clientId={selectedClientId}
+                trainerId={trainer?.id} // FIX: Pass the trainer's PROFILE id
+                onSessionUpdated={handleSuccess}
+            />
         )}
       </div>
     </div>
