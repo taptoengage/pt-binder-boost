@@ -3,8 +3,8 @@ import { addMinutes, parseISO, addHours, getDay, startOfWeek, endOfWeek } from '
 import { isEmailSendingEnabled, safeInvokeEmail } from '../_shared/email.ts'
 
 const corsHeaders = {
-  'Access-control-allow-origin': '*',
-  'Access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 // Enhanced error response helper
@@ -29,7 +29,10 @@ Deno.serve(async (req) => {
 
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) {
-    return createErrorResponse('Authorization header is missing', 401);
+    return new Response(JSON.stringify({ error: 'Authorization header is missing' }), { 
+      status: 401, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 
   const supabaseClient = createClient(
@@ -46,75 +49,115 @@ Deno.serve(async (req) => {
   );
 
   try {
-    const requestData = await req.json();
-    const { action } = requestData;
+    // Parse request body
+    let requestData;
+    try {
+      requestData = await req.json();
+    } catch (parseError) {
+      console.error('JSON parsing error:', parseError);
+      return createErrorResponse('Invalid JSON request body', 400, { parseError: parseError.message });
+    }
 
+    const { action, ...actionData } = requestData;
+
+    console.log('[manage-session] source', { action, source: actionData?.source || 'unknown' });
     console.log('Session management request received:', {
       action,
+      actionData,
       timestamp: new Date().toISOString()
     });
 
+    // Authenticate user
     const { data: { user }, error: authError } = await supabaseUserClient.auth.getUser();
     if (authError || !user) {
-      return createErrorResponse('User not authenticated', 401);
+      return createErrorResponse('User not authenticated', 401, authError);
     }
 
+    // Route to appropriate action handler
     switch (action) {
       case 'book':
-        return await handleBookSession(requestData, user, supabaseClient);
+        return await handleBookSession(requestData, user, supabaseClient, supabaseUserClient);
+      
       case 'cancel':
-        return await handleCancelSession(requestData, user, supabaseClient);
+        return await handleCancelSession(requestData, user, supabaseClient, supabaseUserClient);
+      
       case 'edit':
-        return await handleEditSession(requestData, user, supabaseClient);
+        return await handleEditSession(requestData, user, supabaseClient, supabaseUserClient);
+      
       case 'complete':
-        return await handleCompleteSession(requestData, user, supabaseClient);
+        return await handleCompleteSession(requestData, user, supabaseClient, supabaseUserClient);
+      
       case 'mark-no-show':
-        return await handleMarkNoShow(requestData, user, supabaseClient);
+        return await handleMarkNoShow(requestData, user, supabaseClient, supabaseUserClient);
+      
       default:
-        return createErrorResponse('Invalid action specified', 400);
+        return createErrorResponse('Invalid action. Supported actions: book, cancel, edit, complete, mark-no-show', 400);
     }
+
   } catch (error) {
     console.error('Unexpected error in manage-session:', error);
-    return createErrorResponse('Internal server error', 500, { message: error.message });
+    return new Response(JSON.stringify({ error: 'Internal server error' }), { 
+      status: 500, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 });
 
-async function checkSessionPermissions(sessionId: string, user: any, supabaseClient: any) {
-  const { data: session, error } = await supabaseClient
+// Helper function to check user permissions for a session
+async function checkSessionPermissions(sessionId: string, user: any, supabaseUserClient: any) {
+  // Get client row for the user
+  const { data: clientRow, error: clientErr } = await supabaseUserClient
+    .from('clients')
+    .select('id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  // Fetch session details
+  const { data: session, error: sessErr } = await supabaseUserClient
     .from('sessions')
-    .select('*, clients(user_id), trainers(user_id)')
+    .select('*')
     .eq('id', sessionId)
     .single();
 
-  if (error || !session) throw new Error('Session not found or access denied');
+  if (sessErr || !session) {
+    throw new Error('Session not found or access denied');
+  }
 
-  const isTrainer = user.id === session.trainers?.user_id;
-  const isClient = user.id === session.clients?.user_id;
+  const isTrainer = (user.id === session.trainer_id);
+  const isClient = (clientRow && clientRow.id === session.client_id);
 
-  if (!isTrainer && !isClient) throw new Error('You do not have permission to access this session');
+  if (!isTrainer && !isClient) {
+    throw new Error('You do not have permission to access this session');
+  }
 
-  return { session, isTrainer, isClient };
+  return { session, isTrainer, isClient, clientRow };
 }
 
-async function handleBookSession(requestData: any, user: any, supabaseClient: any) {
+// BOOK SESSION HANDLER
+async function handleBookSession(requestData: any, user: any, supabaseClient: any, supabaseUserClient: any) {
   const { 
-    clientId, trainerId, sessionDate, serviceTypeId, bookingMethod, sourcePackId, sourceSubscriptionId 
+    clientId, 
+    trainerId, 
+    sessionDate, 
+    serviceTypeId, 
+    bookingMethod, 
+    sourcePackId, 
+    sourceSubscriptionId 
   } = requestData;
 
   if (!clientId || !trainerId || !sessionDate || !serviceTypeId || !bookingMethod) {
     return createErrorResponse('Missing required booking data.', 400);
   }
   
-  // --- START: Rewritten Authorization and Validation Logic ---
-
-  const { data: requesterProfile } = await supabaseClient
+  // FIX: Use the ADMIN client (supabaseClient) to query profiles and roles securely
+  const { data: requesterProfile, error: profileError } = await supabaseClient
     .from('profiles')
     .select('id, role, trainers(id), clients(id, trainer_id)')
     .eq('id', user.id)
     .single();
 
-  if (!requesterProfile) {
-    return createErrorResponse("Could not identify the user making the request.", 401);
+  if (profileError || !requesterProfile) {
+    return createErrorResponse("Could not verify user permissions. Profile not found.", 403, profileError);
   }
 
   let clientDataForEmail;
@@ -122,7 +165,7 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
   if (requesterProfile.role === 'trainer') {
     const trainerProfileId = requesterProfile.trainers[0]?.id;
     if (!trainerProfileId || trainerProfileId !== trainerId) {
-      return createErrorResponse("Authorization failed: A trainer can only book sessions for their own profile.", 403);
+      return createErrorResponse("A trainer can only book sessions for their own profile.", 403);
     }
     
     const { data: clientToBook, error: clientError } = await supabaseClient
@@ -133,36 +176,20 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
       .single();
 
     if (clientError || !clientToBook) {
-      return createErrorResponse("Authorization failed: The specified client is not assigned to this trainer.", 403);
+      return createErrorResponse("The specified client is not assigned to this trainer.", 403);
     }
     clientDataForEmail = clientToBook;
 
   } else if (requesterProfile.role === 'client') {
     const clientProfileId = requesterProfile.clients[0]?.id;
-    const clientTrainerId = requesterProfile.clients[0]?.trainer_id;
-
     if (!clientProfileId || clientProfileId !== clientId) {
-      return createErrorResponse("Authorization failed: A client can only book sessions for themselves.", 403);
+      return createErrorResponse("A client can only book sessions for themselves.", 403);
     }
-    if (clientTrainerId !== trainerId) {
-      return createErrorResponse("Authorization failed: Client is not booking with their assigned trainer.", 403);
-    }
-    
-    const { data: selfClientData, error: selfClientError } = await supabaseClient
-      .from('clients')
-      .select('id, email, email_notifications_enabled')
-      .eq('id', clientProfileId)
-      .single();
-
-    if (selfClientError || !selfClientData) {
-      return createErrorResponse("Could not find the client's profile information.", 404);
-    }
+    const { data: selfClientData } = await supabaseClient.from('clients').select('id, email, email_notifications_enabled').eq('id', clientProfileId).single();
     clientDataForEmail = selfClientData;
   } else {
-    return createErrorResponse("Permission denied. User does not have a valid role to book sessions.", 403);
+    return createErrorResponse("User does not have a valid role to book sessions.", 403);
   }
-
-  // --- END: Rewritten Authorization and Validation Logic ---
 
   let bookingDateTime;
   try {
@@ -171,143 +198,258 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
   } catch (e) {
     return createErrorResponse('Invalid session date format.', 400);
   }
-
   const bookingEndDateTime = addHours(bookingDateTime, 1);
+
   const { data: overlappingSessions, error: overlapError } = await supabaseClient
     .from('sessions')
-    .select('id')
+    .select('id, session_date')
     .eq('trainer_id', trainerId)
     .gte('session_date', bookingDateTime.toISOString())
     .lt('session_date', bookingEndDateTime.toISOString())
-    .in('status', ['scheduled', 'completed']);
+    .not('status', 'in', '("cancelled", "no-show")');
 
-  if (overlapError) return createErrorResponse('Failed to check for overlapping sessions.', 500, overlapError);
-  if (overlappingSessions.length > 0) return createErrorResponse('This time slot is no longer available.', 409);
+  if (overlapError) {
+    return createErrorResponse('Failed to check time slot availability', 500);
+  }
+
+  if (overlappingSessions && overlappingSessions.length > 0) {
+    return createErrorResponse('Timeslot is already booked.', 409);
+  }
 
   let sessionPackId = null;
   let subscriptionId = null;
   let sessionStatus = 'scheduled';
 
-  if (bookingMethod === 'pack') {
-    if (!sourcePackId) return createErrorResponse('Session pack ID is required.', 400);
-    const { data: packData, error: packError } = await supabaseClient
+  switch (bookingMethod) {
+    case 'pack':
+      if (!sourcePackId) {
+        return createErrorResponse('Pack ID is required for pack booking.', 400);
+      }
+
+      const { data: pack, error: packError } = await supabaseClient
         .from('session_packs')
-        .select('*, sessions(id, status, cancellation_reason)')
-        .eq('id', sourcePackId).eq('client_id', clientId).single();
-    if (packError || !packData) return createErrorResponse('Invalid session pack.', 400);
-    if (packData.status !== 'active') return createErrorResponse('Session pack is not active.', 400);
-    if (packData.service_type_id !== serviceTypeId) return createErrorResponse('Service type does not match the pack.', 400);
-    const usedSessions = packData.sessions.filter(s => ['scheduled', 'completed', 'no-show'].includes(s.status) || (s.status === 'cancelled' && s.cancellation_reason === 'penalty')).length;
-    if (usedSessions >= packData.total_sessions) return createErrorResponse('No sessions remaining in this pack.', 400);
-    sessionPackId = sourcePackId;
-  } else if (bookingMethod === 'subscription') {
-    if (!sourceSubscriptionId) return createErrorResponse('Subscription ID is required.', 400);
-    subscriptionId = sourceSubscriptionId;
-  } else if (bookingMethod === 'one-off') {
-    sessionStatus = 'pending_approval';
+        .select('id, total_sessions, service_type_id, status, sessions(id, status, cancellation_reason)')
+        .eq('id', sourcePackId)
+        .eq('client_id', clientId)
+        .eq('trainer_id', trainerId)
+        .single();
+
+      if (packError || !pack) {
+        return createErrorResponse('Invalid or inactive session pack.', 400, packError);
+      }
+
+      const totalUsedSessions = pack.sessions.filter(session => 
+        ['scheduled', 'completed', 'no-show'].includes(session.status) ||
+        (session.status === 'cancelled' && session.cancellation_reason === 'penalty')
+      ).length;
+      
+      if (totalUsedSessions >= pack.total_sessions) {
+        return createErrorResponse('No sessions remaining in pack.', 400);
+      }
+
+      if (pack.service_type_id !== serviceTypeId) {
+        return createErrorResponse('Service type does not match the selected pack.', 400);
+      }
+
+      sessionPackId = sourcePackId;
+      break;
+
+    case 'subscription':
+      if (!sourceSubscriptionId) {
+        return createErrorResponse('Subscription ID is required for subscription booking.', 400);
+      }
+      subscriptionId = sourceSubscriptionId;
+      break;
+
+    case 'one-off':
+      sessionStatus = 'pending_approval';
+      break;
+
+    default:
+      return createErrorResponse('Invalid booking method.', 400);
   }
 
   const { data: newSession, error: insertError } = await supabaseClient
     .from('sessions')
-    .insert({ trainer_id: trainerId, client_id: clientId, session_date: bookingDateTime.toISOString(), status: sessionStatus, service_type_id: serviceTypeId, session_pack_id: sessionPackId, subscription_id: subscriptionId })
-    .select().single();
+    .insert({
+      trainer_id: trainerId,
+      client_id: clientId,
+      session_date: bookingDateTime.toISOString(),
+      status: sessionStatus,
+      service_type_id: serviceTypeId,
+      session_pack_id: sessionPackId,
+      subscription_id: subscriptionId,
+      notes: null
+    })
+    .select()
+    .single();
 
-  if (insertError) return createErrorResponse('Failed to create the session.', 500, insertError);
+  if (insertError) {
+    return createErrorResponse('Error creating session', 500, insertError);
+  }
 
-  // --- START: Rewritten Email Notification Logic ---
+  console.log('Session created successfully:', newSession);
+
+  // Send booking confirmation emails
   const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
-  if (internalToken && clientDataForEmail) {
+  if (internalToken) {
     const { data: trainerRecord } = await supabaseClient.from('trainers').select('contact_email, email_notifications_enabled').eq('id', trainerId).single();
-    const humanDate = new Date(newSession.session_date).toLocaleString('en-AU', { timeZone: 'Australia/Melbourne', dateStyle: 'full', timeStyle: 'short' });
+    const humanDate = bookingDateTime.toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
 
-    // Send to Client
-    if (clientDataForEmail.email_notifications_enabled) {
-      await safeInvokeEmail(supabaseClient, { to: clientDataForEmail.email, type: 'GENERIC', data: { subject: 'Session Confirmed!', body: `Your session with your trainer has been successfully booked for ${humanDate}.` }, internalToken });
-    } else {
-      console.log(`[email] Skipped for client ${clientDataForEmail.id} due to preferences.`);
+    if (clientDataForEmail?.email && clientDataForEmail.email_notifications_enabled) {
+      await safeInvokeEmail(supabaseClient, {
+        to: clientDataForEmail.email,
+        type: 'GENERIC',
+        data: { subject: 'Session booked', body: `Your session on ${humanDate} has been booked.` },
+        internalToken
+      });
     }
 
-    // Send to Trainer
     if (trainerRecord?.contact_email && trainerRecord.email_notifications_enabled) {
-      await safeInvokeEmail(supabaseClient, { to: trainerRecord.contact_email, type: 'GENERIC', data: { subject: 'New Session Booked', body: `You have a new session with a client booked for ${humanDate}.` }, internalToken });
-    } else {
-      console.log(`[email] Skipped for trainer ${trainerId} due to preferences or missing email.`);
+      await safeInvokeEmail(supabaseClient, {
+        to: trainerRecord.contact_email,
+        type: 'GENERIC',
+        data: { subject: 'New session booked', body: `A new session with client ID ${clientId} is scheduled for ${humanDate}.` },
+        internalToken
+      });
     }
   }
-  // --- END: Rewritten Email Notification Logic ---
 
   return new Response(
     JSON.stringify({ 
       success: true, 
       sessionId: newSession.id,
-      message: sessionStatus === 'pending_approval' ? 'Session request submitted.' : 'Session booked successfully!'
+      message: sessionStatus === 'pending_approval' ? 'Session request submitted for trainer approval.' : 'Session booked successfully!'
     }), 
-    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    { 
+      status: 200, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    }
   );
 }
 
-async function handleCancelSession(requestData: any, user: any, supabaseClient: any) {
+// CANCEL SESSION HANDLER
+async function handleCancelSession(requestData: any, user: any, supabaseClient: any, supabaseUserClient: any) {
   const { sessionId, penalize } = requestData;
-  if (!sessionId) return createErrorResponse('Session ID is required', 400);
-  const { session, isTrainer } = await checkSessionPermissions(sessionId, user, supabaseClient);
+  
+  if (!sessionId) {
+    return createErrorResponse('Session ID is required', 400);
+  }
+
+  const { session, isTrainer } = await checkSessionPermissions(sessionId, user, supabaseUserClient);
 
   const now = new Date();
   const start = new Date(session.session_date);
-  const hoursUntil = (start.getTime() - now.getTime()) / (1000 * 3600);
-  const isLate = hoursUntil <= 24;
-  const doPenalize = penalize !== undefined ? Boolean(penalize) : isLate;
+  const hoursUntil = (start.getTime() - now.getTime()) / (1000 * 60 * 60);
+  const isLateCancel = hoursUntil <= 24;
+  const doPenalize = penalize !== undefined ? Boolean(penalize) : isLateCancel;
 
-  if (isLate && !penalize && !isTrainer) {
-    return createErrorResponse('Only trainers can waive late cancellation penalties.', 403);
+  if (isLateCancel && !doPenalize && !isTrainer) {
+    return createErrorResponse('Only trainers can waive penalties for late cancellations.', 403);
   }
 
-  const { error: cancelErr } = await supabaseClient.from('sessions').update({ status: 'cancelled', cancellation_reason: doPenalize ? 'penalty' : 'no-penalty' }).eq('id', sessionId);
-  if (cancelErr) return createErrorResponse('Failed to cancel session.', 500, cancelErr);
-  
-  // Simplified credit/pack logic can be added back here if needed
-  
-  return new Response(JSON.stringify({ success: true, message: "Session cancelled successfully." }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }});
+  if (!doPenalize) {
+    if (session.session_pack_id) {
+      await supabaseClient.rpc('increment_pack_sessions', { pack_id: session.session_pack_id, inc: 1 });
+    }
+    // Restore other credit logic here if needed
+  }
+
+  const { data: updated, error: cancelErr } = await supabaseClient
+    .from('sessions')
+    .update({ 
+      status: 'cancelled', 
+      cancellation_reason: doPenalize ? 'penalty' : 'no-penalty',
+    })
+    .eq('id', session.id)
+    .select()
+    .single();
+
+  if (cancelErr) {
+    return createErrorResponse('Failed to cancel session', 500, cancelErr);
+  }
+
+  return new Response(JSON.stringify({ success: true, session: updated }), {
+    status: 200,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
-async function handleEditSession(requestData: any, user: any, supabaseClient: any) {
+// EDIT SESSION HANDLER
+async function handleEditSession(requestData: any, user: any, supabaseClient: any, supabaseUserClient: any) {
   const { sessionId, sessionDate, notes } = requestData;
-  if (!sessionId || !sessionDate) return createErrorResponse('Session ID and new date are required.', 400);
-  const { session } = await checkSessionPermissions(sessionId, user, supabaseClient);
-  
+
+  if (!sessionId || !sessionDate) {
+    return createErrorResponse('Session ID and date are required', 400);
+  }
+
+  const { session } = await checkSessionPermissions(sessionId, user, supabaseUserClient);
+
   const now = new Date();
   const sessionStartTime = new Date(session.session_date);
-  if ((sessionStartTime.getTime() - now.getTime()) / (1000 * 3600) <= 24) {
-    return createErrorResponse('Cannot edit a session within 24 hours of its start time.', 400);
+  if ((sessionStartTime.getTime() - now.getTime()) / (1000 * 60 * 60) <= 24) {
+    return createErrorResponse('Cannot edit session within 24 hours of its start time', 400);
   }
-  
-  const { error: updateError } = await supabaseClient.from('sessions').update({ session_date: sessionDate, notes: notes }).eq('id', sessionId);
-  if (updateError) return createErrorResponse('Failed to update session.', 500, updateError);
 
-  return new Response(JSON.stringify({ success: true, message: "Session updated successfully." }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }});
+  const { data: updatedSession, error: updateError } = await supabaseClient
+    .from('sessions')
+    .update({ session_date: sessionDate, notes: notes, })
+    .eq('id', sessionId)
+    .select()
+    .single();
+
+  if (updateError) {
+    return createErrorResponse('Failed to update session', 500, updateError);
+  }
+
+  return new Response(JSON.stringify({ success: true, updatedSession }), { 
+    status: 200, 
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+  });
 }
 
-async function handleCompleteSession(requestData: any, user: any, supabaseClient: any) {
-    const { sessionId } = requestData;
-    if (!sessionId) return createErrorResponse('Session ID is required.', 400);
-    const { isTrainer } = await checkSessionPermissions(sessionId, user, supabaseClient);
+// COMPLETE SESSION HANDLER
+async function handleCompleteSession(requestData: any, user: any, supabaseClient: any, supabaseUserClient: any) {
+  const { sessionId, notes } = requestData;
+  if (!sessionId) return createErrorResponse('Session ID is required', 400);
 
-    if (!isTrainer) return createErrorResponse('Only trainers can complete sessions.', 403);
+  const { session, isTrainer } = await checkSessionPermissions(sessionId, user, supabaseUserClient);
+  if (!isTrainer) return createErrorResponse('Only trainers can mark sessions as completed', 403);
 
-    const { error } = await supabaseClient.from('sessions').update({ status: 'completed' }).eq('id', sessionId);
-    if (error) return createErrorResponse('Failed to complete session.', 500, error);
+  const { data: updatedSession, error: updateError } = await supabaseClient
+    .from('sessions')
+    .update({ status: 'completed', notes: notes || session.notes, })
+    .eq('id', sessionId)
+    .select()
+    .single();
 
-    return new Response(JSON.stringify({ success: true, message: "Session marked as complete." }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }});
+  if (updateError) return createErrorResponse('Failed to complete session', 500, updateError);
+
+  return new Response(JSON.stringify({ success: true, session: updatedSession }), { 
+    status: 200, 
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+  });
 }
 
-async function handleMarkNoShow(requestData: any, user: any, supabaseClient: any) {
-    const { sessionId } = requestData;
-    if (!sessionId) return createErrorResponse('Session ID is required.', 400);
-    const { isTrainer } = await checkSessionPermissions(sessionId, user, supabaseClient);
+// MARK NO-SHOW HANDLER
+async function handleMarkNoShow(requestData: any, user: any, supabaseClient: any, supabaseUserClient: any) {
+  const { sessionId, notes } = requestData;
+  if (!sessionId) return createErrorResponse('Session ID is required', 400);
 
-    if (!isTrainer) return createErrorResponse('Only trainers can mark a no-show.', 403);
+  const { session, isTrainer } = await checkSessionPermissions(sessionId, user, supabaseUserClient);
+  if (!isTrainer) return createErrorResponse('Only trainers can mark sessions as no-show', 403);
 
-    const { error } = await supabaseClient.from('sessions').update({ status: 'no-show' }).eq('id', sessionId);
-    if (error) return createErrorResponse('Failed to mark session as no-show.', 500, error);
+  const { data: updatedSession, error: updateError } = await supabaseClient
+    .from('sessions')
+    .update({ status: 'no-show', notes: notes || session.notes, })
+    .eq('id', sessionId)
+    .select()
+    .single();
 
-    return new Response(JSON.stringify({ success: true, message: "Session marked as no-show." }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }});
+  if (updateError) return createErrorResponse('Failed to mark session as no-show', 500, updateError);
+
+  return new Response(JSON.stringify({ success: true, session: updatedSession }), { 
+    status: 200, 
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+  });
 }
