@@ -15,21 +15,19 @@ type MinimalClient = { id: string; name: string | null; email: string | null };
 export default function ScheduleSession() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, trainer } = useAuth(); // FIX: Destructure trainer from useAuth
+  // FIX: Destructure the 'trainer' object from useAuth to get the profile ID
+  const { user, trainer } = useAuth();
   const { toast } = useToast();
 
-  // Get optional clientId from URL params
-  const clientId = searchParams.get('clientId') || undefined;
-  
-  // Local state for client selection
-  const [selectedClientId, setSelectedClientId] = useState<string | undefined>(clientId || undefined);
+  const clientIdFromUrl = searchParams.get('clientId');
+  const [selectedClientId, setSelectedClientId] = useState<string | undefined>(clientIdFromUrl || undefined);
   const [clients, setClients] = useState<MinimalClient[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
   const isTrainer = !!user;
 
-  // Load trainer's clients
   useEffect(() => {
-    if (!user?.id) return;
+    // We now use the trainer's profile ID for fetching clients
+    if (!trainer?.id) return;
     
     (async () => {
       try {
@@ -37,7 +35,8 @@ export default function ScheduleSession() {
         const { data, error } = await supabase
           .from('clients')
           .select('id, name, email')
-          .eq('trainer_id', user.id)
+          // Use trainer.id which is the profile ID
+          .eq('trainer_id', trainer.id)
           .order('name', { ascending: true });
 
         if (error) throw error;
@@ -48,15 +47,14 @@ export default function ScheduleSession() {
         setLoadingClients(false);
       }
     })();
-  }, [user?.id]);
+  }, [trainer?.id]); // Depend on trainer.id
 
-  // Validate URL clientId belongs to this trainer
   useEffect(() => {
-    if (!clientId) return;
-    if (!clients.length) return;
-    const valid = clients.some(c => c.id === clientId);
-    setSelectedClientId(valid ? clientId : undefined);
-  }, [clientId, clients]);
+    if (clientIdFromUrl && clients.length) {
+      const valid = clients.some(c => c.id === clientIdFromUrl);
+      setSelectedClientId(valid ? clientIdFromUrl : undefined);
+    }
+  }, [clientIdFromUrl, clients]);
 
   const handleClientChange = (value: string) => {
     setSelectedClientId(value);
@@ -71,15 +69,12 @@ export default function ScheduleSession() {
   };
 
   const handleCancel = () => {
-    // When the modal is closed, we reset the selected client
-    // This allows the user to pick another client without leaving the page
     setSelectedClientId(undefined);
   };
 
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
-        {/* Page Header */}
         <div className="flex items-center gap-4 mb-6">
           <Button
             variant="ghost"
@@ -92,7 +87,6 @@ export default function ScheduleSession() {
           </Button>
         </div>
 
-        {/* Main Content Card */}
         <Card className="max-w-4xl mx-auto">
           <CardHeader>
             <CardTitle>Schedule a Session</CardTitle>
@@ -123,16 +117,16 @@ export default function ScheduleSession() {
           </CardContent>
         </Card>
 
-        {/* Universal Session Modal - Conditionally rendered after a client is selected */}
-        {selectedClientId && (
-            <UniversalSessionModal
-                mode="book"
-                isOpen={!!selectedClientId}
-                onClose={handleCancel}
-                clientId={selectedClientId}
-                trainerId={trainer?.id} // FIX: Pass the trainer's PROFILE id
-                onSessionUpdated={handleSuccess}
-            />
+        {/* FIX: Ensure modal only renders when both a client and a valid trainer profile are present */}
+        {selectedClientId && trainer?.id && (
+          <UniversalSessionModal
+            mode="book"
+            isOpen={!!selectedClientId}
+            onClose={handleCancel}
+            clientId={selectedClientId}
+            trainerId={trainer.id} // Pass the trainer's PROFILE ID
+            onSessionUpdated={handleSuccess}
+          />
         )}
       </div>
     </div>
