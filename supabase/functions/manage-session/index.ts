@@ -11,10 +11,10 @@ const corsHeaders = {
 function createErrorResponse(message: string, status: number, details?: any) {
   console.error(`Error ${status}: ${message}`, details ? JSON.stringify(details) : '');
   return new Response(
-    JSON.stringify({ error: message, details }), 
-    { 
-      status, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    JSON.stringify({ error: message, details }),
+    {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     }
   );
 }
@@ -29,8 +29,8 @@ Deno.serve(async (req) => {
 
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Authorization header is missing' }), { 
-      status: 401, 
+    return new Response(JSON.stringify({ error: 'Authorization header is missing' }), {
+      status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
@@ -96,8 +96,8 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Unexpected error in manage-session:', error);
-    return new Response(JSON.stringify({ error: 'Internal server error' }), { 
-      status: 500, 
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
@@ -135,39 +135,47 @@ async function checkSessionPermissions(sessionId: string, user: any, supabaseUse
 
 // BOOK SESSION HANDLER
 async function handleBookSession(requestData: any, user: any, supabaseClient: any, supabaseUserClient: any) {
-  const { 
-    clientId, 
-    trainerId, 
-    sessionDate, 
-    serviceTypeId, 
-    bookingMethod, 
-    sourcePackId, 
-    sourceSubscriptionId 
+  const {
+    clientId,
+    trainerId,
+    sessionDate,
+    serviceTypeId,
+    bookingMethod,
+    sourcePackId,
+    sourceSubscriptionId
   } = requestData;
 
   if (!clientId || !trainerId || !sessionDate || !serviceTypeId || !bookingMethod) {
     return createErrorResponse('Missing required booking data.', 400);
   }
-  
-  // FIX: Use the ADMIN client (supabaseClient) to query profiles and roles securely
-  const { data: requesterProfile, error: profileError } = await supabaseClient
-    .from('profiles')
-    .select('id, role, trainers(id), clients(id, trainer_id)')
-    .eq('id', user.id)
+
+  // FIX: Get user role from the correct 'user_roles' table
+  const { data: userRole, error: roleError } = await supabaseClient
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', user.id)
     .single();
 
-  if (profileError || !requesterProfile) {
-    return createErrorResponse("Could not verify user permissions. Profile not found.", 403, profileError);
+  if (roleError || !userRole) {
+    return createErrorResponse("Could not verify user role.", 403, roleError);
   }
 
   let clientDataForEmail;
 
-  if (requesterProfile.role === 'trainer') {
-    const trainerProfileId = requesterProfile.trainers[0]?.id;
-    if (!trainerProfileId || trainerProfileId !== trainerId) {
-      return createErrorResponse("A trainer can only book sessions for their own profile.", 403);
+  // FIX: Role-based authorization using the correct tables
+  if (userRole.role === 'trainer') {
+    // Verify the user's UUID matches a record in the trainers table
+    const { data: trainerRecord, error: trainerError } = await supabaseClient
+      .from('trainers')
+      .select('id')
+      .eq('id', user.id) // In your schema, trainers.id is the user's UUID
+      .single();
+
+    if (trainerError || !trainerRecord || trainerRecord.id !== trainerId) {
+      return createErrorResponse("Trainer verification failed or mismatch.", 403);
     }
-    
+
+    // Verify the client being booked belongs to this trainer
     const { data: clientToBook, error: clientError } = await supabaseClient
       .from('clients')
       .select('id, email, email_notifications_enabled')
@@ -176,20 +184,30 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
       .single();
 
     if (clientError || !clientToBook) {
-      return createErrorResponse("The specified client is not assigned to this trainer.", 403);
+      return createErrorResponse("Client not found or is not assigned to this trainer.", 403);
     }
     clientDataForEmail = clientToBook;
 
-  } else if (requesterProfile.role === 'client') {
-    const clientProfileId = requesterProfile.clients[0]?.id;
-    if (!clientProfileId || clientProfileId !== clientId) {
-      return createErrorResponse("A client can only book sessions for themselves.", 403);
+  } else if (userRole.role === 'client') {
+    // Verify the client is booking for themselves
+    const { data: clientRecord, error: clientError } = await supabaseClient
+      .from('clients')
+      .select('id, email, email_notifications_enabled, trainer_id')
+      .eq('user_id', user.id)
+      .eq('id', clientId)
+      .single();
+      
+    if (clientError || !clientRecord) {
+        return createErrorResponse("Client verification failed.", 403);
     }
-    const { data: selfClientData } = await supabaseClient.from('clients').select('id, email, email_notifications_enabled').eq('id', clientProfileId).single();
-    clientDataForEmail = selfClientData;
+    if (clientRecord.trainer_id !== trainerId) {
+        return createErrorResponse("Clients can only book with their assigned trainer.", 403);
+    }
+    clientDataForEmail = clientRecord;
   } else {
     return createErrorResponse("User does not have a valid role to book sessions.", 403);
   }
+
 
   let bookingDateTime;
   try {
@@ -238,11 +256,11 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
         return createErrorResponse('Invalid or inactive session pack.', 400, packError);
       }
 
-      const totalUsedSessions = pack.sessions.filter(session => 
+      const totalUsedSessions = pack.sessions.filter(session =>
         ['scheduled', 'completed', 'no-show'].includes(session.status) ||
         (session.status === 'cancelled' && session.cancellation_reason === 'penalty')
       ).length;
-      
+
       if (totalUsedSessions >= pack.total_sessions) {
         return createErrorResponse('No sessions remaining in pack.', 400);
       }
@@ -316,14 +334,14 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
   }
 
   return new Response(
-    JSON.stringify({ 
-      success: true, 
+    JSON.stringify({
+      success: true,
       sessionId: newSession.id,
       message: sessionStatus === 'pending_approval' ? 'Session request submitted for trainer approval.' : 'Session booked successfully!'
-    }), 
-    { 
-      status: 200, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    }),
+    {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     }
   );
 }
@@ -331,7 +349,7 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
 // CANCEL SESSION HANDLER
 async function handleCancelSession(requestData: any, user: any, supabaseClient: any, supabaseUserClient: any) {
   const { sessionId, penalize } = requestData;
-  
+
   if (!sessionId) {
     return createErrorResponse('Session ID is required', 400);
   }
@@ -357,8 +375,8 @@ async function handleCancelSession(requestData: any, user: any, supabaseClient: 
 
   const { data: updated, error: cancelErr } = await supabaseClient
     .from('sessions')
-    .update({ 
-      status: 'cancelled', 
+    .update({
+      status: 'cancelled',
       cancellation_reason: doPenalize ? 'penalty' : 'no-penalty',
     })
     .eq('id', session.id)
@@ -402,8 +420,8 @@ async function handleEditSession(requestData: any, user: any, supabaseClient: an
     return createErrorResponse('Failed to update session', 500, updateError);
   }
 
-  return new Response(JSON.stringify({ success: true, updatedSession }), { 
-    status: 200, 
+  return new Response(JSON.stringify({ success: true, updatedSession }), {
+    status: 200,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   });
 }
@@ -425,8 +443,8 @@ async function handleCompleteSession(requestData: any, user: any, supabaseClient
 
   if (updateError) return createErrorResponse('Failed to complete session', 500, updateError);
 
-  return new Response(JSON.stringify({ success: true, session: updatedSession }), { 
-    status: 200, 
+  return new Response(JSON.stringify({ success: true, session: updatedSession }), {
+    status: 200,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   });
 }
@@ -448,8 +466,8 @@ async function handleMarkNoShow(requestData: any, user: any, supabaseClient: any
 
   if (updateError) return createErrorResponse('Failed to mark session as no-show', 500, updateError);
 
-  return new Response(JSON.stringify({ success: true, session: updatedSession }), { 
-    status: 200, 
+  return new Response(JSON.stringify({ success: true, session: updatedSession }), {
+    status: 200,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   });
 }
