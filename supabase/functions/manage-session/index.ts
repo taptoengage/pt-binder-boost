@@ -163,7 +163,7 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
   let clientDataForEmail;
 
   // Role-based authorization using the correct tables
-  if (userRole.role === 'trainer') {
+  if (userRole.role === 'moderator') {
     // Verify the user's UUID matches a record in the trainers table
     const { data: trainerRecord, error: trainerError } = await supabaseClient
       .from('trainers')
