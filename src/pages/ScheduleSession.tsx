@@ -18,16 +18,12 @@ export default function ScheduleSession() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  // Get optional clientId from URL params
-  const clientId = searchParams.get('clientId') || undefined;
-  
-  // Local state for client selection
-  const [selectedClientId, setSelectedClientId] = useState<string | undefined>(clientId || undefined);
+  const clientIdFromUrl = searchParams.get('clientId');
+  const [selectedClientId, setSelectedClientId] = useState<string | undefined>(clientIdFromUrl || undefined);
   const [clients, setClients] = useState<MinimalClient[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
   const isTrainer = !!user;
 
-  // Load trainer's clients
   useEffect(() => {
     if (!user?.id) return;
     
@@ -50,13 +46,12 @@ export default function ScheduleSession() {
     })();
   }, [user?.id]);
 
-  // Validate URL clientId belongs to this trainer
   useEffect(() => {
-    if (!clientId) return;
-    if (!clients.length) return;
-    const valid = clients.some(c => c.id === clientId);
-    setSelectedClientId(valid ? clientId : undefined);
-  }, [clientId, clients]);
+    if (clientIdFromUrl && clients.length) {
+      const valid = clients.some(c => c.id === clientIdFromUrl);
+      setSelectedClientId(valid ? clientIdFromUrl : undefined);
+    }
+  }, [clientIdFromUrl, clients]);
 
   const handleClientChange = (value: string) => {
     setSelectedClientId(value);
@@ -71,13 +66,13 @@ export default function ScheduleSession() {
   };
 
   const handleCancel = () => {
-    navigate('/schedule');
+    setSelectedClientId(undefined);
+    navigate('/schedule/new');
   };
 
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
-        {/* Page Header */}
         <div className="flex items-center gap-4 mb-6">
           <Button
             variant="ghost"
@@ -90,7 +85,6 @@ export default function ScheduleSession() {
           </Button>
         </div>
 
-        {/* Main Content Card */}
         <Card className="max-w-4xl mx-auto">
           <CardHeader>
             <CardTitle>Schedule a Session</CardTitle>
@@ -121,15 +115,16 @@ export default function ScheduleSession() {
           </CardContent>
         </Card>
 
-        {/* Universal Session Modal */}
-        <UniversalSessionModal
-          mode="book"
-          isOpen={!!selectedClientId}
-          onClose={handleCancel}
-          clientId={selectedClientId}
-          trainerId={user?.id}
-          onSessionUpdated={handleSuccess}
-        />
+        {selectedClientId && (
+          <UniversalSessionModal
+            mode="book"
+            isOpen={!!selectedClientId}
+            onClose={handleCancel}
+            clientId={selectedClientId}
+            trainerId={user?.id}
+            onSessionUpdated={handleSuccess}
+          />
+        )}
       </div>
     </div>
   );
