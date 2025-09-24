@@ -1315,7 +1315,14 @@ export default function UniversalSessionModal({
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select a start time" />
                   </SelectTrigger>
-                  <SelectContent position="popper" side="bottom" align="start" className="z-[9999]">
+                  <SelectContent 
+                    position="popper" 
+                    side="bottom" 
+                    align="start" 
+                    sideOffset={5}
+                    collisionPadding={10}
+                    className="!z-[99999] bg-popover border shadow-lg"
+                  >
                     {bookableTimeSlots?.length > 0 ? (
                       bookableTimeSlots.map((time, index) => (
                         <SelectItem key={index} value={format(time, 'HH:mm')}>
