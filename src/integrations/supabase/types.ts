@@ -180,6 +180,7 @@ export type Database = {
           default_session_rate: number
           email: string
           email_notifications_enabled: boolean
+          email_opt_in_at: string | null
           first_name: string
           id: string
           last_name: string
@@ -199,6 +200,7 @@ export type Database = {
           default_session_rate?: number
           email: string
           email_notifications_enabled?: boolean
+          email_opt_in_at?: string | null
           first_name?: string
           id?: string
           last_name?: string
@@ -218,6 +220,7 @@ export type Database = {
           default_session_rate?: number
           email?: string
           email_notifications_enabled?: boolean
+          email_opt_in_at?: string | null
           first_name?: string
           id?: string
           last_name?: string
@@ -252,6 +255,7 @@ export type Database = {
           metadata: Json | null
           provider_id: string | null
           status: string
+          updated_at: string | null
         }
         Insert: {
           created_at?: string
@@ -262,6 +266,7 @@ export type Database = {
           metadata?: Json | null
           provider_id?: string | null
           status?: string
+          updated_at?: string | null
         }
         Update: {
           created_at?: string
@@ -272,6 +277,7 @@ export type Database = {
           metadata?: Json | null
           provider_id?: string | null
           status?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
