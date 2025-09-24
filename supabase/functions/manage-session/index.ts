@@ -149,7 +149,7 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     return createErrorResponse('Missing required booking data.', 400);
   }
 
-  // FIX: Get user role from the correct 'user_roles' table
+  // Get user role from the correct 'user_roles' table
   const { data: userRole, error: roleError } = await supabaseClient
     .from('user_roles')
     .select('role')
@@ -162,12 +162,12 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
 
   let clientDataForEmail;
 
-  // FIX: Role-based authorization using the correct tables
+  // Role-based authorization using the correct tables
   if (userRole.role === 'trainer') {
     // Verify the user's UUID matches a record in the trainers table
     const { data: trainerRecord, error: trainerError } = await supabaseClient
       .from('trainers')
-      .select('id')
+      .select('id, contact_email, email_notifications_enabled')
       .eq('id', user.id) // In your schema, trainers.id is the user's UUID
       .single();
 
