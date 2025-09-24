@@ -148,32 +148,65 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     sourceSubscriptionId 
   } = requestData;
 
-  console.log('Booking request received:', {
-    clientId, trainerId, sessionDate, serviceTypeId, bookingMethod, sourcePackId, sourceSubscriptionId
-  });
-
-  // Verify that the client exists and belongs to the authenticated user via email lookup
-  const { data: clientData, error: clientError } = await supabaseUserClient
-    .from('clients')
-    .select('id, email, email_notifications_enabled')
-    .eq('id', clientId)
+  // Basic input validation
+  if (!clientId || !trainerId || !sessionDate || !serviceTypeId || !bookingMethod) {
+    return createErrorResponse('Missing required booking data.', 400);
+  }
+  
+  // Authorization Check: Verify the user has permission to book this session
+  const { data: trainerProfile } = await supabaseClient
+    .from('trainers')
+    .select('id')
     .eq('user_id', user.id)
     .single();
 
-  if (clientError || !clientData) {
-    console.error('Client verification error:', clientError);
-    return new Response(
-      JSON.stringify({ error: 'Client not found or access denied' }), 
-      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
+  const { data: clientProfile } = await supabaseClient
+    .from('clients')
+    .select('id, trainer_id')
+    .eq('user_id', user.id)
+    .single();
 
-  // Basic input validation
-  if (!clientId || !trainerId || !sessionDate || !serviceTypeId || !bookingMethod) {
-    return new Response(
-      JSON.stringify({ error: 'Missing required booking data.' }), 
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+  const isTrainer = !!trainerProfile;
+  const isClient = !!clientProfile;
+  
+  let verifiedClientData;
+
+  if (isTrainer) {
+    // User is a trainer. Verify they are booking for one of their own clients.
+    if (trainerProfile.id !== trainerId) {
+      return createErrorResponse("A trainer can only book sessions for their own profile.", 403);
+    }
+    const { data, error } = await supabaseClient
+      .from('clients')
+      .select('id, email, email_notifications_enabled')
+      .eq('id', clientId)
+      .eq('trainer_id', trainerId)
+      .single();
+
+    if (error || !data) {
+      return createErrorResponse("Client not found or is not assigned to this trainer.", 403);
+    }
+    verifiedClientData = data;
+  } else if (isClient) {
+    // User is a client. Verify they are booking for themself.
+    if (clientProfile.id !== clientId) {
+      return createErrorResponse("A client can only book a session for themself.", 403);
+    }
+    if (clientProfile.trainer_id !== trainerId) {
+      return createErrorResponse("Client is not assigned to the requested trainer.", 403);
+    }
+    const { data, error } = await supabaseClient
+      .from('clients')
+      .select('id, email, email_notifications_enabled')
+      .eq('id', clientId)
+      .single();
+    if (error || !data) {
+      return createErrorResponse("Client not found.", 404);
+    }
+    verifiedClientData = data;
+  } else {
+    // User is neither a trainer nor a client with booking permissions.
+    return createErrorResponse("User does not have permission to book sessions.", 403);
   }
 
   // Parse session date and time with enhanced validation
@@ -322,9 +355,9 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     const humanDate = bookingDateTime.toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
 
     // Send email to client if opted in
-    if (clientData.email_notifications_enabled) {
+    if (verifiedClientData.email_notifications_enabled) {
       await safeInvokeEmail(supabaseClient, {
-        to: clientData.email,
+        to: verifiedClientData.email,
         type: 'GENERIC',
         data: {
           subject: 'Session booked',
