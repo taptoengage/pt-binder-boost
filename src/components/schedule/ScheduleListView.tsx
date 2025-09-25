@@ -88,6 +88,47 @@ export default function ScheduleListView({
           const isToday = format(new Date(), 'yyyy-MM-dd') === format(day.date, 'yyyy-MM-dd');
           
           if (day.status === 'none') {
+            const hasSessions = (day.sessionsScheduled ?? 0) > 0;
+            
+            // Mobile: Make tappable if sessions exist, otherwise keep disabled
+            if (isMobile && hasSessions) {
+              return (
+                <Button
+                  key={day.date.toISOString()}
+                  onClick={day.onClick}
+                  variant="outline"
+                  className="h-auto w-full justify-between rounded-xl px-4 py-3 text-left
+                    bg-muted/30 hover:bg-muted/40 opacity-70
+                    transition-all duration-150 ease-out active:scale-[0.98] 
+                    motion-reduce:transition-none motion-reduce:active:scale-100"
+                  aria-pressed={false}
+                >
+                  <div className="flex flex-col">
+                    {isToday && (
+                      <span className="mb-1 inline-block rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide w-fit bg-primary/10 text-primary">
+                        Today
+                      </span>
+                    )}
+                    <span className="text-base font-semibold text-muted-foreground">{day.dayLabel}</span>
+                    <span className="text-xs text-muted-foreground">{day.subLabel}</span>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        Sessions scheduled: {day.sessionsScheduled ?? 0}
+                      </span>
+
+                      {(day.sessionsInUnavailable ?? 0) > 0 && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-[11px]">
+                          {day.sessionsInUnavailable} in unavailable
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-sm text-muted-foreground">No availability</span>
+                </Button>
+              );
+            }
+            
+            // Desktop or mobile without sessions: keep disabled
             return (
               <div
                 key={day.date.toISOString()}
