@@ -45,7 +45,9 @@ export default function Clients() {
           .from('clients')
           .select('*')
           .eq('trainer_id', user.id)
-          .order('created_at', { ascending: false });
+          .order('last_name', { ascending: true })
+          .order('first_name', { ascending: true })
+          .order('created_at', { ascending: true });
 
         if (error) {
           throw error;
