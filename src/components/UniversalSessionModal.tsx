@@ -543,13 +543,6 @@ export default function UniversalSessionModal({
     return null;
   }
 
-  // Logging to track slot source for debugging
-  console.log('[UniversalSessionModal] booking source', { 
-    slotSource: selectedSlot ? 'external' : 'internal',
-    mode,
-    hasSelectedSlot: !!selectedSlot,
-    hasInternalSlot: !!internalSlot 
-  });
 
   // ============= EVENT HANDLERS =============
 
