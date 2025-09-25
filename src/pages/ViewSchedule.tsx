@@ -526,9 +526,9 @@ export default function ViewSchedule() {
           <div className="md:hidden">
             {currentView === 'day' ? (
               /* Mobile Day View */
-              <div className="space-y-4">
+              <div className={isMobile ? "px-4" : ""}>
                 {/* Back button for mobile day view */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-4">
                   <Button
                     variant="outline"
                     onClick={() => setCurrentView('week')}
@@ -541,8 +541,7 @@ export default function ViewSchedule() {
                 </div>
 
                 {/* Mobile day schedule */}
-                <div className="border rounded-lg bg-white shadow-sm">
-                  <div className="space-y-px">
+                <div className="flex flex-col space-y-3">
                     {(() => {
                       const effectiveAvailableRangesForDay = getEffectiveDayAvailabilityRanges(
                         selectedDate,
@@ -564,7 +563,7 @@ export default function ViewSchedule() {
 
                       if (slotsToDisplay.length === 0) {
                           return (
-                              <div className="text-center py-12 text-gray-500 p-4">
+                              <div className="text-center py-12 text-gray-500 rounded-lg border bg-white p-3 sm:p-4 shadow-sm">
                                   No availability or sessions for this day.
                               </div>
                           );
@@ -592,10 +591,9 @@ export default function ViewSchedule() {
                                       <div
                                           key={slotTime}
                                           className={cn(
-                                              "relative h-16 border-b border-gray-200 p-3",
+                                              "rounded-lg border bg-white p-3 sm:p-4 shadow-sm",
                                               {
-                                                'bg-blue-50': !isOutsideAvailability,
-                                                'bg-orange-50 border-orange-200': isOutsideAvailability
+                                                'border-orange-200 bg-orange-50': isOutsideAvailability
                                               }
                                           )}
                                       >
@@ -613,7 +611,7 @@ export default function ViewSchedule() {
                                               <div
                                                   key={session.id}
                                                   className={cn(
-                                                    "mt-1 p-2 rounded cursor-pointer transition-colors",
+                                                    "mt-2 p-2 rounded cursor-pointer transition-colors",
                                                     {
                                                       'bg-blue-100 hover:bg-blue-200': !isOutsideAvailability,
                                                       'bg-orange-100 hover:bg-orange-200 border border-orange-300': isOutsideAvailability
@@ -649,7 +647,6 @@ export default function ViewSchedule() {
                           </>
                       );
                     })()}
-                  </div>
                 </div>
               </div>
             ) : (
@@ -1044,7 +1041,7 @@ export default function ViewSchedule() {
             sessionStart >= range.start && sessionEnd <= range.end
           );
         }) && (
-          <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+          <div className={`mt-4 rounded-lg border border-orange-200 bg-orange-50 p-3 sm:p-4 ${isMobile ? 'mx-4' : ''}`}>
             <div className="flex items-center gap-2 text-sm text-orange-700">
               <Clock className="h-4 w-4" />
               <span className="font-medium">Sessions outside standard availability</span>
