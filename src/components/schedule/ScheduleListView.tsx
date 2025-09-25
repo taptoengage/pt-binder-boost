@@ -2,6 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { format } from 'date-fns';
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface ScheduleListViewDay {
   date: Date;
@@ -30,6 +31,8 @@ export default function ScheduleListView({
   onToggleView,
   rangeLabel,
 }: ScheduleListViewProps) {
+  const isMobile = useIsMobile();
+  
   return (
     <div className="space-y-4">
       {/* Header with range label and navigation */}
@@ -100,6 +103,19 @@ export default function ScheduleListView({
                     )}
                     <span className="text-base font-semibold text-muted-foreground">{day.dayLabel}</span>
                     <span className="text-xs text-muted-foreground">{day.subLabel}</span>
+                    {isMobile && (
+                      <div className="mt-1 flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">
+                          Sessions scheduled: {day.sessionsScheduled ?? 0}
+                        </span>
+
+                        {(day.sessionsInUnavailable ?? 0) > 0 && (
+                          <span className="ml-2 inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-[11px]">
+                            {day.sessionsInUnavailable} in unavailable
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <span className="text-sm text-muted-foreground">No availability</span>
                 </div>
@@ -125,6 +141,19 @@ export default function ScheduleListView({
                 )}
                 <span className="text-base font-semibold">{day.dayLabel}</span>
                 <span className="text-xs text-muted-foreground">{day.subLabel}</span>
+                {isMobile && (
+                  <div className="mt-1 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">
+                      Sessions scheduled: {day.sessionsScheduled ?? 0}
+                    </span>
+
+                    {(day.sessionsInUnavailable ?? 0) > 0 && (
+                      <span className="ml-2 inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-[11px]">
+                        {day.sessionsInUnavailable} in unavailable
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <span className="text-sm font-medium text-primary">Available</span>
             </Button>
