@@ -5,7 +5,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, isWithinInterval, isToday, eachDayOfInterval, isSameMonth, isSameDay, parse, setMinutes, setHours, addMinutes, isBefore } from 'date-fns';
+import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, isWithinInterval, isToday, eachDayOfInterval, isSameMonth, isSameDay, parse, setMinutes, setHours, addMinutes, isBefore, isAfter } from 'date-fns';
 import { ArrowLeft, ArrowRight, CalendarOff, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +27,18 @@ const generateDayTimeSlots = () => {
   return slots;
 };
 const allDayTimeSlots = generateDayTimeSlots();
+
+// ============= MOBILE SESSION COUNTING HELPERS =============
+// Helpers for mobile session counting
+const toDate = (d: string | Date) => (d instanceof Date ? d : new Date(d));
+const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) =>
+  !(isBefore(aEnd, bStart) || isAfter(aStart, bEnd));
+
+// Active session statuses (exclude cancelled variants)
+const ACTIVE_STATUSES = new Set(["scheduled", "booked", "confirmed", "rescheduled", "completed"]);
+
+type Session = { session_date: string | Date; status?: string };
+type Block = { start: string | Date; end: string | Date; type?: string };
 
 // Helper function to get effective availability for a specific day
 const getEffectiveDayAvailabilityRanges = (
@@ -347,6 +359,77 @@ export default function ViewSchedule() {
     return groups;
   }, [filteredSessions]);
 
+  // ============= MOBILE SESSION COUNTING LOGIC =============
+  // Mobile-only: derive visible week and calculate session counts
+  const weekDays = useMemo(() => {
+    if (currentView !== 'week') return [];
+    const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+    return eachDayOfInterval({ start: weekStart, end: addDays(weekStart, 6) });
+  }, [currentView, selectedDate]);
+
+  // Normalize unavailable blocks for the visible week (mobile only)
+  const unavailableBlocks = useMemo(() => {
+    if (currentView !== 'week' || weekDays.length === 0) return [];
+    
+    const weekStart = weekDays[0];
+    const weekEnd = weekDays[6];
+    
+    const inRange = (exceptionDate: string) => {
+      const exDate = new Date(exceptionDate);
+      return !isBefore(exDate, weekStart) && !isAfter(exDate, addDays(weekEnd, 1));
+    };
+
+    return (exceptions ?? [])
+      .filter(ex => ex.exception_type === 'unavailable_full_day' || ex.exception_type === 'unavailable_partial_day')
+      .filter(ex => inRange(ex.exception_date))
+      .map(ex => {
+        const exDate = new Date(ex.exception_date);
+        if (ex.exception_type === 'unavailable_full_day') {
+          return {
+            start: startOfDay(exDate),
+            end: endOfDay(exDate),
+            type: "unavailable"
+          };
+        } else {
+          // unavailable_partial_day
+          const startTime = ex.start_time || '00:00';
+          const endTime = ex.end_time || '23:59';
+          return {
+            start: parse(startTime, 'HH:mm', exDate),
+            end: parse(endTime, 'HH:mm', exDate),
+            type: "unavailable"
+          };
+        }
+      });
+  }, [exceptions, weekDays, currentView]);
+
+  // Memoized counts per day (MOBILE ONLY)
+  const sessionCountsByDay = useMemo(() => {
+    const map = new Map<string, { total: number; inUnavailable: number }>();
+    
+    if (currentView !== 'week' || weekDays.length === 0) return map;
+    
+    const activeSessions: Session[] = (allTrainerSessions ?? []).filter(s => 
+      ACTIVE_STATUSES.has((s.status ?? "").toLowerCase())
+    );
+
+    for (const d of weekDays) {
+      const key = d.toDateString();
+      const daySessions = activeSessions.filter(s => isSameDay(toDate(s.session_date), d));
+      let inUnavailable = 0;
+      
+      for (const s of daySessions) {
+        const sStart = toDate(s.session_date);
+        const sEnd = addMinutes(sStart, 60); // Assuming 1-hour sessions
+        const hit = unavailableBlocks.some(u => overlaps(sStart, sEnd, toDate(u.start), toDate(u.end)));
+        if (hit) inUnavailable++;
+      }
+      
+      map.set(key, { total: daySessions.length, inUnavailable });
+    }
+    return map;
+  }, [weekDays, allTrainerSessions, unavailableBlocks, currentView]);
+
   // Navigation handlers
   const handlePreviousPeriod = () => {
     if (currentView === 'day') {
@@ -595,12 +678,19 @@ export default function ViewSchedule() {
                     exceptions || []
                   );
                   const isAvailable = effectiveAvailableRanges.length > 0;
+
+                  // Mobile-only: attach session counts for week view
+                  const sessionCounts = currentView === 'week' 
+                    ? sessionCountsByDay.get(date.toDateString()) ?? { total: 0, inUnavailable: 0 }
+                    : { total: 0, inUnavailable: 0 };
                   
                   return {
                     date,
                     dayLabel: format(date, "EEEE"),
                     subLabel: format(date, "MMM d"),
                     status: isAvailable ? 'available' as const : 'none' as const,
+                    sessionsScheduled: sessionCounts.total,
+                    sessionsInUnavailable: sessionCounts.inUnavailable,
                     onClick: () => {
                       setSelectedDate(date);
                       setCurrentView('day');

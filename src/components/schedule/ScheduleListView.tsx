@@ -8,6 +8,8 @@ interface ScheduleListViewDay {
   dayLabel: string;
   subLabel: string;
   status: 'available' | 'none';
+  sessionsScheduled?: number;
+  sessionsInUnavailable?: number;
   onClick?: () => void;
 }
 
