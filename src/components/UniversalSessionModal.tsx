@@ -15,7 +15,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Phone, Mail, Loader2 } from 'lucide-react';
+import { CalendarIcon, Phone, Mail, Loader2, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,6 +24,8 @@ import { useSessionOverlapCheck, validateOverlap } from '@/hooks/useSessionOverl
 import ConfirmAvailabilityOverrideModal from '@/components/ConfirmAvailabilityOverrideModal';
 import { validatePackAvailability } from '@/lib/packValidation';
 import { generateTimeOptions } from '@/lib/availabilityUtils';
+import { fetchClientTimePreferences } from '@/lib/client-preferences';
+import { ClientTimePreference, WEEKDAY_ABBREVIATIONS } from '@/types/scheduling';
 
 const timeOptions = generateTimeOptions();
 
@@ -109,7 +111,43 @@ export default function UniversalSessionModal({
   const [internalSlot, setInternalSlot] = useState<{ start: Date; end: Date } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   
+  // Phase 1: Client preferences state
+  const [clientPreferences, setClientPreferences] = useState<ClientTimePreference[]>([]);
+  
   const DEFAULT_SESSION_DURATION_MINUTES = 60;
+
+  // Phase 1: Helper function to handle preference pill clicks
+  const handlePreferencePillClick = useCallback((preference: ClientTimePreference) => {
+    const slot = selectedSlot || internalSlot;
+    if (!slot) return;
+
+    // Find the next occurrence of this weekday
+    const currentDate = selectedDate || new Date();
+    const targetWeekday = preference.weekday; // 0 = Sunday, 1 = Monday, etc.
+    const currentWeekday = currentDate.getDay();
+    
+    let daysToAdd = targetWeekday - currentWeekday;
+    if (daysToAdd < 0) {
+      daysToAdd += 7; // Next week
+    } else if (daysToAdd === 0 && new Date() > currentDate) {
+      daysToAdd = 7; // Next week if today has passed
+    }
+
+    const targetDate = new Date(currentDate);
+    targetDate.setDate(targetDate.getDate() + daysToAdd);
+    
+    // Update the selected date
+    setSelectedDate(targetDate);
+    
+    // Create a new internal slot for the target date with default hours
+    const start = setHours(setMinutes(targetDate, 0), 9);
+    const end = setHours(setMinutes(targetDate, 0), 17);
+    setInternalSlot({ start, end });
+    
+    // Set the selected start time to the preference start time
+    const preferenceTime = preference.start_time.slice(0, 5); // Remove seconds
+    setSelectedStartTime(preferenceTime);
+  }, [selectedSlot, internalSlot, selectedDate]);
 
   // Initialize form - MUST be called unconditionally
   const form = useForm<EditSessionFormData>({
@@ -345,6 +383,17 @@ export default function UniversalSessionModal({
 
         if (servicesError) throw servicesError;
         setAvailableServices(services || []);
+
+        // Phase 1: Fetch client time preferences for trainer booking UI
+        if (currentMode === 'book' && isTrainer) {
+          try {
+            const preferences = await fetchClientTimePreferences(clientId);
+            setClientPreferences(preferences);
+          } catch (prefError) {
+            console.warn('Could not fetch client preferences:', prefError);
+            setClientPreferences([]);
+          }
+        }
 
       } catch (error: any) {
         console.error('Error fetching client eligibility data:', error.message);
@@ -1439,10 +1488,37 @@ export default function UniversalSessionModal({
                     ) : null}
                   </SelectContent>
                 </Select>
-                {bookableTimeSlots.length === 0 && (
-                  <p className="text-muted-foreground text-sm">No available time slots</p>
-                )}
-              </div>
+                 {bookableTimeSlots.length === 0 && (
+                   <p className="text-muted-foreground text-sm">No available time slots</p>
+                 )}
+                 
+                 {/* Phase 1: Client Preference Pills for Trainers */}
+                 {isTrainer && clientPreferences.length > 0 && (
+                   <div className="mt-3 space-y-2">
+                     <Label className="text-sm text-muted-foreground">Client's Preferred Times</Label>
+                     <div className="flex flex-wrap gap-2">
+                       {clientPreferences.map((pref) => (
+                         <Button
+                           key={pref.id}
+                           variant="outline"
+                           size="sm"
+                           onClick={() => handlePreferencePillClick(pref)}
+                           className="h-8 px-3 text-xs hover:bg-primary hover:text-primary-foreground"
+                         >
+                           <Clock className="w-3 h-3 mr-1" />
+                           {WEEKDAY_ABBREVIATIONS[pref.weekday as keyof typeof WEEKDAY_ABBREVIATIONS]} {pref.start_time.slice(0, 5)}
+                           {pref.flex_minutes > 0 && (
+                             <span className="ml-1 text-xs opacity-70">±{pref.flex_minutes}min</span>
+                           )}
+                         </Button>
+                       ))}
+                     </div>
+                     <p className="text-xs text-muted-foreground">
+                       Click a preferred time to auto-fill the booking form
+                     </p>
+                   </div>
+                 )}
+               </div>
 
               <div className="space-y-2">
                 <Label>Service Type</Label>

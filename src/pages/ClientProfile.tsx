@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Loader2, Edit, Save, X, User, Clock, MessageSquare, Phone, Mail, MessageCircle } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useNavigate } from 'react-router-dom';
+import PreferredTimesCard from '@/components/client/PreferredTimesCard';
 
 // Form validation schema
 const EditProfileSchema = z.object({
@@ -424,28 +425,7 @@ export default function ClientProfile() {
 
           {/* Quick Links */}
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-5 w-5" />
-                  Preferred Time Slots
-                </CardTitle>
-                <CardDescription>
-                  Set your preferred training times (Coming Soon)
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="p-6 border rounded-lg bg-muted/50 text-center">
-                  <Clock className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
-                  <p className="text-muted-foreground mb-4">
-                    Time slot preferences will be available soon. You'll be able to set your preferred training days and times.
-                  </p>
-                  <Button variant="outline" disabled>
-                    Configure Preferences
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <PreferredTimesCard />
 
             <Card>
               <CardHeader>
