@@ -297,49 +297,52 @@ export default function PreferredTimesCard() {
         {!isEditing ? (
           // Display mode
           <div className="space-y-4">
-            {preferences.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium mb-2">No preferences set</p>
-                <p className="text-sm">Add your preferred training times to help your trainer schedule sessions.</p>
-              </div>
-            ) : (
-              <div className="grid gap-3">
-                {preferences.map((pref) => (
-                  <div
-                    key={pref.id}
-                    className="flex items-center justify-between p-3 border rounded-lg bg-muted/20"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Badge variant="outline" className="font-medium">
-                        {WEEKDAY_ABBREVIATIONS[pref.weekday as Weekday]}
-                      </Badge>
-                      <div className="text-sm">
-                        <div className="font-medium">
-                          {pref.start_time.slice(0, 5)}
-                          {pref.end_time && ` - ${pref.end_time.slice(0, 5)}`}
+            {(() => {
+              const visiblePrefs = preferences.filter(p => p.is_active);
+              return visiblePrefs.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium mb-2">No preferences set</p>
+                  <p className="text-sm">Add your preferred training times to help your trainer schedule sessions.</p>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {visiblePrefs.map((pref) => (
+                    <div
+                      key={pref.id}
+                      className="flex items-center justify-between p-3 border rounded-lg bg-muted/20"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Badge variant="outline" className="font-medium">
+                          {WEEKDAY_ABBREVIATIONS[pref.weekday as Weekday]}
+                        </Badge>
+                        <div className="text-sm">
+                          <div className="font-medium">
+                            {pref.start_time.slice(0, 5)}
+                            {pref.end_time && ` - ${pref.end_time.slice(0, 5)}`}
+                          </div>
+                          {pref.flex_minutes > 0 && (
+                            <div className="text-muted-foreground">
+                              ±{pref.flex_minutes} mins flexibility
+                            </div>
+                          )}
                         </div>
-                        {pref.flex_minutes > 0 && (
-                          <div className="text-muted-foreground">
-                            ±{pref.flex_minutes} mins flexibility
+                      </div>
+                      <div className="text-right">
+                        {pref.notes && (
+                          <div className="text-xs text-muted-foreground mb-1">
+                            {pref.notes}
                           </div>
                         )}
+                        <Badge variant={pref.is_active ? "default" : "secondary"}>
+                          {pref.is_active ? "Active" : "Inactive"}
+                        </Badge>
                       </div>
                     </div>
-                    <div className="text-right">
-                      {pref.notes && (
-                        <div className="text-xs text-muted-foreground mb-1">
-                          {pref.notes}
-                        </div>
-                      )}
-                      <Badge variant={pref.is_active ? "default" : "secondary"}>
-                        {pref.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         ) : (
           // Edit mode
