@@ -79,6 +79,9 @@ export default function PreferredTimesCard() {
     gcTime: 30 * 60 * 1000,
   });
 
+  // Ensure preferences is always an array for safety
+  const safePreferences = preferences || [];
+
   // Initialize form
   const form = useForm<PreferencesFormData>({
     resolver: zodResolver(PreferencesFormSchema),
@@ -95,7 +98,7 @@ export default function PreferredTimesCard() {
   // Reset form when preferences change or editing starts
   React.useEffect(() => {
     if (isEditing) {
-      const formData = preferences.map(pref => ({
+      const formData = safePreferences.map(pref => ({
         weekday: pref.weekday,
         start_time: pref.start_time.slice(0, 5), // Remove seconds if present
         end_time: pref.end_time?.slice(0, 5) || undefined,
@@ -289,25 +292,26 @@ export default function PreferredTimesCard() {
             className="flex items-center gap-2"
           >
             <Clock className="h-4 w-4" />
-            {preferences.length > 0 ? 'Edit' : 'Add'} Preferences
+            {safePreferences.length > 0 ? 'Edit' : 'Add'} Preferences
           </Button>
         )}
       </CardHeader>
       <CardContent>
         {!isEditing ? (
           // Display mode
-          <div className="space-y-4">
-            {(() => {
-              const visiblePrefs = preferences.filter(p => p.is_active);
-              return visiblePrefs.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium mb-2">No preferences set</p>
-                  <p className="text-sm">Add your preferred training times to help your trainer schedule sessions.</p>
-                </div>
-              ) : (
-                <div className="grid gap-3">
-                  {visiblePrefs.map((pref) => (
+          <>
+            <div className="space-y-4">
+              {(() => {
+                const visiblePrefs = safePreferences.filter(p => p.is_active);
+                return visiblePrefs.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium mb-2">No preferences set</p>
+                    <p className="text-sm">Add your preferred training times to help your trainer schedule sessions.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {visiblePrefs.map((pref) => (
                     <div
                       key={pref.id}
                       className="flex items-center justify-between p-3 border rounded-lg bg-muted/20"
@@ -343,7 +347,18 @@ export default function PreferredTimesCard() {
                 </div>
               );
             })()}
-          </div>
+            </div>
+            {(() => {
+              const visiblePrefs = safePreferences.filter(p => p.is_active);
+              return visiblePrefs.length === 0 ? (
+                <div className="mt-4 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Tip: Add preferred weekly times so your trainer can fast-fill bookings.
+                  </p>
+                </div>
+              ) : null;
+            })()}
+          </>
         ) : (
           // Edit mode
           <Form {...form}>
