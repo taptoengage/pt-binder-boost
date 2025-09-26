@@ -7,26 +7,20 @@ import { ClientTimePreference, CreateTimePreferenceInput } from '@/types/schedul
  * Fetch current client_id from clients table based on authenticated user
  */
 export async function getCurrentClientId(): Promise<string | null> {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return null;
 
-    const { data: client, error } = await supabase
-      .from('clients')
-      .select('id')
-      .eq('user_id', user.id)
-      .single();
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("user_id", auth.user.id)
+    .maybeSingle();
 
-    if (error) {
-      console.error('Error fetching current client:', error);
-      return null;
-    }
-
-    return client?.id || null;
-  } catch (error) {
-    console.error('Error getting current client ID:', error);
+  if (error) {
+    console.warn("getCurrentClientId error:", error);
     return null;
   }
+  return data?.id ?? null;
 }
 
 /**
