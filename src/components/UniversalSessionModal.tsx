@@ -111,8 +111,14 @@ export default function UniversalSessionModal({
   const [internalSlot, setInternalSlot] = useState<{ start: Date; end: Date } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   
-  // Phase 1: Client preferences state
-  const [clientPreferences, setClientPreferences] = useState<ClientTimePreference[]>([]);
+  // Phase 1: Client preferences using React Query for caching
+  const { data: clientPreferences = [] } = useQuery({
+    queryKey: ['clientTimePreferences', clientId],
+    queryFn: () => fetchClientTimePreferences(clientId!),
+    enabled: Boolean(isTrainer && currentMode === 'book' && clientId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
   
   const DEFAULT_SESSION_DURATION_MINUTES = 60;
 
@@ -379,16 +385,6 @@ export default function UniversalSessionModal({
         if (servicesError) throw servicesError;
         setAvailableServices(services || []);
 
-        // Phase 1: Fetch client time preferences for trainer booking UI
-        if (currentMode === 'book' && isTrainer) {
-          try {
-            const preferences = await fetchClientTimePreferences(clientId);
-            setClientPreferences(preferences);
-          } catch (prefError) {
-            console.warn('Could not fetch client preferences:', prefError);
-            setClientPreferences([]);
-          }
-        }
 
       } catch (error: any) {
         console.error('Error fetching client eligibility data:', error.message);
