@@ -47,6 +47,16 @@ const PreferencesFormSchema = z.object({
 
 type PreferencesFormData = z.infer<typeof PreferencesFormSchema>;
 
+// Overlap detection helpers
+const toRange = (s: string, e?: string) => {
+  const start = s;
+  const end = e && e.length ? e : s; // point-in-time if no end_time
+  return { start, end };
+};
+
+const overlaps = (a: {start: string, end: string}, b: {start: string, end: string}) =>
+  !(a.end <= b.start || b.end <= a.start);
+
 export default function PreferredTimesCard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -150,6 +160,30 @@ export default function PreferredTimesCard() {
           variant: "destructive",
         });
         return;
+      }
+
+      // Check for overlapping time windows on the same weekday
+      const byDay = new Map<number, Array<{start: string, end: string}>>();
+      for (const r of data.preferences) {
+        const day = Number(r.weekday);
+        const arr = byDay.get(day) ?? [];
+        arr.push(toRange(r.start_time, r.end_time));
+        byDay.set(day, arr);
+      }
+      
+      for (const [, ranges] of byDay) {
+        // sort by start for O(n log n) then linear check
+        ranges.sort((a, b) => a.start.localeCompare(b.start));
+        for (let i = 1; i < ranges.length; i++) {
+          if (overlaps(ranges[i-1], ranges[i])) {
+            toast({
+              title: "Validation Error",
+              description: "Overlapping times on the same day are not allowed.",
+              variant: "destructive",
+            });
+            return;
+          }
+        }
       }
 
       // 1) Read current DB state
