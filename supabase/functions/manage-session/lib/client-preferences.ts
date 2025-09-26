@@ -120,6 +120,28 @@ function timeToMinutes(timeStr: string): number {
 }
 
 /**
+ * Validate that client preferences don't have overlapping time windows on the same weekday
+ * Mirrors the UI validation for defense in depth
+ */
+export function validateNoOverlaps(prefs: ClientTimePreference[]): { isValid: boolean; message?: string } {
+  const days = new Map<number, Array<{start: string; end: string}>>();
+  const toRange = (s: string, e?: string) => ({ start: s.slice(0,5), end: (e?.slice(0,5)) || s.slice(0,5) });
+  const overlaps = (a:any,b:any) => !(a.end <= b.start || b.end <= a.start);
+  for (const p of prefs) {
+    const arr = days.get(p.weekday) ?? [];
+    arr.push(toRange(p.start_time, p.end_time));
+    days.set(p.weekday, arr);
+  }
+  for (const [, ranges] of days) {
+    ranges.sort((a,b)=> a.start.localeCompare(b.start));
+    for (let i=1;i<ranges.length;i++) {
+      if (overlaps(ranges[i-1], ranges[i])) return { isValid:false, message:'Overlapping times on the same day are not allowed.' };
+    }
+  }
+  return { isValid:true };
+}
+
+/**
  * Validate if client preferences conflict with trainer availability
  * Reserved for Phase 2 - will integrate with existing availability logic
  */
@@ -132,4 +154,23 @@ export function validatePreferencesAgainstAvailability(
     isValid: true,
     conflicts: []
   };
+}
+
+// Self-test for validateNoOverlaps function in dev environment
+if (Deno.env.get('ENV') === 'dev') {
+  // Test case 1: No overlaps should pass
+  const validPrefs: ClientTimePreference[] = [
+    { id: '1', client_id: 'test', weekday: 1, start_time: '09:00:00', end_time: '10:00:00', flex_minutes: 0, is_active: true, created_at: '', updated_at: '' },
+    { id: '2', client_id: 'test', weekday: 1, start_time: '11:00:00', end_time: '12:00:00', flex_minutes: 0, is_active: true, created_at: '', updated_at: '' }
+  ];
+  const validResult = validateNoOverlaps(validPrefs);
+  console.log('[validateNoOverlaps] Test 1 (no overlaps):', validResult.isValid ? 'PASS' : 'FAIL');
+
+  // Test case 2: Overlapping times should fail
+  const invalidPrefs: ClientTimePreference[] = [
+    { id: '1', client_id: 'test', weekday: 1, start_time: '09:00:00', end_time: '11:00:00', flex_minutes: 0, is_active: true, created_at: '', updated_at: '' },
+    { id: '2', client_id: 'test', weekday: 1, start_time: '10:00:00', end_time: '12:00:00', flex_minutes: 0, is_active: true, created_at: '', updated_at: '' }
+  ];
+  const invalidResult = validateNoOverlaps(invalidPrefs);
+  console.log('[validateNoOverlaps] Test 2 (overlapping):', !invalidResult.isValid ? 'PASS' : 'FAIL');
 }
