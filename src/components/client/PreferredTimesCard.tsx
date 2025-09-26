@@ -75,7 +75,8 @@ export default function PreferredTimesCard() {
     queryKey: ['clientTimePreferences', clientId],
     queryFn: () => fetchClientTimePreferences(clientId!),
     enabled: !!clientId,
-    staleTime: 30 * 1000,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   });
 
   // Initialize form
