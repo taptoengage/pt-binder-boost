@@ -37,7 +37,6 @@ export async function fetchClientTimePreferences(clientId: string): Promise<Clie
     .from('client_time_preferences')
     .select('*')
     .eq('client_id', clientId)
-    .eq('is_active', true)
     .order('weekday', { ascending: true })
     .order('start_time', { ascending: true });
 
@@ -46,7 +45,12 @@ export async function fetchClientTimePreferences(clientId: string): Promise<Clie
     throw error;
   }
 
-  return data || [];
+  // Normalize time format to HH:mm for UI consistency
+  return (data || []).map(pref => ({
+    ...pref,
+    start_time: pref.start_time?.slice(0, 5) || pref.start_time,
+    end_time: pref.end_time?.slice(0, 5) || pref.end_time
+  }));
 }
 
 /**

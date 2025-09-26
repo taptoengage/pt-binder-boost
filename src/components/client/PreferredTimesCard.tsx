@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Clock, Plus, Trash2, Save, X } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   getCurrentClientId, 
   fetchClientTimePreferences, 
@@ -151,41 +152,61 @@ export default function PreferredTimesCard() {
         return;
       }
 
-      // Delete all existing preferences and create new ones
-      // This is simpler than trying to diff and patch
-      const existingIds = preferences.map(p => p.id);
-      await Promise.all(existingIds.map(deleteTimePreference));
+      // 1) Read current DB state
+      const { data: existingRows, error: exErr } = await supabase
+        .from("client_time_preferences")
+        .select("id,weekday,start_time,end_time,flex_minutes,notes,is_active")
+        .eq("client_id", clientId);
+      if (exErr) throw exErr;
 
-      // Create new preferences
-      const createPromises = data.preferences.map(pref =>
-        createTimePreference(clientId, {
-          ...pref,
-          start_time: pref.start_time + ':00', // Add seconds for storage
-          end_time: pref.end_time ? pref.end_time + ':00' : undefined,
-        })
+      // 2) Build desired rows (convert to HH:mm:ss here)
+      const desired = data.preferences.map(p => ({
+        client_id: clientId,
+        weekday: p.weekday,
+        start_time: p.start_time + ":00",
+        end_time: p.end_time ? p.end_time + ":00" : null,
+        flex_minutes: p.flex_minutes,
+        notes: p.notes ?? null,
+        is_active: p.is_active,
+      }));
+
+      // 3) Upsert desired rows (Supabase will match on composite keys if defined, else insert new)
+      //    We use 'upsert' to add/update by natural uniqueness (client_id+weekday+start_time) or rely on 'id' if present.
+      const { data: upserted, error: upErr } = await supabase
+        .from("client_time_preferences")
+        .upsert(desired, { onConflict: "client_id,weekday,start_time" })
+        .select("id,client_id,weekday,start_time");
+      if (upErr) throw upErr;
+
+      // 4) Compute rows to delete (those that existed, but aren't in desired AFTER normalization)
+      //    Build a string key to avoid floating equality on times.
+      const desiredKeys = new Set(
+        desired.map(r => `${r.client_id}|${r.weekday}|${r.start_time}`)
       );
+      const toDeleteIds =
+        (existingRows ?? [])
+          .filter(r => !desiredKeys.has(`${clientId}|${r.weekday}|${(r.start_time || "").slice(0,8)}`))
+          .map(r => r.id);
 
-      await Promise.all(createPromises);
+      if (toDeleteIds.length) {
+        const { error: delErr } = await supabase
+          .from("client_time_preferences")
+          .delete()
+          .in("id", toDeleteIds);
+        if (delErr) throw delErr;
+      }
 
-      // Refresh data
+      // 5) Refresh
       queryClient.invalidateQueries({ queryKey: ['clientTimePreferences', clientId] });
-
       setIsEditing(false);
-      toast({
-        title: "Preferences Saved",
-        description: "Your preferred time slots have been updated successfully.",
-      });
-    } catch (error: any) {
-      console.error('Error saving preferences:', error);
-      toast({
-        title: "Error",
-        description: `Failed to save preferences: ${error.message}`,
-        variant: "destructive",
-      });
+      toast({ title: "Preferences Saved", description: "Your preferred time slots were updated." });
+    } catch (e: any) {
+      console.error(e);
+      toast({ title: "Error", description: e?.message ?? "Save failed", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
-  }, [clientId, preferences, queryClient, toast]);
+  }, [clientId, queryClient, toast]);
 
   const handleCancel = useCallback(() => {
     setIsEditing(false);
