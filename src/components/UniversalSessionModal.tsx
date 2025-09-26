@@ -117,37 +117,32 @@ export default function UniversalSessionModal({
   const DEFAULT_SESSION_DURATION_MINUTES = 60;
 
   // Phase 1: Helper function to handle preference pill clicks
-  const handlePreferencePillClick = useCallback((preference: ClientTimePreference) => {
-    const slot = selectedSlot || internalSlot;
-    if (!slot) return;
+  const handlePreferencePillClick = useCallback((pref: ClientTimePreference) => {
+    const base = selectedDate ?? new Date();
+    const wd = base.getDay();
+    let addDaysOffset = (pref.weekday - wd + 7) % 7;
 
-    // Find the next occurrence of this weekday
-    const currentDate = selectedDate || new Date();
-    const targetWeekday = preference.weekday; // 0 = Sunday, 1 = Monday, etc.
-    const currentWeekday = currentDate.getDay();
-    
-    let daysToAdd = targetWeekday - currentWeekday;
-    if (daysToAdd < 0) {
-      daysToAdd += 7; // Next week
-    } else if (daysToAdd === 0 && new Date() > currentDate) {
-      daysToAdd = 7; // Next week if today has passed
-    }
+    // If clicking a pill for "today" but time already passed, push to next week
+    const hh = Number(pref.start_time.slice(0,2));
+    const mm = Number(pref.start_time.slice(3,5));
+    const candidateToday = new Date(base);
+    candidateToday.setHours(hh, mm, 0, 0);
+    if (addDaysOffset === 0 && candidateToday <= new Date()) addDaysOffset = 7;
 
-    const targetDate = new Date(currentDate);
-    targetDate.setDate(targetDate.getDate() + daysToAdd);
-    
-    // Update the selected date
-    setSelectedDate(targetDate);
-    
-    // Create a new internal slot for the target date with default hours
-    const start = setHours(setMinutes(targetDate, 0), 9);
-    const end = setHours(setMinutes(targetDate, 0), 17);
+    const target = new Date(base);
+    target.setDate(target.getDate() + addDaysOffset);
+    target.setHours(hh, mm, 0, 0);
+
+    setSelectedDate(target);
+
+    const selectedService = availableServices.find(s => s.id === selectedServiceTypeId);
+    const mins = Number((selectedService as any)?.duration_minutes) || DEFAULT_SESSION_DURATION_MINUTES;
+    const start = target;
+    const end = addMinutes(new Date(target), mins);
+
     setInternalSlot({ start, end });
-    
-    // Set the selected start time to the preference start time
-    const preferenceTime = preference.start_time.slice(0, 5); // Remove seconds
-    setSelectedStartTime(preferenceTime);
-  }, [selectedSlot, internalSlot, selectedDate]);
+    setSelectedStartTime(pref.start_time.slice(0,5));
+  }, [selectedDate, selectedServiceTypeId, availableServices]);
 
   // Initialize form - MUST be called unconditionally
   const form = useForm<EditSessionFormData>({
