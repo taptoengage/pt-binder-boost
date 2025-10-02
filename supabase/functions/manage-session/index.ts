@@ -348,7 +348,7 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     });
 
     if (clientDataForEmail?.email && clientDataForEmail.email_notifications_enabled) {
-      // Phase 2: Professional client email with comprehensive details
+      // Phase 2: Professional client email with comprehensive details (v2)
       // Determine booking method display and session details
       let sessionDetails = '';
       if (bookingMethod === 'pack' && sourcePackId) {
