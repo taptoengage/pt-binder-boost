@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
 interface EmailPayload {
-  type: 'WELCOME' | 'GENERIC' | 'SESSION_BOOKED';
+  type: 'WELCOME' | 'GENERIC' | 'SESSION_BOOKED' | 'CLIENT_SESSION_CONFIRMATION';
   to: string;
   data?: Record<string, any>;
 }
