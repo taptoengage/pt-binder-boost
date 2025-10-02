@@ -316,7 +316,7 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     // Phase 1: Fetch additional data with fallbacks
     const { data: trainerRecord } = await supabaseClient
       .from('trainers')
-      .select('contact_email, email_notifications_enabled, first_name, last_name')
+      .select('contact_email, email_notifications_enabled, first_name, last_name, phone')
       .eq('id', trainerId)
       .single();
 
