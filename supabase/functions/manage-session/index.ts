@@ -348,10 +348,40 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     });
 
     if (clientDataForEmail?.email && clientDataForEmail.email_notifications_enabled) {
+      // Phase 2: Professional client email with comprehensive details
+      // Determine booking method display and session details
+      let sessionDetails = '';
+      if (bookingMethod === 'pack' && sourcePackId) {
+        // Get pack info for additional details
+        const { data: packInfo } = await supabaseClient
+          .from('session_packs')
+          .select('sessions_remaining, total_sessions')
+          .eq('id', sourcePackId)
+          .single();
+        
+        if (packInfo) {
+          sessionDetails = `${packInfo.sessions_remaining} of ${packInfo.total_sessions} sessions remaining in pack`;
+        }
+      } else if (bookingMethod === 'subscription' && sourceSubscriptionId) {
+        sessionDetails = 'Booked from your active subscription';
+      } else if (bookingMethod === 'one-off') {
+        sessionDetails = 'One-off session';
+      }
+
       await safeInvokeEmail(supabaseClient, {
         to: clientDataForEmail.email,
-        type: 'GENERIC',
-        data: { subject: 'Session booked', body: `Your session on ${humanDate} has been booked.` },
+        type: 'CLIENT_SESSION_CONFIRMATION',
+        data: {
+          clientName,
+          serviceTypeName,
+          sessionDateTime: humanDate,
+          trainerName: trainerRecord ? `${trainerRecord.first_name} ${trainerRecord.last_name}`.trim() : 'Your Trainer',
+          trainerEmail: trainerRecord?.contact_email || '',
+          trainerPhone: trainerRecord?.phone || '',
+          bookingMethod,
+          sessionDetails,
+          dashboardLink: `${Deno.env.get('SUPABASE_URL')?.replace('.supabase.co', '.lovable.app') || 'https://app.lovable.app'}/client-dashboard`
+        },
         internalToken
       });
     }
