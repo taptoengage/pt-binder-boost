@@ -357,22 +357,38 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     }
 
     if (trainerRecord?.contact_email && trainerRecord.email_notifications_enabled) {
-      // Phase 2: Enhanced email with client name and essential details
+      // Phase 3: Professional HTML email template
+      // Determine booking method display and session details
+      let sessionDetails = '';
+      if (bookingMethod === 'pack' && sourcePackId) {
+        // Get pack info for additional details
+        const { data: packInfo } = await supabaseClient
+          .from('session_packs')
+          .select('sessions_remaining, total_sessions')
+          .eq('id', sourcePackId)
+          .single();
+        
+        if (packInfo) {
+          sessionDetails = `${packInfo.sessions_remaining} of ${packInfo.total_sessions} sessions remaining in pack`;
+        }
+      } else if (bookingMethod === 'subscription' && sourceSubscriptionId) {
+        sessionDetails = 'Booked from active subscription';
+      } else if (bookingMethod === 'one-off') {
+        sessionDetails = 'Pending trainer approval';
+      }
+
       await safeInvokeEmail(supabaseClient, {
         to: trainerRecord.contact_email,
-        type: 'GENERIC',
-        data: { 
-          subject: `New Session: ${clientName} - ${serviceTypeName}`,
-          body: `A new session has been booked with the following details:
-
-CLIENT: ${clientName}
-PHONE: ${clientPhone}
-EMAIL: ${clientDataForEmail?.email || 'Not provided'}
-
-SERVICE: ${serviceTypeName}
-DATE & TIME: ${humanDate}
-
-You can view and manage this session in your trainer dashboard.`
+        type: 'SESSION_BOOKED',
+        data: {
+          clientName,
+          clientPhone,
+          clientEmail: clientDataForEmail?.email || 'Not provided',
+          serviceTypeName,
+          serviceDescription: serviceTypeRecord?.description || '',
+          sessionDateTime: humanDate,
+          bookingMethod,
+          sessionDetails,
         },
         internalToken
       });
