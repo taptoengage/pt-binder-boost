@@ -357,11 +357,23 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     }
 
     if (trainerRecord?.contact_email && trainerRecord.email_notifications_enabled) {
-      // Phase 1: Keep existing email format but data is now available
+      // Phase 2: Enhanced email with client name and essential details
       await safeInvokeEmail(supabaseClient, {
         to: trainerRecord.contact_email,
         type: 'GENERIC',
-        data: { subject: 'New session booked', body: `A new session with client ID ${clientId} is scheduled for ${humanDate}.` },
+        data: { 
+          subject: `New Session: ${clientName} - ${serviceTypeName}`,
+          body: `A new session has been booked with the following details:
+
+CLIENT: ${clientName}
+PHONE: ${clientPhone}
+EMAIL: ${clientDataForEmail?.email || 'Not provided'}
+
+SERVICE: ${serviceTypeName}
+DATE & TIME: ${humanDate}
+
+You can view and manage this session in your trainer dashboard.`
+        },
         internalToken
       });
     }
