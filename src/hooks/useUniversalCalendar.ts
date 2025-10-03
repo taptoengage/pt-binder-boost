@@ -123,17 +123,18 @@ export const useUniversalCalendar = ({
       const startDate = startOfMonth(currentDisplayMonth);
       const endDate = endOfMonth(currentDisplayMonth);
       
-      const { data, error } = await supabase.rpc('get_trainer_busy_slots');
+      const { data, error } = await supabase.rpc('get_trainer_busy_slots', {
+        p_trainer_id: trainerId,
+        p_start_date: startDate.toISOString(),
+        p_end_date: endDate.toISOString(),
+      });
 
       if (error) throw error;
       
-      // Filter to current month and transform to match expected format
-      const filteredSessions = (data || []).filter((session: any) => {
-        const sessionDate = new Date(session.session_date);
-        return sessionDate >= startDate && sessionDate <= endDate && session.trainer_id === trainerId;
-      }).map((session: any) => ({
-        session_date: session.session_date,
-        status: 'scheduled' // RPC only returns scheduled/completed sessions
+      // Map the RPC rows directly (no filtering needed - RPC already filters by trainer/date)
+      const filteredSessions = (data || []).map((row: { session_date: string; status: string }) => ({
+        session_date: row.session_date,
+        status: row.status,
       }));
       
       return filteredSessions;
