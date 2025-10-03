@@ -241,13 +241,16 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
         // 3. Fetch trainer busy slots using secure RPC function
         // This bypasses RLS limitations and returns all busy slots for the trainer
         const { data: busySlots, error: sessionsError } = await supabase
-          .rpc('get_trainer_busy_slots')
-          .eq('trainer_id', trainerId);
+          .rpc('get_trainer_busy_slots', {
+            p_trainer_id: trainerId,
+            p_start_date: startDate.toISOString(),
+            p_end_date: endDate.toISOString()
+          });
         
         // Transform busy slots to match the sessions format expected by combineAndCalculateAvailability
         const sessions = (busySlots || []).map(slot => ({
           session_date: slot.session_date,
-          status: 'scheduled' // All busy slots are treated as scheduled
+          status: slot.status
         }));
 
         if (sessionsError) throw sessionsError;

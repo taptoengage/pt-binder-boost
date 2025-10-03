@@ -1127,10 +1127,12 @@ export type Database = {
         }[]
       }
       get_trainer_busy_slots: {
-        Args: Record<PropertyKey, never>
+        Args:
+          | Record<PropertyKey, never>
+          | { p_end_date: string; p_start_date: string; p_trainer_id: string }
         Returns: {
           session_date: string
-          trainer_id: string
+          status: string
         }[]
       }
       has_role: {
