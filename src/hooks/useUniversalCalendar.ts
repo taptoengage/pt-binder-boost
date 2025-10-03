@@ -1,221 +1,137 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { startOfMonth, endOfMonth, addDays } from 'date-fns';
-import { calculateEffectiveAvailability, AvailableSlot } from '@/lib/availabilityUtils';
+// src/hooks/useUniversalCalendar.ts
+// Drop-in replacement: fetches trainer busy slots via the parameterized RPC
+// and exposes a simple hook API shared by client & trainer views.
 
-export interface UseUniversalCalendarProps {
-  trainerId?: string;
-  initialView?: 'week' | 'month' | 'day';
-  initialDate?: Date;
-  enabled?: boolean;
-}
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// 🔧 Adjust this import path if your project uses a different client location:
+import { supabase } from "@/lib/supabaseClient";
 
-export interface UseUniversalCalendarReturn {
-  // State
-  currentDisplayMonth: Date;
-  selectedDate: Date;
-  view: 'week' | 'month' | 'day';
-  availableSlots: AvailableSlot[];
-  
-  // Loading states
+export type BusyStatus =
+  | "scheduled"
+  | "completed"
+  | "pending"
+  | "rescheduled"
+  | "confirmed"
+  | "booked"
+  | "in-progress"
+  | "checked-in";
+
+export type BusySlot = {
+  session_date: string; // ISO string (UTC)
+  status: BusyStatus | string; // be lenient to avoid runtime crashes if new statuses appear
+};
+
+type UseUniversalCalendarParams = {
+  trainerId: string;
+  startDate: Date; // inclusive
+  endDate: Date; // inclusive
+  enabled?: boolean; // gate network calls (default true)
+};
+
+type UseUniversalCalendarResult = {
+  busySlots: BusySlot[];
   isLoading: boolean;
-  isLoadingTemplates: boolean;
-  isLoadingExceptions: boolean;
-  isLoadingSessions: boolean;
-  
-  // Error states
   error: string | null;
-  
-  // Handlers
-  handleNextMonth: () => void;
-  handlePrevMonth: () => void;
-  handleViewChange: (newView: 'week' | 'month' | 'day') => void;
-  handleDayClick: (date: Date) => void;
-  
-  // Data
-  templates: any[];
-  exceptions: any[];
-  sessions: any[];
-}
+  refetch: () => Promise<void>;
+  // For convenience if callers need the current window
+  windowStartISO: string;
+  windowEndISO: string;
+};
 
-export const useUniversalCalendar = ({
-  trainerId,
-  initialView = 'week',
-  initialDate = new Date(),
-  enabled = true
-}: UseUniversalCalendarProps): UseUniversalCalendarReturn => {
-  const [currentDisplayMonth, setCurrentDisplayMonth] = useState(initialDate);
-  const [selectedDate, setSelectedDate] = useState(initialDate);
-  const [view, setView] = useState<'week' | 'month' | 'day'>(initialView);
+/**
+ * Single source of truth for trainer "busy" slots.
+ * Uses the SECURITY DEFINER RPC: public.get_trainer_busy_slots(uuid, timestamptz, timestamptz)
+ * Returns only session_date + status to respect privacy/RLS.
+ */
+export default function useUniversalCalendar(
+  params: UseUniversalCalendarParams
+): UseUniversalCalendarResult {
+  const { trainerId, startDate, endDate, enabled = true } = params;
+
+  const [busySlots, setBusySlots] = useState<BusySlot[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch trainer availability templates
-  const { data: templates = [], isLoading: isLoadingTemplates, error: templatesError } = useQuery({
-    queryKey: ['trainerAvailabilityTemplates', trainerId],
-    queryFn: async () => {
-      if (!trainerId) return [];
-      const { data, error } = await supabase
-        .from('trainer_availability_templates')
-        .select('day_of_week, start_time, end_time')
-        .eq('trainer_id', trainerId);
+  // Stabilize ISO strings so equality checks & effects behave deterministically.
+  const windowStartISO = useMemo(() => startDate.toISOString(), [startDate]);
+  const windowEndISO = useMemo(() => endDate.toISOString(), [endDate]);
 
-      if (error) throw error;
+  // Abort in-flight requests on param changes/unmount to avoid race conditions.
+  const abortRef = useRef<AbortController | null>(null);
 
-      // Convert day_of_week from string name to number for compatibility
-      return (data || []).map(template => {
-        let dayNumber: number;
-        if (typeof template.day_of_week === 'string') {
-          switch (template.day_of_week.toLowerCase()) {
-            case 'sunday': dayNumber = 0; break;
-            case 'monday': dayNumber = 1; break;
-            case 'tuesday': dayNumber = 2; break;
-            case 'wednesday': dayNumber = 3; break;
-            case 'thursday': dayNumber = 4; break;
-            case 'friday': dayNumber = 5; break;
-            case 'saturday': dayNumber = 6; break;
-            default: 
-              console.warn(`Unknown day_of_week string: ${template.day_of_week}`);
-              return null;
-          }
-        } else {
-          dayNumber = template.day_of_week;
-        }
-        return {
-          ...template,
-          day_of_week: dayNumber
-        };
-      }).filter(Boolean);
-    },
-    enabled: enabled && !!trainerId,
-    staleTime: 60 * 1000, // Cache for 1 minute
-  });
+  const fetchBusySlots = useCallback(async () => {
+    if (!enabled) return;
 
-  // Fetch trainer availability exceptions
-  const { data: exceptions = [], isLoading: isLoadingExceptions, error: exceptionsError } = useQuery({
-    queryKey: ['trainerAvailabilityExceptions', trainerId, currentDisplayMonth],
-    queryFn: async () => {
-      if (!trainerId) return [];
-      
-      const startDate = startOfMonth(currentDisplayMonth);
-      const endDate = endOfMonth(currentDisplayMonth);
-      
-      const { data, error } = await supabase
-        .from('trainer_availability_exceptions')
-        .select('exception_date, start_time, end_time, is_available, exception_type')
-        .eq('trainer_id', trainerId)
-        .gte('exception_date', startDate.toISOString().split('T')[0])
-        .lte('exception_date', endDate.toISOString().split('T')[0]);
-
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: enabled && !!trainerId,
-    staleTime: 60 * 1000, // Cache for 1 minute
-  });
-
-  // Fetch booked sessions using secure RPC
-  const { data: sessions = [], isLoading: isLoadingSessions, error: sessionsError } = useQuery({
-    queryKey: ['trainerBusySlots', trainerId, currentDisplayMonth],
-    queryFn: async () => {
-      if (!trainerId) return [];
-      
-      const startDate = startOfMonth(currentDisplayMonth);
-      const endDate = endOfMonth(currentDisplayMonth);
-      
-      const { data, error } = await supabase.rpc('get_trainer_busy_slots');
-
-      if (error) throw error;
-      
-      // Filter to current month and transform to match expected format
-      const filteredSessions = (data || []).filter((session: any) => {
-        const sessionDate = new Date(session.session_date);
-        return sessionDate >= startDate && sessionDate <= endDate && session.trainer_id === trainerId;
-      }).map((session: any) => ({
-        session_date: session.session_date,
-        status: 'scheduled' // RPC only returns scheduled/completed sessions
-      }));
-      
-      return filteredSessions;
-    },
-    enabled: enabled && !!trainerId,
-    staleTime: 30 * 1000, // Cache for 30 seconds
-  });
-
-  // Calculate available slots using the unified availability calculation
-  const availableSlots = useMemo(() => {
-    if (!trainerId || !templates.length) return [];
-    
-    const startDate = startOfMonth(currentDisplayMonth);
-    const endDate = endOfMonth(currentDisplayMonth);
-    
-    return calculateEffectiveAvailability(
-      templates,
-      exceptions,
-      sessions,
-      startDate,
-      endDate
-    );
-  }, [trainerId, templates, exceptions, sessions, currentDisplayMonth]);
-
-  // Handle errors
-  useEffect(() => {
-    if (templatesError) {
-      setError(`Failed to load availability templates: ${templatesError.message}`);
-    } else if (exceptionsError) {
-      setError(`Failed to load availability exceptions: ${exceptionsError.message}`);
-    } else if (sessionsError) {
-      setError(`Failed to load sessions: ${sessionsError.message}`);
-    } else {
-      setError(null);
+    // Basic guards
+    if (!trainerId) {
+      setBusySlots([]);
+      setError("Missing trainerId");
+      return;
     }
-  }, [templatesError, exceptionsError, sessionsError]);
+    if (startDate > endDate) {
+      setBusySlots([]);
+      setError("startDate must be <= endDate");
+      return;
+    }
 
-  // Handlers
-  const handleNextMonth = useCallback(() => {
-    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, 30));
-  }, []);
+    // Cancel any prior request
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-  const handlePrevMonth = useCallback(() => {
-    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, -30));
-  }, []);
+    setIsLoading(true);
+    setError(null);
 
-  const handleViewChange = useCallback((newView: 'week' | 'month' | 'day') => {
-    setView(newView);
-  }, []);
+    try {
+      // ✅ Correct, parameterized RPC call (this is the critical fix)
+      const { data, error } = await supabase.rpc(
+        "get_trainer_busy_slots",
+        {
+          p_trainer_id: trainerId,
+          p_start_date: windowStartISO,
+          p_end_date: windowEndISO,
+        },
+        { signal: controller.signal as any } // Supabase types don’t expose signal, but fetch does.
+      );
 
-  const handleDayClick = useCallback((date: Date) => {
-    setSelectedDate(date);
-    setView('day');
-  }, []);
+      if (error) {
+        throw error;
+      }
 
-  const isLoading = isLoadingTemplates || isLoadingExceptions || isLoadingSessions;
+      // The RPC already filters by trainer and date range and returns only:
+      //   session_date (timestamptz) and status (text)
+      // No client-side trainer_id filtering necessary or possible.
+      const mapped: BusySlot[] = (data ?? []).map(
+        (row: { session_date: string; status: string }) => ({
+          session_date: row.session_date,
+          status: row.status,
+        })
+      );
 
-  return {
-    // State
-    currentDisplayMonth,
-    selectedDate,
-    view,
-    availableSlots,
-    
-    // Loading states
-    isLoading,
-    isLoadingTemplates,
-    isLoadingExceptions,
-    isLoadingSessions,
-    
-    // Error states
-    error,
-    
-    // Handlers
-    handleNextMonth,
-    handlePrevMonth,
-    handleViewChange,
-    handleDayClick,
-    
-    // Data
-    templates,
-    exceptions,
-    sessions,
-  };
-};
+      setBusySlots(mapped);
+    } catch (e: any) {
+      // Ignore abort errors
+      if (e?.name === "AbortError") return;
+      setBusySlots([]);
+      setError(e?.message || "Failed to load busy slots");
+    } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
+      setIsLoading(false);
+    }
+  }, [trainerId, windowStartISO, windowEndISO, enabled, startDate, endDate]);
+
+  useEffect(() => {
+    fetchBusySlots();
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, [fetchBusySlots]);
+
+  const refetch = useCallback(async () => {
+    await fetchBusySlots();
+  }, [fetchBusySlots]);
+
+  return { busySlots, isLoading, error, refetch, windowStartISO, windowEndISO };
+}
