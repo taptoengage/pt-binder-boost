@@ -1,24 +1,10 @@
 // src/hooks/useUniversalCalendar.ts
-// COMPLETE FIX: Restores view/navigation API expected by UniversalCalendar.tsx,
-// uses the corrected parameterized RPC, and provides a simple availableSlots fallback.
+// Drop-in replacement: fetches trainer busy slots via the parameterized RPC
+// and exposes a simple hook API shared by client & trainer views.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  addMonths,
-  addWeeks,
-  addDays,
-  startOfMonth,
-  endOfMonth,
-  startOfWeek,
-  endOfWeek,
-  startOfDay,
-  endOfDay,
-  isSameDay,
-} from "date-fns";
-// ✅ Use the real Supabase client location in this repo:
-import { supabase } from "@/integrations/supabase/client";
-
-export type CalendarView = "month" | "week" | "day";
+// 🔧 Adjust this import path if your project uses a different client location:
+import { supabase } from "@/lib/supabaseClient";
 
 export type BusyStatus =
   | "scheduled"
@@ -28,171 +14,55 @@ export type BusyStatus =
   | "confirmed"
   | "booked"
   | "in-progress"
-  | "checked-in"
-  | string;
+  | "checked-in";
 
 export type BusySlot = {
   session_date: string; // ISO string (UTC)
-  status: BusyStatus;
+  status: BusyStatus | string; // be lenient to avoid runtime crashes if new statuses appear
 };
 
-export type AvailableSlot = {
-  start: string; // ISO (UTC)
-  end: string;   // ISO (UTC)
-};
-
-type Params = {
+type UseUniversalCalendarParams = {
   trainerId: string;
-  initialView?: CalendarView;     // default 'week'
-  initialDate?: Date;             // default new Date()
-  slotMinutes?: number;           // default 60
-  dayStartHour?: number;          // default 6
-  dayEndHour?: number;            // default 22
-  timezone?: string;              // logical TZ for computing day windows; default 'Australia/Melbourne'
-  enabled?: boolean;              // default true; gate network calls
+  startDate: Date; // inclusive
+  endDate: Date; // inclusive
+  enabled?: boolean; // gate network calls (default true)
 };
 
-type Result = {
-  // data
+type UseUniversalCalendarResult = {
   busySlots: BusySlot[];
-  availableSlots: AvailableSlot[]; // simple complement generator per day window
   isLoading: boolean;
   error: string | null;
-
-  // view state expected by UniversalCalendar.tsx
-  view: CalendarView;
-  currentDisplayMonth: Date;
-  handleViewChange: (next: CalendarView) => void;
-  handleNextMonth: () => void;
-  handlePrevMonth: () => void;
-  handleDayClick: (d: Date) => void;
-
-  // useful extras
-  startDate: Date;
-  endDate: Date;
+  refetch: () => Promise<void>;
+  // For convenience if callers need the current window
   windowStartISO: string;
   windowEndISO: string;
-
-  // manual refresh
-  refetch: () => Promise<void>;
 };
 
-function clampHours(date: Date, hour: number, minute = 0, second = 0, ms = 0) {
-  const d = new Date(date);
-  d.setHours(hour, minute, second, ms);
-  return d;
-}
-
-// Generate simple hourly availability inside the configured day window,
-// and subtract any busy slots that start within the same hour.
-function generateAvailableSlots(
-  viewStart: Date,
-  viewEnd: Date,
-  dayStartHour: number,
-  dayEndHour: number,
-  slotMinutes: number,
-  busy: BusySlot[]
-): AvailableSlot[] {
-  // Map busy starts to a fast lookup key "YYYY-MM-DDTHH:mm"
-  const key = (d: Date) => {
-    const iso = d.toISOString();
-    return iso.slice(0, 16); // YYYY-MM-DDTHH:mm
-  };
-
-  const busyKeySet = new Set<string>(
-    busy.map((b) => key(new Date(b.session_date)))
-  );
-
-  const slots: AvailableSlot[] = [];
-  const dayMs = 24 * 60 * 60 * 1000;
-  for (
-    let day = startOfDay(viewStart).getTime();
-    day <= startOfDay(viewEnd).getTime();
-    day += dayMs
-  ) {
-    const dayDate = new Date(day);
-    const startWindow = clampHours(dayDate, dayStartHour);
-    const endWindow = clampHours(dayDate, dayEndHour);
-
-    for (
-      let t = startWindow.getTime();
-      t < endWindow.getTime();
-      t += slotMinutes * 60 * 1000
-    ) {
-      const s = new Date(t);
-      const e = new Date(t + slotMinutes * 60 * 1000);
-      // If there is a busy starting in this slot, skip it
-      if (!busyKeySet.has(key(s))) {
-        slots.push({ start: s.toISOString(), end: e.toISOString() });
-      }
-    }
-  }
-  return slots;
-}
-
-export default function useUniversalCalendar({
-  trainerId,
-  initialView = "week",
-  initialDate = new Date(),
-  slotMinutes = 60,
-  dayStartHour = 6,
-  dayEndHour = 22,
-  timezone = "Australia/Melbourne", // reserved for future tz-aware boundaries
-  enabled = true,
-}: Params): Result {
-  // View & navigation state that UniversalCalendar.tsx expects:
-  const [view, setView] = useState<CalendarView>(initialView);
-  const [currentDisplayMonth, setCurrentDisplayMonth] = useState<Date>(
-    startOfMonth(initialDate)
-  );
-
-  // Derive the active time window based on view + currentDisplayMonth
-  const { startDate, endDate } = useMemo(() => {
-    if (view === "month") {
-      return {
-        startDate: startOfDay(startOfMonth(currentDisplayMonth)),
-        endDate: endOfDay(endOfMonth(currentDisplayMonth)),
-      };
-    }
-    if (view === "week") {
-      // Week starts on Monday (1). Change to 0 for Sunday if needed.
-      return {
-        startDate: startOfDay(startOfWeek(currentDisplayMonth, { weekStartsOn: 1 })),
-        endDate: endOfDay(endOfWeek(currentDisplayMonth, { weekStartsOn: 1 })),
-      };
-    }
-    // day
-    return {
-      startDate: startOfDay(currentDisplayMonth),
-      endDate: endOfDay(currentDisplayMonth),
-    };
-  }, [view, currentDisplayMonth]);
-
-  const windowStartISO = useMemo(() => startDate.toISOString(), [startDate]);
-  const windowEndISO = useMemo(() => endDate.toISOString(), [endDate]);
+/**
+ * Single source of truth for trainer "busy" slots.
+ * Uses the SECURITY DEFINER RPC: public.get_trainer_busy_slots(uuid, timestamptz, timestamptz)
+ * Returns only session_date + status to respect privacy/RLS.
+ */
+export default function useUniversalCalendar(
+  params: UseUniversalCalendarParams
+): UseUniversalCalendarResult {
+  const { trainerId, startDate, endDate, enabled = true } = params;
 
   const [busySlots, setBusySlots] = useState<BusySlot[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Compute available slots on-the-fly from busy slots:
-  const availableSlots = useMemo(
-    () =>
-      generateAvailableSlots(
-        startDate,
-        endDate,
-        dayStartHour,
-        dayEndHour,
-        slotMinutes,
-        busySlots
-      ),
-    [startDate, endDate, dayStartHour, dayEndHour, slotMinutes, busySlots]
-  );
+  // Stabilize ISO strings so equality checks & effects behave deterministically.
+  const windowStartISO = useMemo(() => startDate.toISOString(), [startDate]);
+  const windowEndISO = useMemo(() => endDate.toISOString(), [endDate]);
 
-  // Fetch busy slots via RPC (parameterized) for the current window
+  // Abort in-flight requests on param changes/unmount to avoid race conditions.
   const abortRef = useRef<AbortController | null>(null);
-  const fetchBusy = useCallback(async () => {
+
+  const fetchBusySlots = useCallback(async () => {
     if (!enabled) return;
+
+    // Basic guards
     if (!trainerId) {
       setBusySlots([]);
       setError("Missing trainerId");
@@ -204,6 +74,7 @@ export default function useUniversalCalendar({
       return;
     }
 
+    // Cancel any prior request
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -212,6 +83,7 @@ export default function useUniversalCalendar({
     setError(null);
 
     try {
+      // ✅ Correct, parameterized RPC call (this is the critical fix)
       const { data, error } = await supabase.rpc(
         "get_trainer_busy_slots",
         {
@@ -219,84 +91,47 @@ export default function useUniversalCalendar({
           p_start_date: windowStartISO,
           p_end_date: windowEndISO,
         },
-        // @ts-expect-error: supabase-js fetch supports signal; types may not
-        { signal: controller.signal }
+        { signal: controller.signal as any } // Supabase types don’t expose signal, but fetch does.
       );
-      if (error) throw error;
 
+      if (error) {
+        throw error;
+      }
+
+      // The RPC already filters by trainer and date range and returns only:
+      //   session_date (timestamptz) and status (text)
+      // No client-side trainer_id filtering necessary or possible.
       const mapped: BusySlot[] = (data ?? []).map(
         (row: { session_date: string; status: string }) => ({
           session_date: row.session_date,
           status: row.status,
         })
       );
+
       setBusySlots(mapped);
     } catch (e: any) {
+      // Ignore abort errors
       if (e?.name === "AbortError") return;
       setBusySlots([]);
       setError(e?.message || "Failed to load busy slots");
     } finally {
-      if (abortRef.current === controller) abortRef.current = null;
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
       setIsLoading(false);
     }
   }, [trainerId, windowStartISO, windowEndISO, enabled, startDate, endDate]);
 
   useEffect(() => {
-    fetchBusy();
+    fetchBusySlots();
     return () => {
       if (abortRef.current) abortRef.current.abort();
     };
-  }, [fetchBusy]);
-
-  // Navigation API expected by UniversalCalendar.tsx
-  const handleViewChange = useCallback((next: CalendarView) => {
-    setView(next);
-  }, []);
-
-  const handleNextMonth = useCallback(() => {
-    if (view === "month") setCurrentDisplayMonth((d) => addMonths(d, 1));
-    else if (view === "week") setCurrentDisplayMonth((d) => addWeeks(d, 1));
-    else setCurrentDisplayMonth((d) => addDays(d, 1));
-  }, [view]);
-
-  const handlePrevMonth = useCallback(() => {
-    if (view === "month") setCurrentDisplayMonth((d) => addMonths(d, -1));
-    else if (view === "week") setCurrentDisplayMonth((d) => addWeeks(d, -1));
-    else setCurrentDisplayMonth((d) => addDays(d, -1));
-  }, [view]);
-
-  const handleDayClick = useCallback((day: Date) => {
-    // Keep behavior predictable: when a day is clicked in month/week, switch to 'day' view
-    // and set the current display to that date.
-    setCurrentDisplayMonth(startOfDay(day));
-    setView("day");
-  }, []);
+  }, [fetchBusySlots]);
 
   const refetch = useCallback(async () => {
-    await fetchBusy();
-  }, [fetchBusy]);
+    await fetchBusySlots();
+  }, [fetchBusySlots]);
 
-  return {
-    busySlots,
-    availableSlots,
-    isLoading,
-    error,
-
-    view,
-    currentDisplayMonth,
-    handleViewChange,
-    handleNextMonth,
-    handlePrevMonth,
-    handleDayClick,
-
-    startDate,
-    endDate,
-    windowStartISO,
-    windowEndISO,
-
-    refetch,
-  };
+  return { busySlots, isLoading, error, refetch, windowStartISO, windowEndISO };
 }
-
-// 👇 Backward-compatible named export (some files may still import { useUniversalCalendar })
-export { default as useUniversalCalendar };
