@@ -238,16 +238,17 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
         if (exceptionsError) throw exceptionsError;
 
-        // 3. Fetch all booked sessions for the trainer (across ALL clients)
-        // This now works due to the new RLS policy that allows clients to see
-        // basic session timing data for their trainer's sessions
-        const { data: sessions, error: sessionsError } = await supabase
-          .from('sessions')
-          .select('session_date, status')
-          .eq('trainer_id', trainerId)
-          .not('status', 'in', '("cancelled", "no-show")')
-          .gte('session_date', startDate.toISOString())
-          .lte('session_date', endDate.toISOString());
+        // 3. Fetch trainer busy slots using secure RPC function
+        // This bypasses RLS limitations and returns all busy slots for the trainer
+        const { data: busySlots, error: sessionsError } = await supabase
+          .rpc('get_trainer_busy_slots')
+          .eq('trainer_id', trainerId);
+        
+        // Transform busy slots to match the sessions format expected by combineAndCalculateAvailability
+        const sessions = (busySlots || []).map(slot => ({
+          session_date: slot.session_date,
+          status: 'scheduled' // All busy slots are treated as scheduled
+        }));
 
         if (sessionsError) throw sessionsError;
         setBookedSessions(sessions || []);
