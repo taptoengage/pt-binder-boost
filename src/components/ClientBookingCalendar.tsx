@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, addDays, setHours, setMinutes, isSameDay, startOfWeek, isToday, isAfter, isBefore, addMinutes, isWithinInterval, addWeeks, subWeeks } from 'date-fns';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
+import { format, getDay, eachDayOfInterval, addDays, setHours, setMinutes, isSameDay, startOfWeek, isToday, isAfter, isBefore, addMinutes, isWithinInterval, addWeeks, subWeeks } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -11,6 +10,7 @@ import UniversalSessionModal from '@/components/UniversalSessionModal';
 import ScheduleListView from '@/components/schedule/ScheduleListView';
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeGesture } from "@/hooks/useSwipeGesture";
+import { useUniversalCalendar } from "@/hooks/useUniversalCalendar";
 
 // Helper functions for mobile week view
 const getSlotsForDate = (date: Date, slots: { start: Date; end: Date }[]) => {
@@ -51,252 +51,32 @@ interface ClientBookingCalendarProps {
 }
 
 export default function ClientBookingCalendar({ trainerId, clientId }: ClientBookingCalendarProps) {
-  const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
-  const [currentDisplayMonth, setCurrentDisplayMonth] = useState(new Date());
-  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'week' | 'month' | 'day'>('week');
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  // Use the unified calendar hook
+  const {
+    currentDisplayMonth,
+    selectedDate,
+    view,
+    availableSlots,
+    isLoading: isLoadingAvailability,
+    error,
+    handleNextMonth,
+    handlePrevMonth,
+    handleViewChange,
+    handleDayClick,
+    sessions: bookedSessions
+  } = useUniversalCalendar({
+    trainerId,
+    initialView: 'week',
+    initialDate: new Date(),
+    enabled: !!trainerId
+  });
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSlotForModal, setSelectedSlotForModal] = useState<{ start: Date; end: Date } | null>(null);
-  const [bookedSessions, setBookedSessions] = useState<any[]>([]);
   const [lastSelectedDate, setLastSelectedDate] = useState<Date | null>(null);
   const isMobile = useIsMobile();
   const tilesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
-  const getDayNumberFromString = (dayName: string): number | undefined => {
-    switch (dayName.toLowerCase()) {
-      case 'sunday': return 0;
-      case 'monday': return 1;
-      case 'tuesday': return 2;
-      case 'wednesday': return 3;
-      case 'thursday': return 4;
-      case 'friday': return 5;
-      case 'saturday': return 6;
-      default: return undefined; // Handle unexpected values
-    }
-  };
-
-  // Helper function to parse 'HH:MM:SS' time string into hours and minutes
-  const parseTime = (timeString: string) => {
-    const [hours, minutes] = timeString.split(':').map(Number);
-    return { hours, minutes };
-  };
-
-  // CORE LOGIC: Combines templates and exceptions to get final available slots for a month
-  const combineAndCalculateAvailability = useCallback((
-    templates: TrainerTemplate[],
-    exceptions: TrainerException[],
-    sessions: any[],
-    startDate: Date,
-    endDate: Date
-  ): AvailableSlot[] => {
-    const finalSlots: AvailableSlot[] = [];
-    const daysInInterval = eachDayOfInterval({ start: startDate, end: endDate });
-
-    daysInInterval.forEach(day => {
-      const dayOfWeek = getDay(day); // 0 = Sunday, 1 = Monday, etc.
-
-      let dailySlots: AvailableSlot[] = [];
-
-      // 1. Apply recurring templates for the current day of week
-      templates.filter(t => t.day_of_week === dayOfWeek).forEach(template => {
-        const { hours: startHours, minutes: startMinutes } = parseTime(template.start_time);
-        const { hours: endHours, minutes: endMinutes } = parseTime(template.end_time);
-
-        let startDateTime = setMinutes(setHours(day, startHours), startMinutes);
-        let endDateTime = setMinutes(setHours(day, endHours), endMinutes);
-
-        dailySlots.push({ start: startDateTime, end: endDateTime });
-      });
-
-      // 2. Apply exceptions for the current day
-      exceptions.filter(e => isSameDay(new Date(e.exception_date), day)).forEach(exception => {
-        if (exception.is_available === false) {
-          // Remove slots for this day (clear all existing daily slots)
-          dailySlots = []; // If an exception is_available=false, it typically means no availability for that day
-        } else if (exception.is_available === true) {
-          // Add specific slots for this day (overrides default removal or adds to existing)
-          const { hours: startHours, minutes: startMinutes } = parseTime(exception.start_time);
-          const { hours: endHours, minutes: endMinutes } = parseTime(exception.end_time);
-
-          let startDateTime = setMinutes(setHours(day, startHours), startMinutes);
-          let endDateTime = setMinutes(setHours(day, endHours), endMinutes);
-
-          dailySlots.push({ start: startDateTime, end: endDateTime });
-        }
-      });
-
-      // 3. Subtract booked sessions from available slots
-      const sessionsForDay = sessions.filter(s => isSameDay(new Date(s.session_date), day));
-      
-      if (sessionsForDay.length > 0) {
-        let updatedSlots: AvailableSlot[] = [];
-        
-        dailySlots.forEach(availableSlot => {
-          let currentSlots = [availableSlot];
-          
-          sessionsForDay.forEach(bookedSession => {
-            const bookedStart = new Date(bookedSession.session_date);
-            const bookedEnd = new Date(bookedStart.getTime() + 60 * 60 * 1000); // 1 hour sessions
-            
-            const newCurrentSlots: AvailableSlot[] = [];
-            
-            currentSlots.forEach(slot => {
-              // If booked session doesn't overlap with this slot, keep it
-              if (bookedEnd <= slot.start || bookedStart >= slot.end) {
-                newCurrentSlots.push(slot);
-              } else {
-                // Split the slot around the booked session
-                if (slot.start < bookedStart) {
-                  newCurrentSlots.push({ start: slot.start, end: bookedStart });
-                }
-                if (bookedEnd < slot.end) {
-                  newCurrentSlots.push({ start: bookedEnd, end: slot.end });
-                }
-              }
-            });
-            
-            currentSlots = newCurrentSlots;
-          });
-          
-          updatedSlots.push(...currentSlots);
-        });
-        
-        dailySlots = updatedSlots;
-      }
-
-      // Filter out slots that end before they start or are invalid
-      dailySlots = dailySlots.filter(slot => slot.start < slot.end);
-
-      // Add processed daily slots to final list
-      finalSlots.push(...dailySlots);
-    });
-
-    // Sort by start time for consistent display
-    return finalSlots.sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, []); // Dependencies: None, as all data comes from args
-
-  useEffect(() => {
-    const fetchAndProcessAvailability = async () => {
-      // DEBUG LOG 1: Check the trainerId prop received
-      console.log('DEBUG: Calendar received trainerId:', trainerId);
-
-      if (!trainerId) {
-        setAvailableSlots([]);
-        setIsLoadingAvailability(false);
-        // DEBUG LOG 2: Log if trainerId is null
-        console.log('DEBUG: Calendar received null trainerId, stopping availability fetch.');
-        return;
-      }
-
-      setIsLoadingAvailability(true);
-      setError(null);
-
-      try {
-        const startDate = startOfMonth(currentDisplayMonth);
-        const endDate = endOfMonth(currentDisplayMonth);
-
-        // DEBUG LOG 3: Log the date range for the query
-        console.log('DEBUG: Fetching availability for date range:', { start: startDate.toISOString(), end: endDate.toISOString() });
-
-        // 1. Fetch Templates
-        const { data: templatesData, error: templatesError } = await supabase
-          .from('trainer_availability_templates')
-          .select('day_of_week, start_time, end_time')
-          .eq('trainer_id', trainerId);
-
-        // DEBUG LOG 4: Log the results of the templates query
-        console.log('DEBUG: Templates query result:', { data: templatesData, error: templatesError });
-
-        if (templatesError) throw templatesError;
-
-        // Convert day_of_week from string name to number for templates
-        const templates = (templatesData || []).map(template => {
-          const dayNumber = getDayNumberFromString(template.day_of_week);
-          if (dayNumber === undefined) {
-            console.warn(`Unknown day_of_week string in template: ${template.day_of_week}`);
-            return null; // Filter out invalid entries
-          }
-          return {
-            ...template,
-            day_of_week: dayNumber
-          };
-        }).filter(Boolean) as TrainerTemplate[]; // Filter out nulls and cast
-
-        // 2. Fetch Exceptions for the given date range
-        const { data: exceptions, error: exceptionsError } = await supabase
-          .from('trainer_availability_exceptions')
-          .select('exception_date, start_time, end_time, is_available')
-          .eq('trainer_id', trainerId)
-          .gte('exception_date', startDate.toISOString().split('T')[0])
-          .lte('exception_date', endDate.toISOString().split('T')[0]);
-
-        // DEBUG LOG 5: Log the results of the exceptions query
-        console.log('DEBUG: Exceptions query result:', { data: exceptions, error: exceptionsError });
-
-        if (exceptionsError) throw exceptionsError;
-
-        // 3. Fetch trainer busy slots using secure RPC function
-        // This bypasses RLS limitations and returns all busy slots for the trainer
-        const { data: busySlots, error: sessionsError } = await supabase
-          .rpc('get_trainer_busy_slots', {
-            p_trainer_id: trainerId,
-            p_start_date: startDate.toISOString(),
-            p_end_date: endDate.toISOString()
-          });
-        
-        // Transform busy slots to match the sessions format expected by combineAndCalculateAvailability
-        const sessions = (busySlots || []).map(slot => ({
-          session_date: slot.session_date,
-          status: slot.status
-        }));
-
-        if (sessionsError) throw sessionsError;
-        setBookedSessions(sessions || []);
-
-        // 4. Combine and Calculate Final Available Slots
-        const processedSlots = combineAndCalculateAvailability(
-          templates,
-          exceptions || [],
-          sessions || [],
-          startDate,
-          endDate
-        );
-
-        setAvailableSlots(processedSlots);
-        // DEBUG LOG 6: Log the final processed slots
-        console.log('DEBUG: Final processed available slots:', processedSlots);
-
-      } catch (err: any) {
-        console.error('Error fetching or processing trainer availability:', err.message);
-        setError('Failed to load trainer availability.');
-      } finally {
-        setIsLoadingAvailability(false);
-      }
-    };
-
-    fetchAndProcessAvailability();
-  }, [trainerId, currentDisplayMonth, combineAndCalculateAvailability]); // Dependencies for useEffect
-
-  const handleNextMonth = () => {
-    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, 30));
-  };
-
-  const handlePrevMonth = () => {
-    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, -30));
-  };
-
-  const handleViewChange = (newView: 'week' | 'month' | 'day') => {
-    setView(newView);
-  };
-
-  // Handler to switch to a specific day view
-  const handleDayClick = (date: Date) => {
-    setSelectedDate(date);
-    setView('day');
-  };
 
   // Handler for clicking the "Book" button
   const handleBookClick = (slot: AvailableSlot) => {
@@ -305,30 +85,33 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   };
 
   const handlePrevWeek = useCallback(() => {
-    setCurrentDisplayMonth(prevDate => subWeeks(prevDate, 1));
+    handlePrevMonth();
     // Scroll to top after week change
     requestAnimationFrame(() => {
       tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     });
-  }, []);
+  }, [handlePrevMonth]);
 
   const handleNextWeek = useCallback(() => {
-    setCurrentDisplayMonth(prevDate => addWeeks(prevDate, 1));
+    handleNextMonth();
     // Scroll to top after week change
     requestAnimationFrame(() => {
       tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     });
-  }, []);
+  }, [handleNextMonth]);
 
   const handleTodayJump = useCallback(() => {
-    setCurrentDisplayMonth(new Date());
+    handlePrevMonth(); // Reset to current month
     requestAnimationFrame(() => {
       tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     });
-  }, []);
+  }, [handlePrevMonth]);
 
   // Performance optimization: memoize week days and slots by day
-  const weekDays = useMemo(() => getDisplayedWeek(currentDisplayMonth), [currentDisplayMonth]);
+  const weekDays = useMemo(() => {
+    const weekStart = startOfWeek(currentDisplayMonth, { weekStartsOn: 1 });
+    return eachDayOfInterval({ start: weekStart, end: addDays(weekStart, 6) });
+  }, [currentDisplayMonth]);
   
   const slotsByDay = useMemo(() => {
     const byDay: Record<string, {count: number; slots: {start: Date; end: Date}[]}> = {};
@@ -357,8 +140,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
   // Mobile Week Header Component
   const MobileWeekHeader = () => {
-    const days = getDisplayedWeek(currentDisplayMonth);
-    const label = `${format(days[0], "MMM dd")} – ${format(days[6], "MMM dd, yyyy")}`;
+    const label = `${format(weekDays[0], "MMM dd")} – ${format(weekDays[6], "MMM dd, yyyy")}`;
 
     return (
       <div className="sticky top-0 z-10 bg-background/90 backdrop-blur border-b">
@@ -462,13 +244,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   };
 
   const renderMobileWeekView = () => {
-    const days = getDisplayedWeek(currentDisplayMonth);
-    const label = `${format(days[0], "MMM dd")} – ${format(days[6], "MMM dd, yyyy")}`;
-
-    const handleSelectDay = (date: Date) => {
-      setSelectedDate(date);
-      setView("day");
-    };
+    const label = `${format(weekDays[0], "MMM dd")} – ${format(weekDays[6], "MMM dd, yyyy")}`;
 
     const scheduleListDays = weekDays.map((date) => {
       const slotsForDay = getSlotsForDate(date, availableSlots);
@@ -479,7 +255,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
         dayLabel: format(date, "EEEE"),
         subLabel: format(date, "MMM d"),
         status: isAvailable ? 'available' as const : 'none' as const,
-        onClick: () => handleSelectDay(date),
+        onClick: () => handleDayClick(date),
       };
     });
 
@@ -490,7 +266,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
           activeView={view as 'week' | 'month'}
           onPrev={handlePrevWeek}
           onNext={handleNextWeek}
-          onToggleView={(newView) => setView(newView)}
+          onToggleView={(newView) => handleViewChange(newView as 'week' | 'month' | 'day')}
           rangeLabel={label}
         />
       </div>
@@ -570,7 +346,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
         <div className="flex items-center justify-between">
           <Button 
             variant="ghost" 
-            onClick={() => setView('week')}
+            onClick={() => handleViewChange('week')}
             className="text-sm"
           >
             ← Back to Week
@@ -683,7 +459,14 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
                   defaultDate={currentDisplayMonth}
                   date={currentDisplayMonth}
                   view="month"
-                  onNavigate={setCurrentDisplayMonth}
+                  onNavigate={(date) => {
+                    // Update via hook handlers
+                    if (date > currentDisplayMonth) {
+                      handleNextMonth();
+                    } else if (date < currentDisplayMonth) {
+                      handlePrevMonth();
+                    }
+                  }}
                   step={30}
                   timeslots={2}
                   views={['month']}
