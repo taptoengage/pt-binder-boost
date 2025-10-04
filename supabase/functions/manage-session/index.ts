@@ -176,9 +176,10 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
     }
 
     // Verify the client being booked belongs to this trainer
+    // Phase 1: Enhanced data fetching with fallbacks
     const { data: clientToBook, error: clientError } = await supabaseClient
       .from('clients')
-      .select('id, email, email_notifications_enabled')
+      .select('id, email, email_notifications_enabled, name, first_name, last_name, phone_number')
       .eq('id', clientId)
       .eq('trainer_id', trainerId)
       .single();
@@ -190,9 +191,10 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
 
   } else if (userRole.role === 'client') {
     // Verify the client is booking for themselves
+    // Phase 1: Enhanced data fetching with fallbacks
     const { data: clientRecord, error: clientError } = await supabaseClient
       .from('clients')
-      .select('id, email, email_notifications_enabled, trainer_id')
+      .select('id, email, email_notifications_enabled, trainer_id, name, first_name, last_name, phone_number')
       .eq('user_id', user.id)
       .eq('id', clientId)
       .single();
@@ -311,23 +313,113 @@ async function handleBookSession(requestData: any, user: any, supabaseClient: an
   // Send booking confirmation emails
   const internalToken = Deno.env.get('INTERNAL_FUNCTION_TOKEN');
   if (internalToken) {
-    const { data: trainerRecord } = await supabaseClient.from('trainers').select('contact_email, email_notifications_enabled').eq('id', trainerId).single();
+    // Phase 1: Fetch additional data with fallbacks
+    const { data: trainerRecord } = await supabaseClient
+      .from('trainers')
+      .select('contact_email, email_notifications_enabled, first_name, last_name, phone')
+      .eq('id', trainerId)
+      .single();
+
+    // Fetch service type information
+    const { data: serviceTypeRecord } = await supabaseClient
+      .from('service_types')
+      .select('name, description')
+      .eq('id', serviceTypeId)
+      .single();
+
     const humanDate = bookingDateTime.toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' });
 
+    // Phase 1: Build client name with fallbacks
+    const clientName = clientDataForEmail?.name || 
+      (clientDataForEmail?.first_name && clientDataForEmail?.last_name 
+        ? `${clientDataForEmail.first_name} ${clientDataForEmail.last_name}`.trim()
+        : null) || 
+      'Client';
+
+    const clientPhone = clientDataForEmail?.phone_number || 'Not provided';
+    const serviceTypeName = serviceTypeRecord?.name || 'Session';
+
+    // Log enhanced data for verification (Phase 1 testing)
+    console.log('Enhanced booking data:', {
+      clientName,
+      clientPhone,
+      serviceTypeName,
+      clientEmail: clientDataForEmail?.email
+    });
+
     if (clientDataForEmail?.email && clientDataForEmail.email_notifications_enabled) {
+      // Phase 2: Professional client email with comprehensive details (v2)
+      // Determine booking method display and session details
+      let sessionDetails = '';
+      if (bookingMethod === 'pack' && sourcePackId) {
+        // Get pack info for additional details
+        const { data: packInfo } = await supabaseClient
+          .from('session_packs')
+          .select('sessions_remaining, total_sessions')
+          .eq('id', sourcePackId)
+          .single();
+        
+        if (packInfo) {
+          sessionDetails = `${packInfo.sessions_remaining} of ${packInfo.total_sessions} sessions remaining in pack`;
+        }
+      } else if (bookingMethod === 'subscription' && sourceSubscriptionId) {
+        sessionDetails = 'Booked from your active subscription';
+      } else if (bookingMethod === 'one-off') {
+        sessionDetails = 'One-off session';
+      }
+
       await safeInvokeEmail(supabaseClient, {
         to: clientDataForEmail.email,
-        type: 'GENERIC',
-        data: { subject: 'Session booked', body: `Your session on ${humanDate} has been booked.` },
+        type: 'CLIENT_SESSION_CONFIRMATION',
+        data: {
+          clientName,
+          serviceTypeName,
+          sessionDateTime: humanDate,
+          trainerName: trainerRecord ? `${trainerRecord.first_name} ${trainerRecord.last_name}`.trim() : 'Your Trainer',
+          trainerEmail: trainerRecord?.contact_email || '',
+          trainerPhone: trainerRecord?.phone || '',
+          bookingMethod,
+          sessionDetails,
+          dashboardLink: `${Deno.env.get('SUPABASE_URL')?.replace('.supabase.co', '.lovable.app') || 'https://app.lovable.app'}/client-dashboard`
+        },
         internalToken
       });
     }
 
     if (trainerRecord?.contact_email && trainerRecord.email_notifications_enabled) {
+      // Phase 3: Professional HTML email template
+      // Determine booking method display and session details
+      let sessionDetails = '';
+      if (bookingMethod === 'pack' && sourcePackId) {
+        // Get pack info for additional details
+        const { data: packInfo } = await supabaseClient
+          .from('session_packs')
+          .select('sessions_remaining, total_sessions')
+          .eq('id', sourcePackId)
+          .single();
+        
+        if (packInfo) {
+          sessionDetails = `${packInfo.sessions_remaining} of ${packInfo.total_sessions} sessions remaining in pack`;
+        }
+      } else if (bookingMethod === 'subscription' && sourceSubscriptionId) {
+        sessionDetails = 'Booked from active subscription';
+      } else if (bookingMethod === 'one-off') {
+        sessionDetails = 'Pending trainer approval';
+      }
+
       await safeInvokeEmail(supabaseClient, {
         to: trainerRecord.contact_email,
-        type: 'GENERIC',
-        data: { subject: 'New session booked', body: `A new session with client ID ${clientId} is scheduled for ${humanDate}.` },
+        type: 'SESSION_BOOKED',
+        data: {
+          clientName,
+          clientPhone,
+          clientEmail: clientDataForEmail?.email || 'Not provided',
+          serviceTypeName,
+          serviceDescription: serviceTypeRecord?.description || '',
+          sessionDateTime: humanDate,
+          bookingMethod,
+          sessionDetails,
+        },
         internalToken
       });
     }

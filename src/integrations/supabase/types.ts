@@ -174,6 +174,53 @@ export type Database = {
         }
         Relationships: []
       }
+      client_time_preferences: {
+        Row: {
+          client_id: string
+          created_at: string
+          end_time: string | null
+          flex_minutes: number
+          id: string
+          is_active: boolean
+          notes: string | null
+          start_time: string
+          updated_at: string
+          weekday: number
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          end_time?: string | null
+          flex_minutes?: number
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          start_time: string
+          updated_at?: string
+          weekday: number
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          end_time?: string | null
+          flex_minutes?: number
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          start_time?: string
+          updated_at?: string
+          weekday?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_time_preferences_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           created_at: string
@@ -1109,7 +1156,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "moderator" | "user"
+      app_role: "admin" | "moderator" | "user" | "client"
       client_photo_visibility_enum: "private" | "shared"
       client_subscription_status_enum:
         | "active"
@@ -1255,7 +1302,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "moderator", "user"],
+      app_role: ["admin", "moderator", "user", "client"],
       client_photo_visibility_enum: ["private", "shared"],
       client_subscription_status_enum: [
         "active",

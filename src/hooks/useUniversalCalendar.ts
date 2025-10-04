@@ -1,304 +1,221 @@
-// src/hooks/useUniversalCalendar.ts
-// COMPLETE FIX: Restores view/navigation API expected by UniversalCalendar.tsx,
-// uses the corrected parameterized RPC, and provides a simple availableSlots fallback.
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { startOfMonth, endOfMonth, addDays } from 'date-fns';
+import { calculateEffectiveAvailability, AvailableSlot } from '@/lib/availabilityUtils';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  addMonths,
-  addWeeks,
-  addDays,
-  startOfMonth,
-  endOfMonth,
-  startOfWeek,
-  endOfWeek,
-  startOfDay,
-  endOfDay,
-  isSameDay,
-} from "date-fns";
-// ✅ Use the real Supabase client location in this repo:
-import { supabase } from "@/integrations/supabase/client";
+export interface UseUniversalCalendarProps {
+  trainerId?: string;
+  initialView?: 'week' | 'month' | 'day';
+  initialDate?: Date;
+  enabled?: boolean;
+}
 
-export type CalendarView = "month" | "week" | "day";
-
-export type BusyStatus =
-  | "scheduled"
-  | "completed"
-  | "pending"
-  | "rescheduled"
-  | "confirmed"
-  | "booked"
-  | "in-progress"
-  | "checked-in"
-  | string;
-
-export type BusySlot = {
-  session_date: string; // ISO string (UTC)
-  status: BusyStatus;
-};
-
-export type AvailableSlot = {
-  start: Date;
-  end: Date;
-};
-
-type Params = {
-  trainerId: string;
-  initialView?: CalendarView;     // default 'week'
-  initialDate?: Date;             // default new Date()
-  slotMinutes?: number;           // default 60
-  dayStartHour?: number;          // default 6
-  dayEndHour?: number;            // default 22
-  timezone?: string;              // logical TZ for computing day windows; default 'Australia/Melbourne'
-  enabled?: boolean;              // default true; gate network calls
-};
-
-type Result = {
-  // data
-  busySlots: BusySlot[];
-  availableSlots: AvailableSlot[]; // simple complement generator per day window
-  isLoading: boolean;
-  error: string | null;
-
-  // view state expected by UniversalCalendar.tsx
-  view: CalendarView;
+export interface UseUniversalCalendarReturn {
+  // State
   currentDisplayMonth: Date;
   selectedDate: Date;
-  handleViewChange: (next: CalendarView) => void;
+  view: 'week' | 'month' | 'day';
+  availableSlots: AvailableSlot[];
+  
+  // Loading states
+  isLoading: boolean;
+  isLoadingTemplates: boolean;
+  isLoadingExceptions: boolean;
+  isLoadingSessions: boolean;
+  
+  // Error states
+  error: string | null;
+  
+  // Handlers
   handleNextMonth: () => void;
   handlePrevMonth: () => void;
-  handleDayClick: (d: Date) => void;
-
-  // useful extras
-  startDate: Date;
-  endDate: Date;
-  windowStartISO: string;
-  windowEndISO: string;
-
-  // manual refresh
-  refetch: () => Promise<void>;
-};
-
-function clampHours(date: Date, hour: number, minute = 0, second = 0, ms = 0) {
-  const d = new Date(date);
-  d.setHours(hour, minute, second, ms);
-  return d;
+  handleViewChange: (newView: 'week' | 'month' | 'day') => void;
+  handleDayClick: (date: Date) => void;
+  
+  // Data
+  templates: any[];
+  exceptions: any[];
+  sessions: any[];
 }
 
-// Generate simple hourly availability inside the configured day window,
-// and subtract any busy slots that start within the same hour.
-function generateAvailableSlots(
-  viewStart: Date,
-  viewEnd: Date,
-  dayStartHour: number,
-  dayEndHour: number,
-  slotMinutes: number,
-  busy: BusySlot[]
-): AvailableSlot[] {
-  // Map busy starts to a fast lookup key "YYYY-MM-DDTHH:mm"
-  const key = (d: Date) => {
-    const iso = d.toISOString();
-    return iso.slice(0, 16); // YYYY-MM-DDTHH:mm
-  };
-
-  const busyKeySet = new Set<string>(
-    busy.map((b) => key(new Date(b.session_date)))
-  );
-
-  const slots: AvailableSlot[] = [];
-  const dayMs = 24 * 60 * 60 * 1000;
-  for (
-    let day = startOfDay(viewStart).getTime();
-    day <= startOfDay(viewEnd).getTime();
-    day += dayMs
-  ) {
-    const dayDate = new Date(day);
-    const startWindow = clampHours(dayDate, dayStartHour);
-    const endWindow = clampHours(dayDate, dayEndHour);
-
-    for (
-      let t = startWindow.getTime();
-      t < endWindow.getTime();
-      t += slotMinutes * 60 * 1000
-    ) {
-      const s = new Date(t);
-      const e = new Date(t + slotMinutes * 60 * 1000);
-      // If there is a busy starting in this slot, skip it
-      if (!busyKeySet.has(key(s))) {
-        slots.push({ start: s, end: e });
-      }
-    }
-  }
-  return slots;
-}
-
-export default function useUniversalCalendar({
+export const useUniversalCalendar = ({
   trainerId,
-  initialView = "week",
+  initialView = 'week',
   initialDate = new Date(),
-  slotMinutes = 60,
-  dayStartHour = 6,
-  dayEndHour = 22,
-  timezone = "Australia/Melbourne", // reserved for future tz-aware boundaries
-  enabled = true,
-}: Params): Result {
-  // View & navigation state that UniversalCalendar.tsx expects:
-  const [view, setView] = useState<CalendarView>(initialView);
-  const [currentDisplayMonth, setCurrentDisplayMonth] = useState<Date>(
-    startOfMonth(initialDate)
-  );
-
-  // Derive the active time window based on view + currentDisplayMonth
-  const { startDate, endDate } = useMemo(() => {
-    if (view === "month") {
-      return {
-        startDate: startOfDay(startOfMonth(currentDisplayMonth)),
-        endDate: endOfDay(endOfMonth(currentDisplayMonth)),
-      };
-    }
-    if (view === "week") {
-      // Week starts on Monday (1). Change to 0 for Sunday if needed.
-      return {
-        startDate: startOfDay(startOfWeek(currentDisplayMonth, { weekStartsOn: 1 })),
-        endDate: endOfDay(endOfWeek(currentDisplayMonth, { weekStartsOn: 1 })),
-      };
-    }
-    // day
-    return {
-      startDate: startOfDay(currentDisplayMonth),
-      endDate: endOfDay(currentDisplayMonth),
-    };
-  }, [view, currentDisplayMonth]);
-
-  const windowStartISO = useMemo(() => startDate.toISOString(), [startDate]);
-  const windowEndISO = useMemo(() => endDate.toISOString(), [endDate]);
-
-  const [busySlots, setBusySlots] = useState<BusySlot[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  enabled = true
+}: UseUniversalCalendarProps): UseUniversalCalendarReturn => {
+  const [currentDisplayMonth, setCurrentDisplayMonth] = useState(initialDate);
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [view, setView] = useState<'week' | 'month' | 'day'>(initialView);
   const [error, setError] = useState<string | null>(null);
 
-  // Compute available slots on-the-fly from busy slots:
-  const availableSlots = useMemo(
-    () =>
-      generateAvailableSlots(
-        startDate,
-        endDate,
-        dayStartHour,
-        dayEndHour,
-        slotMinutes,
-        busySlots
-      ),
-    [startDate, endDate, dayStartHour, dayEndHour, slotMinutes, busySlots]
-  );
+  // Fetch trainer availability templates
+  const { data: templates = [], isLoading: isLoadingTemplates, error: templatesError } = useQuery({
+    queryKey: ['trainerAvailabilityTemplates', trainerId],
+    queryFn: async () => {
+      if (!trainerId) return [];
+      const { data, error } = await supabase
+        .from('trainer_availability_templates')
+        .select('day_of_week, start_time, end_time')
+        .eq('trainer_id', trainerId);
 
-  // Fetch busy slots via RPC (parameterized) for the current window
-  const abortRef = useRef<AbortController | null>(null);
-  const fetchBusy = useCallback(async () => {
-    if (!enabled) return;
-    if (!trainerId) {
-      setBusySlots([]);
-      setError("Missing trainerId");
-      return;
-    }
-    if (startDate > endDate) {
-      setBusySlots([]);
-      setError("startDate must be <= endDate");
-      return;
-    }
-
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Note: The types file is out of sync with the actual RPC function.
-      // The actual function takes parameters and returns { session_date, status }.
-      const { data, error } = await supabase.rpc(
-        "get_trainer_busy_slots",
-        {
-          p_trainer_id: trainerId,
-          p_start_date: windowStartISO,
-          p_end_date: windowEndISO,
-        } as any
-      );
       if (error) throw error;
 
-      const mapped: BusySlot[] = (data ?? []).map(
-        (row: any) => ({
-          session_date: row.session_date,
-          status: row.status,
-        })
-      );
-      setBusySlots(mapped);
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
-      setBusySlots([]);
-      setError(e?.message || "Failed to load busy slots");
-    } finally {
-      if (abortRef.current === controller) abortRef.current = null;
-      setIsLoading(false);
-    }
-  }, [trainerId, windowStartISO, windowEndISO, enabled, startDate, endDate]);
+      // Convert day_of_week from string name to number for compatibility
+      return (data || []).map(template => {
+        let dayNumber: number;
+        if (typeof template.day_of_week === 'string') {
+          switch (template.day_of_week.toLowerCase()) {
+            case 'sunday': dayNumber = 0; break;
+            case 'monday': dayNumber = 1; break;
+            case 'tuesday': dayNumber = 2; break;
+            case 'wednesday': dayNumber = 3; break;
+            case 'thursday': dayNumber = 4; break;
+            case 'friday': dayNumber = 5; break;
+            case 'saturday': dayNumber = 6; break;
+            default: 
+              console.warn(`Unknown day_of_week string: ${template.day_of_week}`);
+              return null;
+          }
+        } else {
+          dayNumber = template.day_of_week;
+        }
+        return {
+          ...template,
+          day_of_week: dayNumber
+        };
+      }).filter(Boolean);
+    },
+    enabled: enabled && !!trainerId,
+    staleTime: 60 * 1000, // Cache for 1 minute
+  });
 
+  // Fetch trainer availability exceptions
+  const { data: exceptions = [], isLoading: isLoadingExceptions, error: exceptionsError } = useQuery({
+    queryKey: ['trainerAvailabilityExceptions', trainerId, currentDisplayMonth],
+    queryFn: async () => {
+      if (!trainerId) return [];
+      
+      const startDate = startOfMonth(currentDisplayMonth);
+      const endDate = endOfMonth(currentDisplayMonth);
+      
+      const { data, error } = await supabase
+        .from('trainer_availability_exceptions')
+        .select('exception_date, start_time, end_time, is_available, exception_type')
+        .eq('trainer_id', trainerId)
+        .gte('exception_date', startDate.toISOString().split('T')[0])
+        .lte('exception_date', endDate.toISOString().split('T')[0]);
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: enabled && !!trainerId,
+    staleTime: 60 * 1000, // Cache for 1 minute
+  });
+
+  // Fetch booked sessions using secure RPC
+  const { data: sessions = [], isLoading: isLoadingSessions, error: sessionsError } = useQuery({
+    queryKey: ['trainerBusySlots', trainerId, currentDisplayMonth],
+    queryFn: async () => {
+      if (!trainerId) return [];
+      
+      const startDate = startOfMonth(currentDisplayMonth);
+      const endDate = endOfMonth(currentDisplayMonth);
+      
+      const { data, error } = await supabase.rpc('get_trainer_busy_slots');
+
+      if (error) throw error;
+      
+      // Filter to current month and transform to match expected format
+      const filteredSessions = (data || []).filter((session: any) => {
+        const sessionDate = new Date(session.session_date);
+        return sessionDate >= startDate && sessionDate <= endDate && session.trainer_id === trainerId;
+      }).map((session: any) => ({
+        session_date: session.session_date,
+        status: 'scheduled' // RPC only returns scheduled/completed sessions
+      }));
+      
+      return filteredSessions;
+    },
+    enabled: enabled && !!trainerId,
+    staleTime: 30 * 1000, // Cache for 30 seconds
+  });
+
+  // Calculate available slots using the unified availability calculation
+  const availableSlots = useMemo(() => {
+    if (!trainerId || !templates.length) return [];
+    
+    const startDate = startOfMonth(currentDisplayMonth);
+    const endDate = endOfMonth(currentDisplayMonth);
+    
+    return calculateEffectiveAvailability(
+      templates,
+      exceptions,
+      sessions,
+      startDate,
+      endDate
+    );
+  }, [trainerId, templates, exceptions, sessions, currentDisplayMonth]);
+
+  // Handle errors
   useEffect(() => {
-    fetchBusy();
-    return () => {
-      if (abortRef.current) abortRef.current.abort();
-    };
-  }, [fetchBusy]);
+    if (templatesError) {
+      setError(`Failed to load availability templates: ${templatesError.message}`);
+    } else if (exceptionsError) {
+      setError(`Failed to load availability exceptions: ${exceptionsError.message}`);
+    } else if (sessionsError) {
+      setError(`Failed to load sessions: ${sessionsError.message}`);
+    } else {
+      setError(null);
+    }
+  }, [templatesError, exceptionsError, sessionsError]);
 
-  // Navigation API expected by UniversalCalendar.tsx
-  const handleViewChange = useCallback((next: CalendarView) => {
-    setView(next);
-  }, []);
-
+  // Handlers
   const handleNextMonth = useCallback(() => {
-    if (view === "month") setCurrentDisplayMonth((d) => addMonths(d, 1));
-    else if (view === "week") setCurrentDisplayMonth((d) => addWeeks(d, 1));
-    else setCurrentDisplayMonth((d) => addDays(d, 1));
-  }, [view]);
+    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, 30));
+  }, []);
 
   const handlePrevMonth = useCallback(() => {
-    if (view === "month") setCurrentDisplayMonth((d) => addMonths(d, -1));
-    else if (view === "week") setCurrentDisplayMonth((d) => addWeeks(d, -1));
-    else setCurrentDisplayMonth((d) => addDays(d, -1));
-  }, [view]);
-
-  const handleDayClick = useCallback((day: Date) => {
-    // Keep behavior predictable: when a day is clicked in month/week, switch to 'day' view
-    // and set the current display to that date.
-    setCurrentDisplayMonth(startOfDay(day));
-    setView("day");
+    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, -30));
   }, []);
 
-  const refetch = useCallback(async () => {
-    await fetchBusy();
-  }, [fetchBusy]);
+  const handleViewChange = useCallback((newView: 'week' | 'month' | 'day') => {
+    setView(newView);
+  }, []);
+
+  const handleDayClick = useCallback((date: Date) => {
+    setSelectedDate(date);
+    setView('day');
+  }, []);
+
+  const isLoading = isLoadingTemplates || isLoadingExceptions || isLoadingSessions;
 
   return {
-    busySlots,
-    availableSlots,
-    isLoading,
-    error,
-
-    view,
+    // State
     currentDisplayMonth,
-    selectedDate: currentDisplayMonth,
-    handleViewChange,
+    selectedDate,
+    view,
+    availableSlots,
+    
+    // Loading states
+    isLoading,
+    isLoadingTemplates,
+    isLoadingExceptions,
+    isLoadingSessions,
+    
+    // Error states
+    error,
+    
+    // Handlers
     handleNextMonth,
     handlePrevMonth,
+    handleViewChange,
     handleDayClick,
-
-    startDate,
-    endDate,
-    windowStartISO,
-    windowEndISO,
-
-    refetch,
+    
+    // Data
+    templates,
+    exceptions,
+    sessions,
   };
-}
-
-// 👇 Backward-compatible named export (some files may still import { useUniversalCalendar })
-export { useUniversalCalendar };
+};

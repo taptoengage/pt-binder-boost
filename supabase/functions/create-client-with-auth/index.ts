@@ -107,7 +107,36 @@ serve(async (req) => {
 
     console.log('Created user with ID:', newUserId)
 
-    // 2. Insert a record into the public.clients table
+    // 2. Create user_roles record with 'client' role
+    const { data: roleData, error: roleError } = await supabaseAdmin
+      .from('user_roles')
+      .insert({
+        user_id: newUserId,
+        role: 'client'
+      })
+      .select()
+      .single()
+
+    if (roleError) {
+      console.error('Error creating user role:', roleError)
+      
+      // Clean up: delete the auth user if role creation failed
+      try {
+        await supabaseAdmin.auth.admin.deleteUser(newUserId)
+        console.log('Cleaned up auth user after user role creation failure')
+      } catch (cleanupError) {
+        console.error('Failed to clean up auth user:', cleanupError)
+      }
+      
+      return new Response(
+        JSON.stringify({ error: `Failed to create user role: ${roleError.message}` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    console.log('Created user role with ID:', roleData.id)
+
+    // 3. Insert a record into the public.clients table
     const { data: clientData, error: clientError } = await supabaseAdmin
       .from('clients')
       .insert({
@@ -129,12 +158,19 @@ serve(async (req) => {
     if (clientError) {
       console.error('Error creating client:', clientError)
       
-      // Clean up: delete the auth user if client creation failed
+      // Clean up: delete user_roles and auth user if client creation failed
+      try {
+        await supabaseAdmin.from('user_roles').delete().eq('user_id', newUserId)
+        console.log('Cleaned up user role after client creation failure')
+      } catch (roleCleanupError) {
+        console.error('Failed to clean up user role:', roleCleanupError)
+      }
+      
       try {
         await supabaseAdmin.auth.admin.deleteUser(newUserId)
         console.log('Cleaned up auth user after client creation failure')
-      } catch (cleanupError) {
-        console.error('Failed to clean up auth user:', cleanupError)
+      } catch (userCleanupError) {
+        console.error('Failed to clean up auth user:', userCleanupError)
       }
       
       return new Response(

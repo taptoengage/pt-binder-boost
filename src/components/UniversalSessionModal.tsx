@@ -15,7 +15,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Phone, Mail, Loader2 } from 'lucide-react';
+import { CalendarIcon, Phone, Mail, Loader2, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,6 +24,8 @@ import { useSessionOverlapCheck, validateOverlap } from '@/hooks/useSessionOverl
 import ConfirmAvailabilityOverrideModal from '@/components/ConfirmAvailabilityOverrideModal';
 import { validatePackAvailability } from '@/lib/packValidation';
 import { generateTimeOptions } from '@/lib/availabilityUtils';
+import { fetchClientTimePreferences } from '@/lib/client-preferences';
+import { ClientTimePreference, WEEKDAY_ABBREVIATIONS } from '@/types/scheduling';
 
 const timeOptions = generateTimeOptions();
 
@@ -109,7 +111,44 @@ export default function UniversalSessionModal({
   const [internalSlot, setInternalSlot] = useState<{ start: Date; end: Date } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   
+  // Phase 1: Client preferences using React Query for caching
+  const { data: clientPreferences = [] } = useQuery({
+    queryKey: ['clientTimePreferences', clientId],
+    queryFn: () => fetchClientTimePreferences(clientId!),
+    enabled: Boolean(isTrainer && currentMode === 'book' && clientId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+  
   const DEFAULT_SESSION_DURATION_MINUTES = 60;
+
+  // Phase 1: Helper function to handle preference pill clicks
+  const handlePreferencePillClick = useCallback((pref: ClientTimePreference) => {
+    const base = selectedDate ?? new Date();
+    const wd = base.getDay();
+    let addDaysOffset = (pref.weekday - wd + 7) % 7;
+
+    // If clicking a pill for "today" but time already passed, push to next week
+    const hh = Number(pref.start_time.slice(0,2));
+    const mm = Number(pref.start_time.slice(3,5));
+    const candidateToday = new Date(base);
+    candidateToday.setHours(hh, mm, 0, 0);
+    if (addDaysOffset === 0 && candidateToday <= new Date()) addDaysOffset = 7;
+
+    const target = new Date(base);
+    target.setDate(target.getDate() + addDaysOffset);
+    target.setHours(hh, mm, 0, 0);
+
+    setSelectedDate(target);
+
+    const selectedService = availableServices.find(s => s.id === selectedServiceTypeId);
+    const mins = Number((selectedService as any)?.duration_minutes) || DEFAULT_SESSION_DURATION_MINUTES;
+    const start = target;
+    const end = addMinutes(new Date(target), mins);
+
+    setInternalSlot({ start, end });
+    setSelectedStartTime(pref.start_time.slice(0,5));
+  }, [selectedDate, selectedServiceTypeId, availableServices]);
 
   // Initialize form - MUST be called unconditionally
   const form = useForm<EditSessionFormData>({
@@ -345,6 +384,7 @@ export default function UniversalSessionModal({
 
         if (servicesError) throw servicesError;
         setAvailableServices(services || []);
+
 
       } catch (error: any) {
         console.error('Error fetching client eligibility data:', error.message);
@@ -1439,10 +1479,37 @@ export default function UniversalSessionModal({
                     ) : null}
                   </SelectContent>
                 </Select>
-                {bookableTimeSlots.length === 0 && (
-                  <p className="text-muted-foreground text-sm">No available time slots</p>
-                )}
-              </div>
+                 {bookableTimeSlots.length === 0 && (
+                   <p className="text-muted-foreground text-sm">No available time slots</p>
+                 )}
+                 
+                 {/* Phase 1: Client Preference Pills for Trainers */}
+                 {isTrainer && clientPreferences.length > 0 && (
+                   <div className="mt-3 space-y-2">
+                     <Label className="text-sm text-muted-foreground">Client's Preferred Times</Label>
+                     <div className="flex flex-wrap gap-2">
+                       {clientPreferences.map((pref) => (
+                         <Button
+                           key={pref.id}
+                           variant="outline"
+                           size="sm"
+                           onClick={() => handlePreferencePillClick(pref)}
+                           className="h-8 px-3 text-xs hover:bg-primary hover:text-primary-foreground"
+                         >
+                           <Clock className="w-3 h-3 mr-1" />
+                           {WEEKDAY_ABBREVIATIONS[pref.weekday as keyof typeof WEEKDAY_ABBREVIATIONS]} {pref.start_time.slice(0, 5)}
+                           {pref.flex_minutes > 0 && (
+                             <span className="ml-1 text-xs opacity-70">±{pref.flex_minutes}min</span>
+                           )}
+                         </Button>
+                       ))}
+                     </div>
+                     <p className="text-xs text-muted-foreground">
+                       Click a preferred time to auto-fill the booking form
+                     </p>
+                   </div>
+                 )}
+               </div>
 
               <div className="space-y-2">
                 <Label>Service Type</Label>
