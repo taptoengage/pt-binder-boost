@@ -15,6 +15,7 @@ import BlockAvailabilityModal from '@/components/BlockAvailabilityModal';
 import ScheduleListView from '@/components/schedule/ScheduleListView';
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from '@/hooks/use-toast';
+import { useBusySlots } from "@/hooks/useBusySlots";
 
 // Helper to generate 30-minute time slots for a day
 const generateDayTimeSlots = () => {
@@ -234,6 +235,35 @@ export default function ViewSchedule() {
   const [isSessionDetailModalOpen, setIsSessionDetailModalOpen] = useState(false);
   const [selectedSessionForModal, setSelectedSessionForModal] = useState<any | null>(null);
   const [isBlockAvailabilityModalOpen, setIsBlockAvailabilityModalOpen] = useState(false);
+
+  // Compute visible window based on current view (same logic as client calendar)
+  const weekStartsOn: 0 | 1 = 1; // Monday start
+
+  const windowStart = useMemo(() => 
+    currentView === "week"
+      ? startOfWeek(selectedDate, { weekStartsOn })
+      : startOfMonth(selectedDate),
+    [currentView, selectedDate]
+  );
+
+  const windowEnd = useMemo(() =>
+    currentView === "week"
+      ? endOfWeek(selectedDate, { weekStartsOn })
+      : endOfMonth(selectedDate),
+    [currentView, selectedDate]
+  );
+
+  // Fetch busy slots via RPC hook (unified with client calendar)
+  const trainerId = user?.id;
+  const { busy, loading: busyLoading, error: busyError } =
+    useBusySlots(trainerId, windowStart, windowEnd, Boolean(trainerId));
+
+  // Temporary diagnostics for busy RPC data
+  console.log("[TrainerCalendar] Busy RPC window", {
+    startISO: windowStart.toISOString(),
+    endISO: windowEnd.toISOString(),
+    sample: busy.slice(0, 3),
+  });
 
   // Fetch all trainer's sessions
   const { data: allTrainerSessions, isLoading: isLoadingSessions, error: sessionsError } = useQuery({
