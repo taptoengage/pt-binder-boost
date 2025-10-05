@@ -70,12 +70,12 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
   const windowStart =
     view === "week"
-      ? startOfWeek(currentDisplayMonth, { weekStartsOn })
+      ? startOfWeek(selectedDate, { weekStartsOn })
       : startOfMonth(currentDisplayMonth);
 
   const windowEnd =
     view === "week"
-      ? endOfWeek(currentDisplayMonth, { weekStartsOn })
+      ? endOfWeek(selectedDate, { weekStartsOn })
       : endOfMonth(currentDisplayMonth);
 
   // Fetch busy slots via RPC hook
@@ -292,7 +292,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     };
 
     fetchAndProcessAvailability();
-  }, [trainerId, windowStart, windowEnd, busy, combineAndCalculateAvailability]); // Dependencies for useEffect
+  }, [trainerId, windowStart, windowEnd, busy, selectedDate, combineAndCalculateAvailability]); // Dependencies for useEffect
 
   const handleNextMonth = () => {
     setCurrentDisplayMonth(prevMonth => addDays(prevMonth, 30));
