@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, addDays, setHours, setMinutes, isSameDay, startOfWeek, isToday, isAfter, isBefore, addMinutes, isWithinInterval, addWeeks, subWeeks } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, addDays, setHours, setMinutes, isSameDay, startOfWeek, endOfWeek, isToday, isAfter, isBefore, addMinutes, isWithinInterval, addWeeks, subWeeks } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -11,6 +11,7 @@ import UniversalSessionModal from '@/components/UniversalSessionModal';
 import ScheduleListView from '@/components/schedule/ScheduleListView';
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSwipeGesture } from "@/hooks/useSwipeGesture";
+import { useBusySlots } from "@/hooks/useBusySlots";
 
 // Helper functions for mobile week view
 const getSlotsForDate = (date: Date, slots: { start: Date; end: Date }[]) => {
@@ -63,6 +64,23 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   const [lastSelectedDate, setLastSelectedDate] = useState<Date | null>(null);
   const isMobile = useIsMobile();
   const tilesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Compute visible window based on current view
+  const weekStartsOn: 0 | 1 = 1; // Monday start (match Trainer view)
+
+  const windowStart =
+    view === "week"
+      ? startOfWeek(currentDisplayMonth, { weekStartsOn })
+      : startOfMonth(currentDisplayMonth);
+
+  const windowEnd =
+    view === "week"
+      ? endOfWeek(currentDisplayMonth, { weekStartsOn })
+      : endOfMonth(currentDisplayMonth);
+
+  // Fetch busy slots via RPC hook
+  const { busy, loading: busyLoading, error: busyError } =
+    useBusySlots(trainerId, windowStart, windowEnd, Boolean(trainerId));
 
   // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
   const getDayNumberFromString = (dayName: string): number | undefined => {
@@ -195,11 +213,18 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
       setError(null);
 
       try {
-        const startDate = startOfMonth(currentDisplayMonth);
-        const endDate = endOfMonth(currentDisplayMonth);
+        const startDate = windowStart;
+        const endDate = windowEnd;
 
         // DEBUG LOG 3: Log the date range for the query
         console.log('DEBUG: Fetching availability for date range:', { start: startDate.toISOString(), end: endDate.toISOString() });
+
+        // Temporary diagnostics for busy RPC data
+        console.log("[ClientCalendar] Busy RPC window", {
+          startISO: windowStart.toISOString(),
+          endISO: windowEnd.toISOString(),
+          sample: busy.slice(0, 3),
+        });
 
         // 1. Fetch Templates
         const { data: templatesData, error: templatesError } = await supabase
@@ -238,25 +263,18 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
         if (exceptionsError) throw exceptionsError;
 
-        // 3. Fetch all booked sessions for the trainer (across ALL clients)
-        // This now works due to the new RLS policy that allows clients to see
-        // basic session timing data for their trainer's sessions
-        const { data: sessions, error: sessionsError } = await supabase
-          .from('sessions')
-          .select('session_date, status')
-          .eq('trainer_id', trainerId)
-          .not('status', 'in', '("cancelled", "no-show")')
-          .gte('session_date', startDate.toISOString())
-          .lte('session_date', endDate.toISOString());
-
-        if (sessionsError) throw sessionsError;
-        setBookedSessions(sessions || []);
+        // 3. Use busy slots from RPC hook instead of direct sessions read
+        const sessions = busy.map(b => ({
+          session_date: b.session_date,
+          status: b.status
+        }));
+        setBookedSessions(sessions);
 
         // 4. Combine and Calculate Final Available Slots
         const processedSlots = combineAndCalculateAvailability(
           templates,
           exceptions || [],
-          sessions || [],
+          sessions,
           startDate,
           endDate
         );
@@ -274,7 +292,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     };
 
     fetchAndProcessAvailability();
-  }, [trainerId, currentDisplayMonth, combineAndCalculateAvailability]); // Dependencies for useEffect
+  }, [trainerId, windowStart, windowEnd, busy, combineAndCalculateAvailability]); // Dependencies for useEffect
 
   const handleNextMonth = () => {
     setCurrentDisplayMonth(prevMonth => addDays(prevMonth, 30));
