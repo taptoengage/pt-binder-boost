@@ -78,9 +78,13 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
       ? endOfWeek(selectedDate, { weekStartsOn })
       : endOfMonth(currentDisplayMonth);
 
-  // Fetch busy slots via RPC hook
+  // UUID validation for trainerId
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const isValidTrainerId = trainerId && UUID_RE.test(String(trainerId));
+
+  // Fetch busy slots via RPC hook - only enabled when we have a valid UUID
   const { busy, loading: busyLoading, error: busyError, refetch: refetchBusy } =
-    useBusySlots(trainerId, windowStart, windowEnd, Boolean(trainerId));
+    useBusySlots(trainerId, windowStart, windowEnd, Boolean(isValidTrainerId));
 
   // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
   const getDayNumberFromString = (dayName: string): number | undefined => {
@@ -201,11 +205,13 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
       // DEBUG LOG 1: Check the trainerId prop received
       console.log('DEBUG: Calendar received trainerId:', trainerId);
 
-      if (!trainerId) {
+      if (!isValidTrainerId) {
         setAvailableSlots([]);
         setIsLoadingAvailability(false);
-        // DEBUG LOG 2: Log if trainerId is null
-        console.log('DEBUG: Calendar received null trainerId, stopping availability fetch.');
+        console.log('[ClientBookingCalendar] Invalid or missing trainerId, stopping availability fetch', {
+          trainerId,
+          isValid: isValidTrainerId
+        });
         return;
       }
 

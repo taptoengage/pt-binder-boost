@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { GetTrainerBusySlot, GetTrainerBusySlotsArgs } from "@/types/rpc";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export function useBusySlots(
   trainerId: string | null | undefined,
   windowStart: Date,
@@ -15,18 +17,40 @@ export function useBusySlots(
 
   const startISO = useMemo(() => windowStart.toISOString(), [windowStart]);
   const endISO   = useMemo(() => windowEnd.toISOString(),   [windowEnd]);
+  
+  const isValid = useMemo(() => {
+    return Boolean(
+      trainerId && 
+      UUID_RE.test(String(trainerId)) &&
+      startISO &&
+      endISO
+    );
+  }, [trainerId, startISO, endISO]);
 
   const fetchBusy = useCallback(async () => {
-    if (!enabled || !trainerId) return;
+    if (!enabled || !isValid) {
+      console.log("[useBusySlots] Skipping fetch - validation failed", {
+        enabled,
+        isValid,
+        trainerId,
+        hasStartISO: Boolean(startISO),
+        hasEndISO: Boolean(endISO)
+      });
+      return;
+    }
     setLoading(true);
     setError(null);
 
+    const payload = {
+      p_trainer_id: trainerId,
+      p_start_date: startISO,
+      p_end_date: endISO,
+    };
+    
+    console.log("[useBusySlots] Calling RPC with payload", payload);
+
     const { data, error } = await supabase
-      .rpc("get_trainer_busy_slots", {
-        p_trainer_id: trainerId,
-        p_start_date: startISO,
-        p_end_date: endISO,
-      });
+      .rpc("get_trainer_busy_slots", payload);
 
     if (error) {
       console.error("[useBusySlots] RPC error", { error });
@@ -38,7 +62,7 @@ export function useBusySlots(
     
     setBusy((data as GetTrainerBusySlot[]) ?? []);
     setLoading(false);
-  }, [trainerId, startISO, endISO, enabled]);
+  }, [enabled, isValid, trainerId, startISO, endISO]);
 
   useEffect(() => {
     fetchBusy();
