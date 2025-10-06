@@ -123,7 +123,15 @@ export const useUniversalCalendar = ({
       const startDate = startOfMonth(currentDisplayMonth);
       const endDate = endOfMonth(currentDisplayMonth);
       
-      const { data, error } = await supabase.rpc('get_trainer_busy_slots');
+      const payload = {
+        p_trainer_id: trainerId,
+        p_start_date: startDate.toISOString(),
+        p_end_date: endDate.toISOString(),
+      };
+      
+      console.log("[useUniversalCalendar] Calling RPC with payload", payload);
+      
+      const { data, error } = await supabase.rpc('get_trainer_busy_slots', payload);
 
       if (error) throw error;
       

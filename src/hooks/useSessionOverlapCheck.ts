@@ -1,7 +1,7 @@
 // src/hooks/useSessionOverlapCheck.ts
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { addMinutes, setHours, setMinutes } from 'date-fns';
+import { addMinutes, setHours, setMinutes, startOfDay, endOfDay } from 'date-fns';
 import { z } from 'zod'; // Import z for Zod refinement context
 
 const DEFAULT_SESSION_DURATION_MINUTES = 60; // Universal duration assumption
@@ -39,7 +39,19 @@ export const useSessionOverlapCheck = ({
       const proposedStart = setMinutes(setHours(proposedDate, hours), minutes);
       const proposedEnd = addMinutes(proposedStart, DEFAULT_SESSION_DURATION_MINUTES);
 
-      const { data, error } = await supabase.rpc('get_trainer_busy_slots');
+      // Calculate date range for RPC
+      const rangeStart = startOfDay(proposedDate);
+      const rangeEnd = endOfDay(proposedDate);
+
+      const payload = {
+        p_trainer_id: trainerId,
+        p_start_date: rangeStart.toISOString(),
+        p_end_date: rangeEnd.toISOString(),
+      };
+      
+      console.log("[useSessionOverlapCheck] Calling RPC with payload", payload);
+
+      const { data, error } = await supabase.rpc('get_trainer_busy_slots', payload);
 
       if (error) {
         console.error("Error fetching trainer busy slots:", error);
