@@ -79,7 +79,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
       : endOfMonth(currentDisplayMonth);
 
   // Fetch busy slots via RPC hook
-  const { busy, loading: busyLoading, error: busyError } =
+  const { busy, loading: busyLoading, error: busyError, refetch: refetchBusy } =
     useBusySlots(trainerId, windowStart, windowEnd, Boolean(trainerId));
 
   // Helper function to map string day names to numbers (0=Sun, 1=Mon...)
@@ -206,6 +206,13 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
         setIsLoadingAvailability(false);
         // DEBUG LOG 2: Log if trainerId is null
         console.log('DEBUG: Calendar received null trainerId, stopping availability fetch.');
+        return;
+      }
+
+      // Stop loading if busyError exists
+      if (busyError) {
+        setIsLoadingAvailability(false);
+        setError(busyError);
         return;
       }
 
@@ -637,8 +644,16 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   if (error) {
     return (
       <Card className="mb-8">
-        <CardContent className="p-4 text-destructive">
-          Error: {error}
+        <CardContent className="p-4 flex flex-col gap-3">
+          <p className="text-destructive">Error: {error}</p>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={refetchBusy}
+            className="w-fit"
+          >
+            Try Again
+          </Button>
         </CardContent>
       </Card>
     );

@@ -23,17 +23,20 @@ export function useBusySlots(
 
     const { data, error } = await supabase
       .rpc("get_trainer_busy_slots", {
-        p_trainer_id: String(trainerId),
+        p_trainer_id: trainerId,
         p_start_date: startISO,
         p_end_date: endISO,
       });
 
     if (error) {
+      console.error("[useBusySlots] RPC error", { error });
       setError(error.message || "Failed to fetch busy slots");
       setBusy([]);
-    } else {
-      setBusy((data as GetTrainerBusySlot[]) ?? []);
+      setLoading(false);
+      return;
     }
+    
+    setBusy((data as GetTrainerBusySlot[]) ?? []);
     setLoading(false);
   }, [trainerId, startISO, endISO, enabled]);
 
