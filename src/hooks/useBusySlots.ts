@@ -47,7 +47,7 @@ export function useBusySlots(
       p_end_date: endISO,
     };
     
-    console.log("[useBusySlots] Calling RPC with payload", payload);
+    console.log("[useBusySlots] FETCH", payload);
 
     const { data, error } = await supabase
       .rpc("get_trainer_busy_slots", payload);
@@ -62,7 +62,7 @@ export function useBusySlots(
     
     setBusy((data as GetTrainerBusySlot[]) ?? []);
     setLoading(false);
-  }, [enabled, isValid, trainerId, startISO, endISO]);
+  }, [trainerId, startISO, endISO, enabled, isValid]);
 
   useEffect(() => {
     fetchBusy();

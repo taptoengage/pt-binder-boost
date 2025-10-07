@@ -68,15 +68,19 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   // Compute visible window based on current view
   const weekStartsOn: 0 | 1 = 1; // Monday start (match Trainer view)
 
-  const windowStart =
+  const windowStart = useMemo(() =>
     view === "week"
       ? startOfWeek(selectedDate, { weekStartsOn })
-      : startOfMonth(currentDisplayMonth);
+      : startOfMonth(currentDisplayMonth),
+    [view, selectedDate, currentDisplayMonth]
+  );
 
-  const windowEnd =
+  const windowEnd = useMemo(() =>
     view === "week"
       ? endOfWeek(selectedDate, { weekStartsOn })
-      : endOfMonth(currentDisplayMonth);
+      : endOfMonth(currentDisplayMonth),
+    [view, selectedDate, currentDisplayMonth]
+  );
 
   // UUID validation for trainerId
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -202,9 +206,6 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
   useEffect(() => {
     const fetchAndProcessAvailability = async () => {
-      // DEBUG LOG 1: Check the trainerId prop received
-      console.log('DEBUG: Calendar received trainerId:', trainerId);
-
       if (!isValidTrainerId) {
         setAvailableSlots([]);
         setIsLoadingAvailability(false);
@@ -229,15 +230,8 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
         const startDate = windowStart;
         const endDate = windowEnd;
 
-        // DEBUG LOG 3: Log the date range for the query
-        console.log('DEBUG: Fetching availability for date range:', { start: startDate.toISOString(), end: endDate.toISOString() });
-
-        // Temporary diagnostics for busy RPC data
-        console.log("[ClientCalendar] Busy RPC window", {
-          startISO: windowStart.toISOString(),
-          endISO: windowEnd.toISOString(),
-          sample: busy.slice(0, 3),
-        });
+        // Temporary diagnostics
+        console.log("[ClientCalendar] Window", windowStart.toISOString(), windowEnd.toISOString());
 
         // 1. Fetch Templates
         const { data: templatesData, error: templatesError } = await supabase
@@ -305,7 +299,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     };
 
     fetchAndProcessAvailability();
-  }, [trainerId, windowStart, windowEnd, busy, selectedDate, combineAndCalculateAvailability]); // Dependencies for useEffect
+  }, [trainerId, windowStart, windowEnd, busy, combineAndCalculateAvailability, isValidTrainerId, busyError]); // Stable deps only
 
   const handleNextMonth = () => {
     setCurrentDisplayMonth(prevMonth => addDays(prevMonth, 30));
