@@ -368,8 +368,22 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     });
   }, []);
 
-  // Performance optimization: memoize week days and slots by day
-  const weekDays = useMemo(() => getDisplayedWeek(selectedDate), [selectedDate]);
+  // Performance optimization: canonical week days from selectedDate - SINGLE SOURCE OF TRUTH
+  const weekDays = useMemo(() => {
+    if (view !== 'week') return [];
+    const start = windowStart; // already memoized from selectedDate
+    const days: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      days.push(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
+    }
+    console.log("[WeekNav]", {
+      view,
+      selectedDate: selectedDate.toISOString(),
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString()
+    });
+    return days;
+  }, [view, windowStart, selectedDate]);
   
   const slotsByDay = useMemo(() => {
     const byDay: Record<string, {count: number; slots: {start: Date; end: Date}[]}> = {};
@@ -398,8 +412,9 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
   // Mobile Week Header Component
   const MobileWeekHeader = () => {
-    const days = getDisplayedWeek(selectedDate);
-    const label = `${format(days[0], "MMM dd")} – ${format(days[6], "MMM dd, yyyy")}`;
+    const label = weekDays.length > 0 
+      ? `${format(weekDays[0], "MMM dd")} – ${format(weekDays[6], "MMM dd, yyyy")}`
+      : '';
 
     return (
       <div className="sticky top-0 z-10 bg-background/90 backdrop-blur border-b">
@@ -503,8 +518,9 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   };
 
   const renderMobileWeekView = () => {
-    const days = getDisplayedWeek(currentDisplayMonth);
-    const label = `${format(days[0], "MMM dd")} – ${format(days[6], "MMM dd, yyyy")}`;
+    const label = weekDays.length > 0 
+      ? `${format(weekDays[0], "MMM dd")} – ${format(weekDays[6], "MMM dd, yyyy")}`
+      : '';
 
     const handleSelectDay = (date: Date) => {
       setSelectedDate(date);
@@ -544,8 +560,10 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
       return renderMobileWeekView();
     }
 
-    const weekStart = startOfWeek(currentDisplayMonth, { weekStartsOn: 1 }); // 1 = Monday
-    const daysOfWeek = eachDayOfInterval({ start: weekStart, end: addDays(weekStart, 6) });
+    // Desktop week view - use canonical weekDays from selectedDate
+    const label = weekDays.length > 0 
+      ? `${format(weekDays[0], 'MMM dd')} - ${format(weekDays[6], 'MMM dd, yyyy')}`
+      : '';
 
     return (
       <div className="space-y-4">
@@ -561,7 +579,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
             Previous
           </Button>
           <h3 className="text-lg font-semibold">
-            {format(weekStart, 'MMM dd')} - {format(addDays(weekStart, 6), 'MMM dd, yyyy')}
+            {label}
           </h3>
           <Button
             variant="outline"
@@ -574,10 +592,10 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
           </Button>
         </div>
         
-        {/* Week Grid */}
-        <div className="grid grid-cols-7 gap-2 h-96">
-          {daysOfWeek.map(day => (
-            <div key={format(day, 'yyyy-MM-dd')} className="border rounded-lg p-2 bg-card">
+        {/* Week Grid - keyed to force re-render per week change */}
+        <div key={`week-${windowStart.toISOString()}`} className="grid grid-cols-7 gap-2 h-96">
+          {weekDays.map(day => (
+            <div key={day.toISOString()} className="border rounded-lg p-2 bg-card">
               <div className={`text-sm font-medium mb-2 ${isToday(day) ? 'text-primary' : 'text-muted-foreground'}`}>
                 {format(day, 'E d')}
               </div>
