@@ -691,6 +691,10 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
   return (
     <Card className="mb-8">
+      <CardHeader>
+        <CardTitle>Book a Session</CardTitle>
+        <CardDescription>View your trainer's available time slots.</CardDescription>
+      </CardHeader>
       <CardContent>
         {/* View toggles */}
         <div className="flex justify-center gap-2 mb-4">
