@@ -301,16 +301,34 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     fetchAndProcessAvailability();
   }, [trainerId, windowStart, windowEnd, busy, combineAndCalculateAvailability, isValidTrainerId, busyError]); // Stable deps only
 
-  const handleNextMonth = () => {
-    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, 30));
+  const handleNext = () => {
+    if (view === "week") {
+      setSelectedDate(addWeeks(selectedDate, 1));
+    } else {
+      setCurrentDisplayMonth(addDays(currentDisplayMonth, 30));
+    }
+    console.log("[Nav] Next", { view, selectedDate: selectedDate.toISOString(), currentDisplayMonth: currentDisplayMonth.toISOString() });
   };
 
-  const handlePrevMonth = () => {
-    setCurrentDisplayMonth(prevMonth => addDays(prevMonth, -30));
+  const handlePrev = () => {
+    if (view === "week") {
+      setSelectedDate(subWeeks(selectedDate, 1));
+    } else {
+      setCurrentDisplayMonth(addDays(currentDisplayMonth, -30));
+    }
+    console.log("[Nav] Prev", { view, selectedDate: selectedDate.toISOString(), currentDisplayMonth: currentDisplayMonth.toISOString() });
   };
 
   const handleViewChange = (newView: 'week' | 'month' | 'day') => {
-    setView(newView);
+    if (view !== newView) {
+      if (newView === 'week') {
+        setSelectedDate(startOfWeek(selectedDate || currentDisplayMonth, { weekStartsOn }));
+      }
+      if (newView === 'month') {
+        setCurrentDisplayMonth(startOfMonth(selectedDate || currentDisplayMonth));
+      }
+      setView(newView);
+    }
   };
 
   // Handler to switch to a specific day view
@@ -326,7 +344,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   };
 
   const handlePrevWeek = useCallback(() => {
-    setCurrentDisplayMonth(prevDate => subWeeks(prevDate, 1));
+    setSelectedDate(prevDate => subWeeks(prevDate, 1));
     // Scroll to top after week change
     requestAnimationFrame(() => {
       tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -334,7 +352,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   }, []);
 
   const handleNextWeek = useCallback(() => {
-    setCurrentDisplayMonth(prevDate => addWeeks(prevDate, 1));
+    setSelectedDate(prevDate => addWeeks(prevDate, 1));
     // Scroll to top after week change
     requestAnimationFrame(() => {
       tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -342,14 +360,16 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
   }, []);
 
   const handleTodayJump = useCallback(() => {
-    setCurrentDisplayMonth(new Date());
+    const today = new Date();
+    setSelectedDate(today);
+    setCurrentDisplayMonth(today);
     requestAnimationFrame(() => {
       tilesContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     });
   }, []);
 
   // Performance optimization: memoize week days and slots by day
-  const weekDays = useMemo(() => getDisplayedWeek(currentDisplayMonth), [currentDisplayMonth]);
+  const weekDays = useMemo(() => getDisplayedWeek(selectedDate), [selectedDate]);
   
   const slotsByDay = useMemo(() => {
     const byDay: Record<string, {count: number; slots: {start: Date; end: Date}[]}> = {};
@@ -378,7 +398,7 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
 
   // Mobile Week Header Component
   const MobileWeekHeader = () => {
-    const days = getDisplayedWeek(currentDisplayMonth);
+    const days = getDisplayedWeek(selectedDate);
     const label = `${format(days[0], "MMM dd")} – ${format(days[6], "MMM dd, yyyy")}`;
 
     return (
