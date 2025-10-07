@@ -258,13 +258,6 @@ export default function ViewSchedule() {
   const { busy, loading: busyLoading, error: busyError } =
     useBusySlots(trainerId, windowStart, windowEnd, Boolean(trainerId));
 
-  // Temporary diagnostics for busy RPC data
-  console.log("[TrainerCalendar] Busy RPC window", {
-    startISO: windowStart.toISOString(),
-    endISO: windowEnd.toISOString(),
-    sample: busy.slice(0, 3),
-  });
-
   // Fetch all trainer's sessions
   const { data: allTrainerSessions, isLoading: isLoadingSessions, error: sessionsError } = useQuery({
     queryKey: ['trainerSessions', user?.id],

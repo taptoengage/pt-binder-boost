@@ -129,8 +129,6 @@ export const useUniversalCalendar = ({
         p_end_date: endDate.toISOString(),
       };
       
-      console.log("[useUniversalCalendar] Calling RPC with payload", payload);
-      
       const { data, error } = await supabase.rpc('get_trainer_busy_slots', payload);
 
       if (error) throw error;

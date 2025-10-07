@@ -48,8 +48,6 @@ export const useSessionOverlapCheck = ({
         p_start_date: rangeStart.toISOString(),
         p_end_date: rangeEnd.toISOString(),
       };
-      
-      console.log("[useSessionOverlapCheck] Calling RPC with payload", payload);
 
       const { data, error } = await supabase.rpc('get_trainer_busy_slots', payload);
 

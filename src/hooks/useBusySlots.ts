@@ -29,13 +29,6 @@ export function useBusySlots(
 
   const fetchBusy = useCallback(async () => {
     if (!enabled || !isValid) {
-      console.log("[useBusySlots] Skipping fetch - validation failed", {
-        enabled,
-        isValid,
-        trainerId,
-        hasStartISO: Boolean(startISO),
-        hasEndISO: Boolean(endISO)
-      });
       return;
     }
     setLoading(true);
@@ -46,8 +39,6 @@ export function useBusySlots(
       p_start_date: startISO,
       p_end_date: endISO,
     };
-    
-    console.log("[useBusySlots] FETCH", payload);
 
     const { data, error } = await supabase
       .rpc("get_trainer_busy_slots", payload);

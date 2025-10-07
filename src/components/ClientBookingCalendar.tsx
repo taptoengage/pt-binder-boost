@@ -307,7 +307,6 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     } else {
       setCurrentDisplayMonth(addDays(currentDisplayMonth, 30));
     }
-    console.log("[Nav] Next", { view, selectedDate: selectedDate.toISOString(), currentDisplayMonth: currentDisplayMonth.toISOString() });
   };
 
   const handlePrev = () => {
@@ -316,7 +315,6 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     } else {
       setCurrentDisplayMonth(addDays(currentDisplayMonth, -30));
     }
-    console.log("[Nav] Prev", { view, selectedDate: selectedDate.toISOString(), currentDisplayMonth: currentDisplayMonth.toISOString() });
   };
 
   const handleViewChange = (newView: 'week' | 'month' | 'day') => {
@@ -376,12 +374,6 @@ export default function ClientBookingCalendar({ trainerId, clientId }: ClientBoo
     for (let i = 0; i < 7; i++) {
       days.push(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
     }
-    console.log("[WeekNav]", {
-      view,
-      selectedDate: selectedDate.toISOString(),
-      windowStart: windowStart.toISOString(),
-      windowEnd: windowEnd.toISOString()
-    });
     return days;
   }, [view, windowStart, selectedDate]);
   
