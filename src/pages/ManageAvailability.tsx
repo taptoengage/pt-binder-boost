@@ -16,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { format } from 'date-fns';
+import { format, startOfDay, isBefore } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { generateTimeOptions } from '@/lib/availabilityUtils';
 
@@ -152,6 +152,30 @@ export default function ManageAvailability() {
     if (!recurringTemplates) return [];
     return [...recurringTemplates].sort((a, b) => dayOrder[a.day_of_week] - dayOrder[b.day_of_week]);
   }, [recurringTemplates]);
+
+  // Split exceptions into upcoming and past
+  const today = useMemo(() => startOfDay(new Date()), []);
+
+  const { upcomingExceptions, pastExceptions } = useMemo(() => {
+    if (!exceptions) return { upcomingExceptions: [], pastExceptions: [] };
+    
+    const upcoming: typeof exceptions = [];
+    const past: typeof exceptions = [];
+    
+    exceptions.forEach(exception => {
+      const exceptionDate = startOfDay(new Date(exception.exception_date));
+      if (isBefore(exceptionDate, today)) {
+        past.push(exception);
+      } else {
+        upcoming.push(exception);
+      }
+    });
+    
+    // Sort past exceptions descending (most recent first)
+    past.sort((a, b) => new Date(b.exception_date).getTime() - new Date(a.exception_date).getTime());
+    
+    return { upcomingExceptions: upcoming, pastExceptions: past };
+  }, [exceptions, today]);
 
   // Handle adding a new recurring slot
   const handleAddTemplateSubmit = async (data: RecurringAvailabilityFormData) => {
