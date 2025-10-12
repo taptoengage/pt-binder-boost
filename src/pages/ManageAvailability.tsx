@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { DashboardNavigation } from '@/components/Navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { ArrowLeft, Loader2, Trash2, Plus, CalendarIcon } from 'lucide-react';
+import { ArrowLeft, Loader2, Trash2, Plus, CalendarIcon, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -15,6 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { format, startOfDay, isBefore } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -596,38 +597,84 @@ export default function ManageAvailability() {
               </Form>
 
               {/* List of Existing Exceptions */}
-              <h3 className="text-lg font-semibold mb-2 mt-6">My Current Adjustments</h3>
               {isLoadingExceptions ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-primary" />
                   <span className="ml-2 text-muted-foreground">Loading adjustments...</span>
                 </div>
-              ) : exceptions && exceptions.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">No one-off adjustments set up yet.</p>
               ) : (
-                <div className="space-y-3">
-                  {exceptions?.map(exception => (
-                    <Card key={exception.id} className="flex items-center justify-between p-3">
-                      <div>
-                        <p className="font-semibold">{format(new Date(exception.exception_date), 'PPP')}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {exception.exception_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                          {(exception.start_time && exception.end_time) && ` (${exception.start_time} - ${exception.end_time})`}
-                        </p>
-                        {exception.notes && (
-                          <p className="text-xs text-muted-foreground">Notes: {exception.notes}</p>
-                        )}
+                <>
+                  {/* Upcoming Adjustments - Always Visible */}
+                  <div className="space-y-3 mt-6">
+                    <h3 className="text-lg font-semibold mb-2">Upcoming Adjustments</h3>
+                    {upcomingExceptions.length === 0 ? (
+                      <p className="text-muted-foreground text-sm py-4">
+                        No upcoming adjustments scheduled.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {upcomingExceptions.map(exception => (
+                          <Card key={exception.id} className="flex items-center justify-between p-3">
+                            <div>
+                              <p className="font-semibold">{format(new Date(exception.exception_date), 'PPP')}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {exception.exception_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                {(exception.start_time && exception.end_time) && ` (${exception.start_time} - ${exception.end_time})`}
+                              </p>
+                              {exception.notes && (
+                                <p className="text-xs text-muted-foreground">Notes: {exception.notes}</p>
+                              )}
+                            </div>
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              onClick={() => handleDeleteException(exception.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </Card>
+                        ))}
                       </div>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        onClick={() => handleDeleteException(exception.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </Card>
-                  ))}
-                </div>
+                    )}
+                  </div>
+
+                  {/* Past Adjustments - Collapsible */}
+                  {pastExceptions.length > 0 && (
+                    <Collapsible className="mt-6">
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" className="w-full justify-between">
+                          <span className="text-sm font-medium">
+                            Past Adjustments ({pastExceptions.length})
+                          </span>
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="space-y-2 mt-2">
+                        {pastExceptions.map(exception => (
+                          <Card key={exception.id} className="flex items-center justify-between p-3">
+                            <div>
+                              <p className="font-semibold">{format(new Date(exception.exception_date), 'PPP')}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {exception.exception_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                {(exception.start_time && exception.end_time) && ` (${exception.start_time} - ${exception.end_time})`}
+                              </p>
+                              {exception.notes && (
+                                <p className="text-xs text-muted-foreground">Notes: {exception.notes}</p>
+                              )}
+                            </div>
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              onClick={() => handleDeleteException(exception.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </Card>
+                        ))}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
