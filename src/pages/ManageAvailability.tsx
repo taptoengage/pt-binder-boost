@@ -651,15 +651,15 @@ export default function ManageAvailability() {
                       </CollapsibleTrigger>
                       <CollapsibleContent className="space-y-2 mt-2">
                         {pastExceptions.map(exception => (
-                          <Card key={exception.id} className="flex items-center justify-between p-3">
-                            <div>
+                          <Card key={exception.id} className="flex items-center justify-between p-3 opacity-75">
+                            <div className="text-muted-foreground">
                               <p className="font-semibold">{format(new Date(exception.exception_date), 'PPP')}</p>
-                              <p className="text-sm text-muted-foreground">
+                              <p className="text-sm">
                                 {exception.exception_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                                 {(exception.start_time && exception.end_time) && ` (${exception.start_time} - ${exception.end_time})`}
                               </p>
                               {exception.notes && (
-                                <p className="text-xs text-muted-foreground">Notes: {exception.notes}</p>
+                                <p className="text-xs">Notes: {exception.notes}</p>
                               )}
                             </div>
                             <Button
