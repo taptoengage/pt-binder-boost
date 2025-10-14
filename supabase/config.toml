@@ -11,3 +11,10 @@ verify_jwt = false
 
 [functions.send-session-reminders.schedules.reminder5min]
 cron = "*/5 * * * *"
+
+[functions.auth-password-reset-hook]
+verify_jwt = false
+
+[auth.hook.send_email]
+enabled = true
+uri = "functions/v1/auth-password-reset-hook"
