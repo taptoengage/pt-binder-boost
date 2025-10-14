@@ -12,7 +12,7 @@ const POSTMARK_MESSAGE_STREAM = Deno.env.get("POSTMARK_MESSAGE_STREAM") || "outb
 
 
 type Payload = {
-  type: "WELCOME" | "GENERIC" | "SESSION_BOOKED" | "CLIENT_SESSION_CONFIRMATION";
+  type: "WELCOME" | "GENERIC" | "SESSION_BOOKED" | "CLIENT_SESSION_CONFIRMATION" | "PASSWORD_RESET";
   to: string;
   data?: Record<string, unknown>;
 };
@@ -375,6 +375,107 @@ function renderHtml(payload: Payload): { subject: string; html: string } {
                       </p>
                       <p style="margin:8px 0 0;font-size:13px;color:#64748b;text-align:center;font-weight:600;">
                         We're excited to see you achieve your goals! 🎯
+                      </p>
+                      <p style="margin:16px 0 0;font-size:11px;color:#94a3b8;text-align:center;">
+                        © ${new Date().getFullYear()} Optimised Trainer. All rights reserved.
+                      </p>
+                    </td>
+                  </tr>
+                  
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `,
+    };
+  }
+  
+  if (payload.type === "PASSWORD_RESET") {
+    const resetUrl = String(payload.data?.resetUrl || "");
+    const userEmail = String(payload.data?.userEmail || "");
+    
+    return {
+      subject: "Reset Your Password - Optimised Trainer",
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="margin:0;padding:0;background-color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+          <table role="presentation" style="width:100%;border-collapse:collapse;border:0;border-spacing:0;background-color:#f5f5f5;">
+            <tr>
+              <td align="center" style="padding:40px 20px;">
+                <table role="presentation" style="width:100%;max-width:600px;border-collapse:collapse;border:0;border-spacing:0;background-color:#ffffff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+                  
+                  <!-- Header with gradient (matching client confirmation style) -->
+                  <tr>
+                    <td style="padding:40px 32px 32px 32px;background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);border-radius:12px 12px 0 0;">
+                      <h1 style="margin:0 0 8px;font-size:28px;line-height:1.2;color:#ffffff;font-weight:700;">
+                        🔐 Reset Your Password
+                      </h1>
+                      <p style="margin:0;font-size:16px;color:#e0e7ff;line-height:1.5;">
+                        We received a request to reset your password
+                      </p>
+                    </td>
+                  </tr>
+                  
+                  <!-- Intro message -->
+                  <tr>
+                    <td style="padding:32px 32px 24px 32px;">
+                      <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">
+                        Hi there! 👋
+                      </p>
+                      <p style="margin:0;font-size:16px;line-height:1.6;color:#334155;">
+                        Click the button below to create a new password for your Optimised Trainer account.
+                      </p>
+                    </td>
+                  </tr>
+                  
+                  <!-- Reset Button -->
+                  <tr>
+                    <td style="padding:0 32px 32px 32px;" align="center">
+                      <table role="presentation" style="border-collapse:collapse;">
+                        <tr>
+                          <td style="border-radius:8px;background-color:#667eea;">
+                            <a href="${resetUrl}" style="display:inline-block;padding:16px 40px;font-size:16px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+                              Reset My Password →
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
+                      <p style="margin:16px 0 0;font-size:13px;color:#94a3b8;line-height:1.5;">
+                        This link will expire in 1 hour for security
+                      </p>
+                    </td>
+                  </tr>
+                  
+                  <!-- Security Notice -->
+                  <tr>
+                    <td style="padding:0 32px 24px 32px;">
+                      <table role="presentation" style="width:100%;border-collapse:collapse;">
+                        <tr>
+                          <td style="padding:20px;background-color:#fffbeb;border-radius:10px;border-left:4px solid #f59e0b;">
+                            <h2 style="margin:0 0 8px;font-size:15px;color:#92400e;font-weight:700;">
+                              🛡️ Security Notice
+                            </h2>
+                            <p style="margin:0;font-size:14px;line-height:1.6;color:#78350f;">
+                              If you didn't request this password reset, please ignore this email. Your password will remain unchanged.
+                            </p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  
+                  <!-- Footer -->
+                  <tr>
+                    <td style="padding:24px 32px;background-color:#f8fafc;border-top:1px solid #e2e8f0;border-radius:0 0 12px 12px;">
+                      <p style="margin:0 0 8px;font-size:13px;color:#64748b;text-align:center;line-height:1.6;">
+                        Need help? Contact your trainer or visit your dashboard for support.
                       </p>
                       <p style="margin:16px 0 0;font-size:11px;color:#94a3b8;text-align:center;">
                         © ${new Date().getFullYear()} Optimised Trainer. All rights reserved.
