@@ -564,7 +564,7 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" },
     });
   }
-  if (!["WELCOME", "GENERIC", "SESSION_BOOKED", "CLIENT_SESSION_CONFIRMATION"].includes(payload.type)) {
+  if (!["WELCOME", "GENERIC", "SESSION_BOOKED", "CLIENT_SESSION_CONFIRMATION", "PASSWORD_RESET"].includes(payload.type)) {
     return new Response(JSON.stringify({ error: "Invalid `type`" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
