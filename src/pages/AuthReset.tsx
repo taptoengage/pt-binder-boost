@@ -71,6 +71,7 @@ const AuthReset = () => {
       type: get('type'),
       code: get('code'),
       token: get('token'),
+      token_hash: get('token_hash'),
       access_token: get('access_token'),
       refresh_token: get('refresh_token'),
     };
@@ -82,8 +83,22 @@ const AuthReset = () => {
 
     const validateToken = async () => {
       try {
-        // Try modern format first: code + type=recovery
-        if (params.type === 'recovery' && params.code) {
+        // Try token_hash format first (from email links)
+        if (params.type === 'recovery' && params.token_hash) {
+          console.log('AuthReset: recovery(token_hash)');
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: params.token_hash,
+            type: 'recovery'
+          });
+          if (error) {
+            console.error('Token hash verification error:', error);
+            setIsValidToken(false);
+          } else {
+            setIsValidToken(true);
+          }
+        }
+        // Try modern format: code + type=recovery
+        else if (params.type === 'recovery' && params.code) {
           console.log('AuthReset: recovery(code)');
           const { error } = await supabase.auth.exchangeCodeForSession(params.code);
           if (error) {
