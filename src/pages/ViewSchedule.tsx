@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, isWithinInterval, isToday, eachDayOfInterval, isSameMonth, isSameDay, parse, setMinutes, setHours, addMinutes, isBefore, isAfter } from 'date-fns';
-import { ArrowLeft, ArrowRight, CalendarOff, Clock } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarOff, Clock, Plus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -235,6 +235,9 @@ export default function ViewSchedule() {
   const [isSessionDetailModalOpen, setIsSessionDetailModalOpen] = useState(false);
   const [selectedSessionForModal, setSelectedSessionForModal] = useState<any | null>(null);
   const [isBlockAvailabilityModalOpen, setIsBlockAvailabilityModalOpen] = useState(false);
+  const [isBookSessionModalOpen, setIsBookSessionModalOpen] = useState(false);
+  const [selectedClientIdForBooking, setSelectedClientIdForBooking] = useState<string | null>(null);
+  const [preselectedSlot, setPreselectedSlot] = useState<{ start: Date; end: Date } | null>(null);
 
   // Compute visible window based on current view (same logic as client calendar)
   const weekStartsOn: 0 | 1 = 1; // Monday start
@@ -474,6 +477,27 @@ export default function ViewSchedule() {
     }
   };
 
+  // Handlers for Book New Session flow
+  const handleBookNewSession = () => {
+    setPreselectedSlot(null);
+    setIsBookSessionModalOpen(true);
+  };
+
+  const handleBookingModalClose = () => {
+    setIsBookSessionModalOpen(false);
+    setSelectedClientIdForBooking(null);
+    setPreselectedSlot(null);
+  };
+
+  const handleBookingComplete = () => {
+    queryClient.invalidateQueries({ queryKey: ['trainerSessions'] });
+    toast({
+      title: "Session Booked",
+      description: "The session has been successfully booked.",
+    });
+    handleBookingModalClose();
+  };
+
   if (isLoadingSessions || isLoadingTemplates || isLoadingExceptions) {
     return (
       <div className="min-h-screen bg-gradient-subtle">
@@ -517,8 +541,18 @@ export default function ViewSchedule() {
             </Button>
           </div>
 
-          {/* Block Availability and View Toggles */}
-          <div className="flex items-center gap-4">
+          {/* Action Buttons and View Toggles */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="default"
+              onClick={handleBookNewSession}
+              className="flex items-center gap-2"
+              aria-label="Book a new session"
+            >
+              <Plus className="h-4 w-4" />
+              Book New Session
+            </Button>
+            
             <Button
               variant="outline"
               onClick={() => setIsBlockAvailabilityModalOpen(true)}
@@ -1095,6 +1129,17 @@ export default function ViewSchedule() {
           isOpen={isBlockAvailabilityModalOpen}
           onClose={() => setIsBlockAvailabilityModalOpen(false)}
           trainerId={user?.id || ''}
+        />
+
+        {/* Render the book session modal */}
+        <UniversalSessionModal
+          mode="book"
+          isOpen={isBookSessionModalOpen}
+          onClose={handleBookingModalClose}
+          trainerId={user?.id}
+          clientId={selectedClientIdForBooking || undefined}
+          selectedSlot={preselectedSlot || undefined}
+          onSessionUpdated={handleBookingComplete}
         />
       </main>
     </div>
