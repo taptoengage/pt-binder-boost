@@ -17,6 +17,9 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from '@/hooks/use-toast';
 import { useBusySlots } from "@/hooks/useBusySlots";
 
+// Query key helper for trainer sessions
+const trainerSessionsKey = (uid?: string) => ['trainerSessions', uid] as const;
+
 // Helper to generate 30-minute time slots for a day
 const generateDayTimeSlots = () => {
   const slots = [];
@@ -490,7 +493,11 @@ export default function ViewSchedule() {
   };
 
   const handleBookingComplete = () => {
+    const key = trainerSessionsKey(user?.id || undefined);
+    queryClient.invalidateQueries({ queryKey: key });
+    // Fallback broad invalidation if user?.id might be undefined
     queryClient.invalidateQueries({ queryKey: ['trainerSessions'] });
+
     toast({
       title: "Session Booked",
       description: "The session has been successfully booked.",
