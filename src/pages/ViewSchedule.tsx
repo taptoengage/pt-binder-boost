@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { DashboardNavigation } from '@/components/Navigation';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -19,6 +19,12 @@ import { useBusySlots } from "@/hooks/useBusySlots";
 
 // Query key helper for trainer sessions
 const trainerSessionsKey = (uid?: string) => ['trainerSessions', uid] as const;
+
+// Check if a date is in the past
+const isPast = (d: Date) => d.getTime() < Date.now();
+
+// TODO: replace 60 with trainer's default session duration from settings
+const getSessionDurationMins = () => 60;
 
 // Helper to generate 30-minute time slots for a day
 const generateDayTimeSlots = () => {
@@ -505,6 +511,13 @@ export default function ViewSchedule() {
     handleBookingModalClose();
   };
 
+  // Open booking modal for a specific time slot
+  const openBookingForSlot = useCallback((start: Date) => {
+    const end = addMinutes(start, getSessionDurationMins());
+    setPreselectedSlot({ start, end });
+    setIsBookSessionModalOpen(true);
+  }, []);
+
   if (isLoadingSessions || isLoadingTemplates || isLoadingExceptions) {
     return (
       <div className="min-h-screen bg-gradient-subtle">
@@ -651,15 +664,30 @@ export default function ViewSchedule() {
                                     effectiveAvailableRangesForDay
                                   );
 
+                                  const slotStart = parse(slotTime, 'HH:mm', selectedDate);
+                                  const isClickable = !isOutsideAvailability && sessionsInSlot.length === 0 && !isPast(slotStart);
+
                                   return (
                                       <div
                                           key={slotTime}
                                           className={cn(
                                               "rounded-lg border bg-white p-3 sm:p-4 shadow-sm",
                                               {
-                                                'border-orange-200 bg-orange-50': isOutsideAvailability
+                                                'border-orange-200 bg-orange-50': isOutsideAvailability,
+                                                'bookable-slot cursor-pointer hover:border-primary/50': isClickable
                                               }
                                           )}
+                                          {...(isClickable && {
+                                            role: "button",
+                                            tabIndex: 0,
+                                            onClick: () => openBookingForSlot(slotStart),
+                                            onKeyDown: (e) => {
+                                              if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                openBookingForSlot(slotStart);
+                                              }
+                                            }
+                                          })}
                                       >
                                           <span className={cn(
                                             "text-sm font-medium flex items-center gap-2",
@@ -675,7 +703,7 @@ export default function ViewSchedule() {
                                               <div
                                                   key={session.id}
                                                   className={cn(
-                                                    "mt-2 p-2 rounded cursor-pointer transition-colors",
+                                                    "session-card mt-2 p-2 rounded cursor-pointer transition-colors",
                                                     {
                                                       'bg-blue-100 hover:bg-blue-200': !isOutsideAvailability,
                                                       'bg-orange-100 hover:bg-orange-200 border border-orange-300': isOutsideAvailability
@@ -824,6 +852,9 @@ export default function ViewSchedule() {
                               effectiveAvailableRangesForDay
                             );
 
+                            const slotStart = parse(slotTime, 'HH:mm', selectedDate);
+                            const isClickable = !isOutsideAvailability && sessionsInSlot.length === 0 && !isPast(slotStart);
+
                             return (
                                 <div
                                     key={slotTime}
@@ -831,9 +862,24 @@ export default function ViewSchedule() {
                                         "relative h-12 border-b border-gray-200",
                                         {
                                           'bg-blue-50': !isOutsideAvailability,
-                                          'bg-orange-50 border-orange-200': isOutsideAvailability
+                                          'bg-orange-50 border-orange-200': isOutsideAvailability,
+                                          'bookable-slot cursor-pointer hover:bg-blue-100': isClickable
                                         }
                                     )}
+                                    {...(isClickable && {
+                                      role: "button",
+                                      tabIndex: 0,
+                                      onClick: (e) => {
+                                        if ((e.target as HTMLElement).closest('.session-card')) return;
+                                        openBookingForSlot(slotStart);
+                                      },
+                                      onKeyDown: (e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault();
+                                          openBookingForSlot(slotStart);
+                                        }
+                                      }
+                                    })}
                                 >
                                     <span className={cn(
                                       "absolute left-2 top-1 text-xs flex items-center gap-1",
@@ -849,7 +895,7 @@ export default function ViewSchedule() {
                                         <Card
                                             key={session.id}
                                             className={cn(
-                                              "absolute left-16 right-0 top-0 bottom-0 p-1 cursor-pointer transition-colors flex items-center",
+                                              "session-card absolute left-16 right-0 top-0 bottom-0 p-1 cursor-pointer transition-colors flex items-center",
                                               {
                                                 'hover:bg-blue-200': !isOutsideAvailability,
                                                 'bg-orange-100 hover:bg-orange-200 border-orange-300': isOutsideAvailability
