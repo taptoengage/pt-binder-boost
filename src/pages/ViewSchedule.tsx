@@ -991,6 +991,8 @@ export default function ViewSchedule() {
                             effectiveAvailableRangesForDay
                           );
 
+                          const isClickable = sessionsInSlot.length === 0 && !isOutsideAvailability && !isPast(parse(slotTime, 'HH:mm', day));
+
                           return (
                             <div
                               key={slotTime}
@@ -1000,9 +1002,32 @@ export default function ViewSchedule() {
                                   'bg-blue-50': !isWeekend && !isOutsideAvailability,
                                   'bg-blue-100': isWeekend && !isOutsideAvailability,
                                   'bg-orange-50': isOutsideAvailability && !isWeekend,
-                                  'bg-orange-100': isOutsideAvailability && isWeekend
+                                  'bg-orange-100': isOutsideAvailability && isWeekend,
+                                  'bookable-slot cursor-pointer hover:bg-green-50 hover:ring-1 hover:ring-green-300': isClickable
                                 }
                               )}
+                              role={isClickable ? "button" : undefined}
+                              tabIndex={isClickable ? 0 : -1}
+                              aria-label={isClickable ? `Book session at ${slotTime} on ${format(day, 'EEE dd')}` : undefined}
+                              onClick={(e) => {
+                                // Prevent booking if clicking on an existing session
+                                if ((e.target as HTMLElement).closest('.session-card-week')) return;
+                                
+                                const slotStart = parse(slotTime, 'HH:mm', day);
+                                if (isPast(slotStart)) return;
+                                if (isOutsideAvailability) return;
+                                if (sessionsInSlot.length > 0) return;
+                                
+                                openBookingForSlot(slotStart);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  const slotStart = parse(slotTime, 'HH:mm', day);
+                                  if (!isPast(slotStart) && !isOutsideAvailability && sessionsInSlot.length === 0) {
+                                    openBookingForSlot(slotStart);
+                                  }
+                                }
+                              }}
                             >
                               <span className={cn(
                                 "absolute left-1 top-0 text-[8px] flex items-center gap-0.5",
@@ -1018,7 +1043,7 @@ export default function ViewSchedule() {
                                 <div
                                   key={session.id}
                                   className={cn(
-                                    "absolute left-8 right-0 top-0 bottom-0 p-0.5 rounded-sm cursor-pointer flex items-center justify-between",
+                                    "session-card-week absolute left-8 right-0 top-0 bottom-0 p-0.5 rounded-sm cursor-pointer flex items-center justify-between",
                                     {
                                       'bg-blue-200 hover:bg-blue-300': !isOutsideAvailability,
                                       'bg-orange-200 hover:bg-orange-300 border border-orange-400': isOutsideAvailability
