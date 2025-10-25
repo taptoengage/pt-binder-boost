@@ -106,6 +106,8 @@ export default function UniversalSessionModal({
   const [selectedServiceTypeId, setSelectedServiceTypeId] = useState<string | null>(null);
   const [selectedStartTime, setSelectedStartTime] = useState<string | null>(null);
   const [isLoadingBookingData, setIsLoadingBookingData] = useState(false);
+  const [availableClients, setAvailableClients] = useState<Array<{id: string, name: string}>>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(clientId || null);
   
   // Internal slot state for trainer flow when no selectedSlot is provided
   const [internalSlot, setInternalSlot] = useState<{ start: Date; end: Date } | null>(null);
@@ -322,16 +324,41 @@ export default function UniversalSessionModal({
 
   // Effect 4: Book mode data fetching
   useEffect(() => {
-    if (!isOpen || currentMode !== 'book' || !clientId || !trainerId) return;
+    if (!isOpen || currentMode !== 'book' || !trainerId) return;
 
-    const fetchClientEligibilityData = async () => {
+    const fetchBookingData = async () => {
       setIsLoadingBookingData(true);
       try {
+        // If trainer, fetch available clients first
+        if (isTrainer) {
+          const { data: clients, error: clientsError } = await supabase
+            .from('clients')
+            .select('id, name')
+            .eq('trainer_id', trainerId)
+            .order('name');
+
+          if (clientsError) throw clientsError;
+          setAvailableClients(clients || []);
+          
+          // If clientId prop was provided, use it; otherwise wait for selection
+          if (!clientId && !selectedClientId) {
+            setIsLoadingBookingData(false);
+            return;
+          }
+        }
+
+        // Use selectedClientId if available (trainer selected), otherwise use clientId prop (client booking)
+        const effectiveClientId = selectedClientId || clientId;
+        if (!effectiveClientId) {
+          setIsLoadingBookingData(false);
+          return;
+        }
+
         // Fetch active session packs for the client
         const { data: packs, error: packsError } = await supabase
           .from('session_packs')
           .select('id, total_sessions, sessions_remaining, status, service_type_id, service_types(name)')
-          .eq('client_id', clientId)
+          .eq('client_id', effectiveClientId)
           .eq('trainer_id', trainerId)
           .eq('status', 'active');
 
@@ -369,7 +396,7 @@ export default function UniversalSessionModal({
         const { data: subscriptions, error: subscriptionsError } = await supabase
           .from('client_subscriptions')
           .select('id, billing_cycle, payment_frequency, billing_amount, status')
-          .eq('client_id', clientId)
+          .eq('client_id', effectiveClientId)
           .eq('trainer_id', trainerId)
           .eq('status', 'active');
 
@@ -387,10 +414,10 @@ export default function UniversalSessionModal({
 
 
       } catch (error: any) {
-        console.error('Error fetching client eligibility data:', error.message);
+        console.error('Error fetching booking data:', error.message);
         toast({
           title: "Error",
-          description: "Failed to load booking eligibility data.",
+          description: "Failed to load booking data.",
           variant: "destructive",
         });
       } finally {
@@ -398,8 +425,8 @@ export default function UniversalSessionModal({
       }
     };
 
-    fetchClientEligibilityData();
-  }, [isOpen, currentMode, clientId, trainerId, toast]);
+    fetchBookingData();
+  }, [isOpen, currentMode, trainerId, selectedClientId, clientId, isTrainer, toast]);
 
   // Process availability ranges for the proposed date - useMemo hook
   const finalAvailabilityRangesForProposedDate = useMemo(() => {
@@ -770,6 +797,17 @@ export default function UniversalSessionModal({
   // Book mode booking handler
   const handleConfirmBooking = async () => {
     const slot = selectedSlot || internalSlot;
+    
+    // Validation: if trainer, must have selected a client
+    if (isTrainer && !selectedClientId) {
+      toast({
+        title: "Error",
+        description: "Please select a client.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (!slot || !selectedStartTime || !selectedServiceTypeId || !selectedBookingOption) {
       toast({
         title: "Error",
@@ -808,9 +846,12 @@ export default function UniversalSessionModal({
       const [hour, minute] = selectedStartTime.split(':').map(Number);
       const sessionDateWithTime = setMinutes(setHours(slot.start, hour), minute);
 
+      // Use selectedClientId for trainers, clientId for clients
+      const effectiveClientId = selectedClientId || clientId;
+
       const bookingData = {
         action: 'book',
-        clientId,
+        clientId: effectiveClientId,
         trainerId,
         sessionDate: sessionDateWithTime.toISOString(),
         serviceTypeId: selectedServiceTypeId,
@@ -1398,6 +1439,33 @@ export default function UniversalSessionModal({
             </div>
           ) : (
             <div className="grid gap-4 py-4">
+              {isTrainer && (
+                <div className="space-y-2">
+                  <Label htmlFor="clientSelect">Select Client *</Label>
+                  <Select
+                    value={selectedClientId || ''}
+                    onValueChange={(value) => {
+                      setSelectedClientId(value);
+                      // Reset booking options when client changes
+                      setSelectedBookingOption(null);
+                      setSelectedServiceTypeId(null);
+                      setActiveSessionPacks([]);
+                      setActiveSubscriptions([]);
+                    }}
+                  >
+                    <SelectTrigger id="clientSelect">
+                      <SelectValue placeholder="Choose a client..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableClients.map(client => (
+                        <SelectItem key={client.id} value={client.id}>
+                          {client.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {!selectedSlot && (
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -1574,7 +1642,7 @@ export default function UniversalSessionModal({
             <Button 
               type="submit" 
               onClick={handleConfirmBooking} 
-              disabled={isLoadingBookingData || isBooking || (!selectedSlot && !internalSlot) || !selectedStartTime || !selectedServiceTypeId || !selectedBookingOption}
+              disabled={isLoadingBookingData || isBooking || (isTrainer && !selectedClientId) || (!selectedSlot && !internalSlot) || !selectedStartTime || !selectedServiceTypeId || !selectedBookingOption}
             >
               {isBooking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {isBooking ? 'Booking...' : 'Confirm Booking'}
