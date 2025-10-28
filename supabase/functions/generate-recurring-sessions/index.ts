@@ -275,79 +275,45 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Failed to create sessions", details: insertErr.message }), { status: 500, headers: cors });
     }
 
-    // Atomic pack decrement (if pack) - guarded UPDATE with rollback
+    // Atomic pack decrement (if pack) - single RPC call with all guards
     if (body.bookingMethod === "pack" && body.sessionPackId) {
-      // Step 1: Query current state with guards
-      const { data: packData, error: packQueryErr } = await supabase
-        .from("session_packs")
-        .select("sessions_remaining, service_type_id")
-        .eq("id", body.sessionPackId)
-        .eq("trainer_id", body.trainerId)
-        .single();
+      const { error: consumeErr } = await supabase.rpc("consume_pack_sessions", {
+        p_pack_id: body.sessionPackId,
+        p_trainer_id: body.trainerId,
+        p_service_type_id: body.serviceTypeId,
+        p_to_consume: sessionRows.length
+      });
 
-      if (packQueryErr || !packData) {
-        console.error("[RECURRING] Pack not found:", packQueryErr);
+      if (consumeErr) {
+        console.error("[RECURRING] Pack consumption failed:", consumeErr);
+        
+        // Rollback all created rows
         await supabase.from("sessions").delete().eq("recurring_schedule_id", schedule.id);
         await supabase.from("recurring_schedule_preferences").delete().eq("recurring_schedule_id", schedule.id);
         await supabase.from("recurring_schedules").delete().eq("id", schedule.id);
-        return new Response(JSON.stringify({ 
-          error: "Session pack not found or access denied" 
-        }), { status: 403, headers: cors });
+
+        // Parse error message for specific response
+        const errorMsg = consumeErr.message || "";
+        if (errorMsg.includes("Insufficient capacity") || errorMsg.includes("service type mismatch")) {
+          return new Response(JSON.stringify({ 
+            error: "Pack validation failed",
+            details: errorMsg
+          }), { status: 400, headers: cors });
+        } else if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
+          return new Response(JSON.stringify({ 
+            error: "Session pack not found or access denied" 
+          }), { status: 403, headers: cors });
+        } else {
+          return new Response(JSON.stringify({ 
+            error: "Failed to consume pack sessions",
+            details: errorMsg
+          }), { status: 500, headers: cors });
+        }
       }
 
-      // Step 2: Verify service type match
-      if (packData.service_type_id !== body.serviceTypeId) {
-        await supabase.from("sessions").delete().eq("recurring_schedule_id", schedule.id);
-        await supabase.from("recurring_schedule_preferences").delete().eq("recurring_schedule_id", schedule.id);
-        await supabase.from("recurring_schedules").delete().eq("id", schedule.id);
-        return new Response(JSON.stringify({ 
-          error: "Service type mismatch with session pack" 
-        }), { status: 400, headers: cors });
-      }
-
-      // Step 3: Verify sufficient capacity
-      if (packData.sessions_remaining < sessionRows.length) {
-        await supabase.from("sessions").delete().eq("recurring_schedule_id", schedule.id);
-        await supabase.from("recurring_schedule_preferences").delete().eq("recurring_schedule_id", schedule.id);
-        await supabase.from("recurring_schedules").delete().eq("id", schedule.id);
-        return new Response(JSON.stringify({ 
-          error: "Insufficient pack capacity",
-          details: `Pack has ${packData.sessions_remaining} sessions remaining, need ${sessionRows.length}`
-        }), { status: 400, headers: cors });
-      }
-
-      // Step 4: Atomic decrement with race-condition guard
-      // Update ONLY if sessions_remaining hasn't changed since query
-      const newRemaining = packData.sessions_remaining - sessionRows.length;
-      const { data: updateResult, error: updateErr } = await supabase
-        .from("session_packs")
-        .update({ 
-          sessions_remaining: newRemaining,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", body.sessionPackId)
-        .eq("trainer_id", body.trainerId)
-        .eq("sessions_remaining", packData.sessions_remaining) // Race guard
-        .select()
-        .maybeSingle();
-
-      // If no rows affected, concurrent modification occurred
-      if (updateErr || !updateResult) {
-        console.error("[RECURRING] Concurrent modification detected:", updateErr);
-        await supabase.from("sessions").delete().eq("recurring_schedule_id", schedule.id);
-        await supabase.from("recurring_schedule_preferences").delete().eq("recurring_schedule_id", schedule.id);
-        await supabase.from("recurring_schedules").delete().eq("id", schedule.id);
-        return new Response(JSON.stringify({ 
-          error: "Concurrent modification detected - pack was updated by another process",
-          details: "Please retry the operation"
-        }), { status: 409, headers: cors });
-      }
-
-      console.log("[RECURRING] Pack decremented successfully", { 
-        packId: body.sessionPackId, 
-        previousRemaining: packData.sessions_remaining,
-        decremented: sessionRows.length,
-        newRemaining: updateResult.sessions_remaining
+      console.log("[RECURRING] Pack consumed successfully", { 
+        packId: body.sessionPackId,
+        consumed: sessionRows.length
       });
     }
 
