@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.51.0";
 import { z } from "https://esm.sh/zod@3.23.8";
 import { fromZonedTime } from "https://esm.sh/date-fns-tz@3.2.0";
+import { validateMultipleSessions } from "../_shared/sessionValidation.ts";
 
 type Action = "preview" | "confirm";
 
@@ -126,21 +127,72 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: `Too many sessions (${proposed.length}). Max ${MAX_SESSIONS_PER_SCHEDULE}` }), { status: 400, headers: cors });
     }
 
-    // TODO: Reuse existing validations for availability/overlaps.
-    // Example placeholder (wire to your shared code or RPC):
-    // const conflicts = await checkConflictsForProposed(supabase, body.trainerId, proposed.map(p => p.utc));
-    // mark proposed[i].status/message accordingly and block on confirm if conflicts remain.
+    // Validate all proposed sessions using shared validation logic
+    console.log("[RECURRING] Validating proposed sessions", { count: proposed.length });
+    const validations = await validateMultipleSessions(
+      supabase,
+      body.trainerId,
+      body.serviceTypeId,
+      proposed.map(p => ({ utc: p.utc, date: p.date, time: p.time }))
+    );
+
+    // Update proposed sessions with validation results
+    proposed.forEach((p, i) => {
+      const validation = validations[i];
+      p.status = validation.status;
+      p.message = validation.message;
+    });
+
+    const conflictCount = proposed.filter(p => p.status === "conflict").length;
+    const warningCount = proposed.filter(p => p.status === "warning").length;
+    
+    console.log("[RECURRING] Validation complete", { 
+      total: proposed.length, 
+      conflicts: conflictCount, 
+      warnings: warningCount,
+      ok: proposed.length - conflictCount - warningCount
+    });
 
     if (body.action === "preview") {
       return new Response(JSON.stringify({
         success: true,
-        proposedSessions: proposed.map(p => ({ date: p.date, time: p.time, weekday: p.weekday, preferenceId: p.prefId, status: p.status })),
-        warnings: [],
-        stats: { totalProposed: proposed.length, conflicts: proposed.filter(p=>p.status==="conflict").length, warnings: proposed.filter(p=>p.status==="warning").length }
+        proposedSessions: proposed.map(p => ({ 
+          date: p.date, 
+          time: p.time, 
+          weekday: p.weekday, 
+          preferenceId: p.prefId, 
+          status: p.status,
+          message: p.message
+        })),
+        warnings: proposed.filter(p => p.status === "warning").map(p => p.message).filter(Boolean),
+        stats: { 
+          totalProposed: proposed.length, 
+          conflicts: conflictCount,
+          warnings: warningCount,
+          ok: proposed.length - conflictCount - warningCount
+        }
       }), { status: 200, headers: cors });
     }
 
     // ===== CONFIRM =====
+    // Block confirm if any unexcluded conflicts remain
+    const unexcludedConflicts = proposed.filter(p => p.status === "conflict");
+    if (unexcludedConflicts.length > 0) {
+      console.error("[RECURRING] Confirm blocked - unresolved conflicts", { 
+        conflictCount: unexcludedConflicts.length,
+        conflicts: unexcludedConflicts.map(c => ({ date: c.date, time: c.time, message: c.message }))
+      });
+      return new Response(JSON.stringify({ 
+        error: "Cannot confirm schedule with unresolved conflicts",
+        conflicts: unexcludedConflicts.map(c => ({ 
+          date: c.date, 
+          time: c.time, 
+          message: c.message || "Conflict detected" 
+        })),
+        details: `${unexcludedConflicts.length} sessions have conflicts. Please exclude them or adjust the schedule.`
+      }), { status: 400, headers: cors });
+    }
+
     const idempotencyKey = deterministicIdempotencyKey({
       trainerId: body.trainerId, clientId: body.clientId, preferenceIds: body.preferenceIds,
       startDate: body.startDate, endDate: body.endDate, bookingMethod: body.bookingMethod,
