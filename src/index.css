@@ -194,6 +194,16 @@
   .status-error {
     @apply bg-destructive text-destructive-foreground;
   }
+
+  /* Bookable Slot Enhancements - Smooth Transitions & Keyboard Focus */
+  .bookable-slot {
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .bookable-slot:focus-visible {
+    outline: 2px solid rgb(34, 197, 94);
+    outline-offset: -2px;
+  }
 }
 
 @layer base {
