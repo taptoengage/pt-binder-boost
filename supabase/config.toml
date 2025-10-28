@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.send-session-reminders.schedules.reminder5min]
 cron = "*/5 * * * *"
+
+[functions.generate-recurring-sessions]
+verify_jwt = true
