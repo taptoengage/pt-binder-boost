@@ -412,6 +412,138 @@ export type Database = {
           },
         ]
       }
+      recurring_schedule_preferences: {
+        Row: {
+          created_at: string
+          id: string
+          preference_id: string
+          recurring_schedule_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          preference_id: string
+          recurring_schedule_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          preference_id?: string
+          recurring_schedule_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_schedule_preferences_preference_id_fkey"
+            columns: ["preference_id"]
+            isOneToOne: false
+            referencedRelation: "client_time_preferences"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_schedule_preferences_recurring_schedule_id_fkey"
+            columns: ["recurring_schedule_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recurring_schedules: {
+        Row: {
+          booking_method: string
+          client_id: string
+          created_at: string
+          created_by: string | null
+          end_date: string
+          id: string
+          idempotency_key: string | null
+          last_generated_date: string | null
+          pattern_name: string | null
+          service_type_id: string
+          session_pack_id: string | null
+          start_date: string
+          status: string
+          subscription_id: string | null
+          total_sessions_generated: number
+          trainer_id: string
+          updated_at: string
+        }
+        Insert: {
+          booking_method: string
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          end_date: string
+          id?: string
+          idempotency_key?: string | null
+          last_generated_date?: string | null
+          pattern_name?: string | null
+          service_type_id: string
+          session_pack_id?: string | null
+          start_date: string
+          status?: string
+          subscription_id?: string | null
+          total_sessions_generated?: number
+          trainer_id: string
+          updated_at?: string
+        }
+        Update: {
+          booking_method?: string
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          end_date?: string
+          id?: string
+          idempotency_key?: string | null
+          last_generated_date?: string | null
+          pattern_name?: string | null
+          service_type_id?: string
+          session_pack_id?: string | null
+          start_date?: string
+          status?: string
+          subscription_id?: string | null
+          total_sessions_generated?: number
+          trainer_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_schedules_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_schedules_service_type_id_fkey"
+            columns: ["service_type_id"]
+            isOneToOne: false
+            referencedRelation: "service_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_schedules_session_pack_id_fkey"
+            columns: ["session_pack_id"]
+            isOneToOne: false
+            referencedRelation: "session_packs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_schedules_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "client_subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_schedules_trainer_id_fkey"
+            columns: ["trainer_id"]
+            isOneToOne: false
+            referencedRelation: "trainers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       security_rate_limits: {
         Row: {
           bucket: string
@@ -604,6 +736,7 @@ export type Database = {
           id: string
           is_from_credit: boolean
           notes: string | null
+          recurring_schedule_id: string | null
           service_type_id: string
           session_date: string
           session_pack_id: string | null
@@ -620,6 +753,7 @@ export type Database = {
           id?: string
           is_from_credit?: boolean
           notes?: string | null
+          recurring_schedule_id?: string | null
           service_type_id: string
           session_date: string
           session_pack_id?: string | null
@@ -636,6 +770,7 @@ export type Database = {
           id?: string
           is_from_credit?: boolean
           notes?: string | null
+          recurring_schedule_id?: string | null
           service_type_id?: string
           session_date?: string
           session_pack_id?: string | null
@@ -657,6 +792,13 @@ export type Database = {
             columns: ["credit_id_consumed"]
             isOneToOne: false
             referencedRelation: "subscription_session_credits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_recurring_schedule_id_fkey"
+            columns: ["recurring_schedule_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_schedules"
             referencedColumns: ["id"]
           },
           {
@@ -1101,9 +1243,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      add_to_waitlist: {
-        Args: { email_input: string }
-        Returns: Json
+      add_to_waitlist: { Args: { email_input: string }; Returns: Json }
+      consume_pack_sessions: {
+        Args: {
+          p_pack_id: string
+          p_service_type_id: string
+          p_to_consume: number
+          p_trainer_id: string
+        }
+        Returns: number
       }
       decrement_pack_sessions: {
         Args: {
@@ -1118,7 +1266,7 @@ export type Database = {
         Returns: Json
       }
       get_admin_metrics: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           active_session_packs: number
           total_clients: number
@@ -1127,26 +1275,27 @@ export type Database = {
         }[]
       }
       get_trainer_busy_slots: {
-        Args:
-          | Record<PropertyKey, never>
-          | { p_end_date: string; p_start_date: string; p_trainer_id: string }
+        Args: { p_end_date: string; p_start_date: string; p_trainer_id: string }
         Returns: {
           session_date: string
           status: string
         }[]
       }
-      has_role: {
-        Args:
-          | { _role: Database["public"]["Enums"]["app_role"]; _user_id: string }
-          | { role_name: string }
-        Returns: boolean
-      }
+      has_role:
+        | { Args: { role_name: string }; Returns: boolean }
+        | {
+            Args: {
+              _role: Database["public"]["Enums"]["app_role"]
+              _user_id: string
+            }
+            Returns: boolean
+          }
       increment_pack_sessions: {
         Args: { inc?: number; pack_id: string; trainer_id: string }
         Returns: boolean
       }
       validate_pack_integrity: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           actual_used_sessions: number
           calculated_remaining: number
