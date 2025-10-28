@@ -277,43 +277,29 @@ Deno.serve(async (req) => {
 
     // Atomic pack decrement (if pack) - single RPC call with all guards
     if (body.bookingMethod === "pack" && body.sessionPackId) {
-      const { error: consumeErr } = await supabase.rpc("consume_pack_sessions", {
+      const toConsume = sessionRows.length;
+      const { data: remaining, error: decErr } = await supabase.rpc('consume_pack_sessions', {
         p_pack_id: body.sessionPackId,
         p_trainer_id: body.trainerId,
         p_service_type_id: body.serviceTypeId,
-        p_to_consume: sessionRows.length
+        p_to_consume: toConsume
       });
-
-      if (consumeErr) {
-        console.error("[RECURRING] Pack consumption failed:", consumeErr);
-        
-        // Rollback all created rows
-        await supabase.from("sessions").delete().eq("recurring_schedule_id", schedule.id);
-        await supabase.from("recurring_schedule_preferences").delete().eq("recurring_schedule_id", schedule.id);
-        await supabase.from("recurring_schedules").delete().eq("id", schedule.id);
-
-        // Parse error message for specific response
-        const errorMsg = consumeErr.message || "";
-        if (errorMsg.includes("Insufficient capacity") || errorMsg.includes("service type mismatch")) {
-          return new Response(JSON.stringify({ 
-            error: "Pack validation failed",
-            details: errorMsg
-          }), { status: 400, headers: cors });
-        } else if (errorMsg.includes("not found") || errorMsg.includes("access denied")) {
-          return new Response(JSON.stringify({ 
-            error: "Session pack not found or access denied" 
-          }), { status: 403, headers: cors });
-        } else {
-          return new Response(JSON.stringify({ 
-            error: "Failed to consume pack sessions",
-            details: errorMsg
-          }), { status: 500, headers: cors });
-        }
+      if (decErr) {
+        console.error('[RECURRING] Pack decrement failed:', decErr);
+        // Rollback schedule + linked rows to keep DB consistent
+        await supabase.from('sessions').delete().eq('recurring_schedule_id', schedule.id);
+        await supabase.from('recurring_schedule_preferences').delete().eq('recurring_schedule_id', schedule.id);
+        await supabase.from('recurring_schedules').delete().eq('id', schedule.id);
+        return new Response(
+          JSON.stringify({ error: 'Insufficient pack capacity or mismatch', details: decErr.message }),
+          { status: 400, headers: cors }
+        );
       }
 
-      console.log("[RECURRING] Pack consumed successfully", { 
-        packId: body.sessionPackId,
-        consumed: sessionRows.length
+      console.log('[RECURRING] Pack decremented successfully', {
+        scheduleId: schedule.id,
+        sessionsCreated: sessionRows.length,
+        remainingCredits: remaining
       });
     }
 
