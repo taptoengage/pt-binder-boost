@@ -1,8 +1,8 @@
 // supabase/functions/generate-recurring-sessions/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.51.0";
 import { z } from "https://esm.sh/zod@3.23.8";
-import { fromZonedTime } from "https://esm.sh/date-fns-tz@3.2.0";
 import { validateMultipleSessions } from "../_shared/sessionValidation.ts";
+import { toUtcIso } from "../_shared/time.ts";
 
 type Action = "preview" | "confirm";
 
@@ -12,7 +12,6 @@ const cors = {
   "Content-Type": "application/json",
 };
 
-const TRAINER_TZ = "Australia/Melbourne";
 const MAX_SESSIONS_PER_SCHEDULE = 200;
 
 const Schema = z.object({
@@ -32,14 +31,6 @@ const Schema = z.object({
     .optional(),
 });
 
-function toUtcIso(datePart: string, timeHHmm: string): string {
-  const [h, m] = timeHHmm.split(":").map(Number);
-  const [Y, M, D] = datePart.split("-").map(Number);
-  // Create a Date object with the wall-clock date/time
-  const wall = new Date(Y, M - 1, D, h, m, 0, 0);
-  // Convert to UTC respecting Melbourne DST
-  return fromZonedTime(wall, TRAINER_TZ).toISOString();
-}
 
 function excluded(date: string, time: string, list?: Array<{ date: string; time: string }>) {
   return !!list?.some(e => e.date === date && e.time === time);
@@ -276,31 +267,22 @@ Deno.serve(async (req) => {
     }
 
     // Atomic pack decrement (if pack) - single RPC call with all guards
-    if (body.bookingMethod === "pack" && body.sessionPackId) {
+    if (body.bookingMethod === 'pack' && body.sessionPackId) {
       const toConsume = sessionRows.length;
-      const { data: remaining, error: decErr } = await supabase.rpc('consume_pack_sessions', {
+      const { data: rowsAffected, error: decErr } = await supabase.rpc('consume_pack_sessions', {
         p_pack_id: body.sessionPackId,
         p_trainer_id: body.trainerId,
         p_service_type_id: body.serviceTypeId,
         p_to_consume: toConsume
       });
       if (decErr) {
-        console.error('[RECURRING] Pack decrement failed:', decErr);
-        // Rollback schedule + linked rows to keep DB consistent
+        // rollback schedule + links + sessions
         await supabase.from('sessions').delete().eq('recurring_schedule_id', schedule.id);
         await supabase.from('recurring_schedule_preferences').delete().eq('recurring_schedule_id', schedule.id);
         await supabase.from('recurring_schedules').delete().eq('id', schedule.id);
-        return new Response(
-          JSON.stringify({ error: 'Insufficient pack capacity or mismatch', details: decErr.message }),
-          { status: 400, headers: cors }
-        );
+        return new Response(JSON.stringify({ error: 'Insufficient pack capacity or mismatch' }), { status: 400, headers: cors });
       }
-
-      console.log('[RECURRING] Pack decremented successfully', {
-        scheduleId: schedule.id,
-        sessionsCreated: sessionRows.length,
-        remainingCredits: remaining
-      });
+      console.log('[PACK] consume_pack_sessions ok', { toConsume, rowsAffected });
     }
 
     console.log("[RECURRING] confirmed", { 
