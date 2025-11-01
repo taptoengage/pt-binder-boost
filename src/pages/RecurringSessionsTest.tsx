@@ -35,6 +35,7 @@ export default function RecurringSessionsTest() {
   const [proposedSessions, setProposedSessions] = useState<any[]>([]);
   const [excludedSessions, setExcludedSessions] = useState<Array<{ date: string; time: string }>>([]);
   const [loading, setLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
   const [scheduleId, setScheduleId] = useState<string | null>(null);
 
   const featureEnabled = import.meta.env.VITE_RECURRING_SESSIONS_V1 === 'true';
@@ -55,13 +56,18 @@ export default function RecurringSessionsTest() {
   }, [selectedClient, bookingMethod]);
 
   const loadData = async () => {
+    setDataLoading(true);
     const [clientsRes, serviceTypesRes] = await Promise.all([
       supabase.from('clients').select('*').eq('trainer_id', user!.id),
       supabase.from('service_types').select('*').eq('trainer_id', user!.id)
     ]);
 
+    console.log('[RecurringSessionsTest] Loaded clients:', clientsRes.data?.length);
+    console.log('[RecurringSessionsTest] Loaded service types:', serviceTypesRes.data?.length);
+
     if (clientsRes.data) setClients(clientsRes.data);
     if (serviceTypesRes.data) setServiceTypes(serviceTypesRes.data);
+    setDataLoading(false);
   };
 
   const loadClientPreferences = async (clientId: string) => {
@@ -221,28 +227,64 @@ export default function RecurringSessionsTest() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Client</Label>
-              <Select value={selectedClient} onValueChange={setSelectedClient}>
+              <Select 
+                value={selectedClient} 
+                onValueChange={setSelectedClient}
+                disabled={dataLoading || clients.length === 0}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select client" />
+                  <SelectValue 
+                    placeholder={
+                      dataLoading 
+                        ? "Loading clients..." 
+                        : clients.length === 0 
+                        ? "No clients found" 
+                        : "Select client"
+                    } 
+                  />
                 </SelectTrigger>
-                <SelectContent>
-                  {clients.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
+                <SelectContent position="popper" className="z-[9999]">
+                  {clients.length > 0 ? (
+                    clients.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="_empty" disabled>
+                      {dataLoading ? "Loading..." : "No clients available"}
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
               <Label>Service Type</Label>
-              <Select value={selectedServiceType} onValueChange={setSelectedServiceType}>
+              <Select 
+                value={selectedServiceType} 
+                onValueChange={setSelectedServiceType}
+                disabled={dataLoading || serviceTypes.length === 0}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select service type" />
+                  <SelectValue 
+                    placeholder={
+                      dataLoading 
+                        ? "Loading service types..." 
+                        : serviceTypes.length === 0 
+                        ? "No service types found" 
+                        : "Select service type"
+                    } 
+                  />
                 </SelectTrigger>
-                <SelectContent>
-                  {serviceTypes.map(st => (
-                    <SelectItem key={st.id} value={st.id}>{st.name}</SelectItem>
-                  ))}
+                <SelectContent position="popper" className="z-[9999]">
+                  {serviceTypes.length > 0 ? (
+                    serviceTypes.map(st => (
+                      <SelectItem key={st.id} value={st.id}>{st.name}</SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="_empty" disabled>
+                      {dataLoading ? "Loading..." : "No service types available"}
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
