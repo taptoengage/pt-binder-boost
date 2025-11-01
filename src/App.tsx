@@ -17,6 +17,7 @@ import EditClient from "./pages/EditClient";
 import ScheduleSession from "./pages/ScheduleSession";
 import ClientDashboard from "./pages/ClientDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import RecurringSessionsTest from "./pages/RecurringSessionsTest";
 import NotFound from "./pages/NotFound";
 import { AdminRoute } from "./components/AdminRoute";
 import Auth from "./pages/Auth";
@@ -72,14 +73,22 @@ function App() {
                 <Route path="/onboarding" element={<Onboarding />} />
 
                 {/* Admin Routes */}
-                <Route
-                  path="/admin/dashboard"
-                  element={
-                    <AdminRoute>
-                      <AdminDashboard />
-                    </AdminRoute>
-                  }
-                />
+              <Route
+                path="/admin/dashboard"
+                element={
+                  <AdminRoute>
+                    <AdminDashboard />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/recurring-sessions-test"
+                element={
+                  <AdminRoute>
+                    <RecurringSessionsTest />
+                  </AdminRoute>
+                }
+              />
 
                 {/* Trainer Routes */}
                 <Route path="/trainer/dashboard" element={<TrainerDashboard />} />

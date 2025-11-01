@@ -282,7 +282,7 @@ Deno.serve(async (req) => {
         await supabase.from('recurring_schedules').delete().eq('id', schedule.id);
         return new Response(JSON.stringify({ error: 'Insufficient pack capacity or mismatch' }), { status: 400, headers: cors });
       }
-      console.log('[PACK] consume_pack_sessions ok', { toConsume, rowsAffected });
+      console.log('[PACK] consume_pack_sessions ok', { toConsume, remainingSessions: rowsAffected });
     }
 
     console.log("[RECURRING] confirmed", { 
